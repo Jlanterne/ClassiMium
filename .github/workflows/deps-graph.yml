@@ -10,24 +10,19 @@ permissions:
 jobs:
   graph:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-
-      # Graphviz rapide et fiable
-      - uses: ts-graphviz/setup-graphviz@v1
-
-      - name: Install tools
+      - name: Install pydeps + graphviz
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install -U pip
           pip install pydeps
+          sudo apt-get update
+          sudo apt-get install -y graphviz
 
       - name: Generate graphs
         run: |
@@ -35,20 +30,18 @@ jobs:
           [ -f db/__init__.py ]  || touch db/__init__.py
           pydeps app -o imports_app.svg || true
           pydeps db  -o imports_db.svg  || true
-
-      - name: Stamp files (force update)
-        run: |
+          # tampon pour forcer un commit à chaque run
           for f in imports_app.svg imports_db.svg; do
             [ -f "$f" ] || touch "$f"
             echo "<!-- regenerated $(date -u +%F\ %T) ${GITHUB_SHA} -->" >> "$f"
           done
 
-      - name: Commit diagrams
+      - name: Pull, commit & push
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin
+          git rebase origin/main || git rebase --abort
           git add imports_app.svg imports_db.svg
           git commit -m "CI: update import graphs" || echo "No changes"
-          git fetch origin ${{ github.ref_name }}
-          git pull --rebase origin ${{ github.ref_name }} || true
-          git push origin HEAD:${{ github.ref_name }}
+          git push origin HEAD:main

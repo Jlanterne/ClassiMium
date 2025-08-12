@@ -1,9 +1,8 @@
-name: Build import graphs
+﻿name: Build import graphs
 
 on:
   push:
   workflow_dispatch:
-
 
 permissions:
   contents: write
@@ -27,10 +26,8 @@ jobs:
 
       - name: Generate graphs
         run: |
-          # S'assure que ce sont des paquets (au cas où)
           [ -f app/__init__.py ] || touch app/__init__.py
           [ -f db/__init__.py ]  || touch db/__init__.py
-          # Génère 2 fichiers SVG
           pydeps app -o imports_app.svg || true
           pydeps db  -o imports_db.svg  || true
 

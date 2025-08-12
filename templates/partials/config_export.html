@@ -61,7 +61,7 @@
             margin-top: 12px
         }
 
-        /* Boutons charte */
+        /* Boutons (charte) */
         .btn-classe {
             width: auto !important;
             display: inline-flex !important;
@@ -111,7 +111,7 @@
             border-radius: 9999px
         }
 
-        /* Aperçu animé */
+        /* Aperçu animé (double buffer) */
         .anim-stage {
             position: relative;
             height: 190px;
@@ -181,7 +181,6 @@
             margin-top: 10px
         }
 
-        /* Nom + index */
         #anim_name {
             font-size: 1.05rem
         }
@@ -192,7 +191,6 @@
             margin-left: .5rem
         }
 
-        /* feedback save */
         #anim_name.just-saved::after {
             content: " • sauvegardé";
             font-weight: 600;
@@ -205,10 +203,10 @@
         <h3 class="section-title">Paramètres</h3>
 
         <form id="config_form" method="post" action="{{ url_for('main.config_export') }}">
+            {# CSRF facultatif : rendu seulement si dispo #}
             {% if csrf_token is defined %}
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {% endif %}
-
 
             <h4 class="section-title" style="margin-top:0">Chemins d’export</h4>
 
@@ -237,7 +235,8 @@
 
             <hr class="section-sep" aria-hidden="true">
 
-            {% set cur = current_anim_mode or (settings.ui.anim_mode if settings and settings.ui else 'slide') %}
+            {# Anim UI — valeur DB normalisée injectée #}
+            {% set cur = current_anim_mode or 'slide-down' %}
             <input type="hidden" id="anim_mode" name="anim_mode" value="{{ cur }}">
 
             <h4 class="section-title">Animation des panneaux</h4>
@@ -264,14 +263,14 @@
             </div>
 
             <div class="player-bar">
-                <button type="button" id="anim_toggle_btn" class="btn-classe"><span class="icon">⏸</span> <span
-                        class="txt">Pause</span></button>
+                <button type="button" id="anim_toggle_btn" class="btn-classe">
+                    <span class="icon">⏸</span> <span class="txt">Pause</span>
+                </button>
             </div>
 
             <div class="form-row" style="margin-top:12px;">
                 <label for="anim_duration">Durée (ms)</label>
-                {% set dur = current_anim_duration or (settings.ui.anim_duration if settings and settings.ui else 520)
-                %}
+                {% set dur = current_anim_duration or 520 %}
                 <input type="number" id="anim_duration" name="anim_duration" min="200" max="5000" step="20"
                     value="{{ dur }}">
             </div>
@@ -285,7 +284,7 @@
 </div>
 
 <script>
-    /* ====== Test chemins ====== */
+    /* ===== Test d’accès (ne soumet pas le form) ===== */
     document.getElementById('btn_test')?.addEventListener('click', async () => {
         const p = document.getElementById('primary_root').value.trim();
         const s = document.getElementById('secondary_root').value.trim();
@@ -300,29 +299,32 @@
 
 Secondaire : ${data.secondary.path}
   → ${data.secondary.exists ? "✅ accessible" : "❌ indisponible"}`;
-        } catch (e) { out.textContent = "Erreur de test : " + (e.message || e); }
+        } catch (e) {
+            out.textContent = "Erreur de test : " + (e.message || e);
+        }
     });
 </script>
 
 <script>
-    /* ====== Aperçu + Autosave (double-buffer + lock + boucle) ====== */
-    (function () {
+    /* ===== Aperçu + Autosave (double-buffer + lock + boucle) ===== */
+    (() => {
         const form = document.getElementById('config_form');
         const hidden = document.getElementById('anim_mode');
-        const inputDur = document.getElementById('anim_duration');
+        const inputD = document.getElementById('anim_duration');
         const nameEl = document.getElementById('anim_name');
         const idxEl = document.getElementById('anim_index');
-        const prevBtn = document.getElementById('anim_prev_btn');
-        const nextBtn = document.getElementById('anim_next_btn');
-        const togBtn = document.getElementById('anim_toggle_btn');
-        const togI = togBtn?.querySelector('.icon');
-        const togT = togBtn?.querySelector('.txt');
+        const prevB = document.getElementById('anim_prev_btn');
+        const nextB = document.getElementById('anim_next_btn');
+        const togB = document.getElementById('anim_toggle_btn');
+        const togI = togB?.querySelector('.icon');
+        const togT = togB?.querySelector('.txt');
         const A = document.getElementById('anim_layer_a');
         const B = document.getElementById('anim_layer_b');
-        if (!form || !hidden || !inputDur || !nameEl || !A || !B) { console.warn('[preview] éléments introuvables'); return; }
+        if (!form || !hidden || !inputD || !nameEl || !A || !B) return;
 
         const CAN = !!(Element.prototype && Element.prototype.animate);
         const CSRF = form.querySelector('input[name="csrf_token"]')?.value || '';
+        const GAP_MS = 3000; // délai entre 2 boucles
 
         const CHOICES = [
             'fade',
@@ -348,19 +350,17 @@ Secondaire : ${data.secondary.path}
             'blur-in': 'Flou → net', 'blur-zoom': 'Flou + zoom'
         };
 
-        function resolveMode(m) {
-            const n = ALIAS[m] || m;
-            return CHOICES.includes(n) ? n : 'fade';
-        }
-        function labelFor(m) { return LABEL[m] || m; }
-        function clamp(n, min, max) { return Math.max(min, Math.min(n, max)); }
-        function getDur() {
-            const base = Number(inputDur.value || 520);
+        const resolveMode = m => CHOICES.includes(ALIAS[m] || m) ? (ALIAS[m] || m) : 'fade';
+        const labelFor = m => LABEL[m] || m;
+        const clamp = (n, min, max) => Math.max(min, Math.min(n, max));
+        const getDur = () => {
+            const base = Number(inputD.value || 520);
             const IN = clamp(Math.round(base), 50, 5000);
             const OUT = clamp(Math.round(IN * 0.25), 80, Math.max(80, IN - 40));
             return { IN, OUT };
-        }
-        function frames(kind, dir) {
+        };
+
+        const frames = (kind, dir) => {
             const show = (a, b) => dir === 'in' ? [a, b] : [b, a];
             switch (kind) {
                 case 'fade': return show({ opacity: 0 }, { opacity: 1 });
@@ -389,42 +389,35 @@ Secondaire : ${data.secondary.path}
                 case 'blur-zoom': return show({ opacity: 0, transform: 'scale(.96)', filter: 'blur(12px)' }, { opacity: 1, transform: 'scale(1)', filter: 'blur(0)' });
                 default: return show({ opacity: 0 }, { opacity: 1 });
             }
-        }
+        };
 
-        // état
-        let active = A, idle = B;
-        let playing = true, locked = false, loopTimer = null;
-        const GAP_MS = 3000;
+        let active = A, idle = B, playing = true, locked = false, loopTimer = null;
 
-        function cancelAll(el) { try { el.getAnimations?.forEach(a => a.cancel()); } catch { } }
-        function clearInline(el) { el.style.opacity = ''; el.style.transform = ''; el.style.filter = ''; el.style.clipPath = ''; el.style.transformOrigin = ''; }
-        function applyFrame(el, f) { for (const k in f) { el.style[k] = f[k]; } }
-        function setLabel(mode) {
-            const i = CHOICES.indexOf(mode);
-            nameEl.textContent = labelFor(mode);
-            idxEl.textContent = `(${i + 1}/${CHOICES.length})`;
-        }
+        const cancelAll = el => { try { el.getAnimations?.forEach(a => a.cancel()); } catch { } };
+        const clearInline = el => { el.style.opacity = ''; el.style.transform = ''; el.style.filter = ''; el.style.clipPath = ''; el.style.transformOrigin = ''; };
+        const applyFrame = (el, f) => { for (const k in f) el.style[k] = f[k]; };
+        const setLabel = mode => { const i = CHOICES.indexOf(mode); nameEl.textContent = labelFor(mode); idxEl.textContent = `(${i + 1}/${CHOICES.length})`; };
 
-        // AUTOSAVE (form-url-encoded pour compat CSRF)
+        // AUTOSAVE (urlencoded + JSON si dispo)
         async function autosave(immediate = false) {
             const run = async () => {
                 const params = new URLSearchParams();
                 params.set('anim_mode', hidden.value);
-                params.set('anim_duration', inputDur.value);
-                params.set('csrf_token', CSRF);
+                params.set('anim_duration', inputD.value);
+                if (CSRF) params.set('csrf_token', CSRF);
                 try {
                     const res = await fetch(form.action, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'Accept': 'application/json',
-                            'X-Requested-With': 'fetch'
-                        },
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json', 'X-Requested-With': 'fetch' },
                         body: params.toString(),
                         credentials: 'same-origin'
                     });
-                    if (!res.ok) { console.warn('autosave HTTP', res.status); return; }
-                    const data = await res.json().catch(() => ({}));
+                    const ct = res.headers.get('Content-Type') || '';
+                    if (ct.includes('application/json')) {
+                        const data = await res.json();
+                        if (data?.ui?.anim_mode) hidden.value = resolveMode(data.ui.anim_mode);
+                        if (data?.ui?.anim_duration) inputD.value = data.ui.anim_duration;
+                    }
                     nameEl.classList.add('just-saved');
                     setTimeout(() => nameEl.classList.remove('just-saved'), 900);
                 } catch (e) { console.warn('autosave error', e); }
@@ -433,27 +426,23 @@ Secondaire : ${data.secondary.path}
             if (immediate) run(); else autosave._t = setTimeout(run, 200);
         }
 
-        function scheduleNext() {
+        const scheduleNext = () => {
             if (!playing) return;
             clearTimeout(loopTimer);
             loopTimer = setTimeout(() => { if (playing && !locked) loopOnce(); }, GAP_MS);
-        }
+        };
 
         function loopOnce() {
             if (locked) return;
             const mode = resolveMode(hidden.value);
             const { IN, OUT } = getDur();
             setLabel(mode);
-
             cancelAll(active); cancelAll(idle);
             clearInline(idle);
             applyFrame(idle, frames(mode, 'in')[0]);
             idle.style.opacity = '1';
 
-            if (!CAN) {
-                [active, idle] = [idle, active];
-                scheduleNext(); return;
-            }
+            if (!CAN) { [active, idle] = [idle, active]; scheduleNext(); return; }
 
             locked = true;
             const outAnim = active.animate(frames(mode, 'out'), { duration: Math.max(80, OUT), easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
@@ -467,21 +456,45 @@ Secondaire : ${data.secondary.path}
             });
         }
 
-        function playFromScratch() {
+        // Changement par flèches : OUT de l’anim courante, set+save, IN de la nouvelle, puis boucle
+        function changeToIndex(nextIdx) {
             if (locked) return;
+            const cur = resolveMode(hidden.value);
+            const curIdx = CHOICES.indexOf(cur);
+            if (nextIdx === curIdx) return;
+
+            const { OUT } = getDur();
+            locked = true;
+            // 1) sort avec l'anim courante
+            if (CAN) {
+                const outAnim = active.animate(frames(cur, 'out'), { duration: Math.max(80, OUT), easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
+                outAnim.finished.catch(() => { }).finally(() => {
+                    // 2) set + save la nouvelle, puis IN + reprise boucle
+                    hidden.value = CHOICES[nextIdx];
+                    autosave(true);
+                    playing = true;
+                    playFromScratch(); // fait l'entrée + relance la boucle
+                });
+            } else {
+                hidden.value = CHOICES[nextIdx];
+                autosave(true);
+                playing = true;
+                playFromScratch();
+            }
+        }
+
+        function playFromScratch() {
             const mode = resolveMode(hidden.value);
             const { IN } = getDur();
             setLabel(mode);
-
             cancelAll(active); cancelAll(idle);
             clearInline(active); clearInline(idle);
             active.style.opacity = '0';
             applyFrame(idle, frames(mode, 'in')[0]);
             idle.style.opacity = '1';
 
-            if (!CAN) { [active, idle] = [idle, active]; scheduleNext(); return; }
+            if (!CAN) { [active, idle] = [idle, active]; locked = false; scheduleNext(); return; }
 
-            locked = true;
             const inAnim = idle.animate(frames(mode, 'in'), { duration: IN, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'both' });
             inAnim.finished.catch(() => { }).finally(() => {
                 [active, idle] = [idle, active];
@@ -490,38 +503,35 @@ Secondaire : ${data.secondary.path}
             });
         }
 
-        function setModeByIndex(i) {
-            if (locked) return;
+        // Contrôles
+        prevB?.addEventListener('click', () => {
             const cur = resolveMode(hidden.value);
-            const curIdx = CHOICES.indexOf(cur);
-            const nextIdx = (i + CHOICES.length) % CHOICES.length;
-            if (nextIdx === curIdx) { return; }
-            hidden.value = CHOICES[nextIdx];
-            autosave(true);        // ⬅️ on sauve tout de suite
-            playing = true;
-            playFromScratch();     // ⬅️ OUT complet de l’actuel puis IN du nouveau
-        }
-
-        // contrôles
-        prevBtn?.addEventListener('click', () => setModeByIndex((CHOICES.indexOf(resolveMode(hidden.value)) - 1 + CHOICES.length) % CHOICES.length));
-        nextBtn?.addEventListener('click', () => setModeByIndex((CHOICES.indexOf(resolveMode(hidden.value)) + 1) % CHOICES.length));
+            const i = (CHOICES.indexOf(cur) - 1 + CHOICES.length) % CHOICES.length;
+            changeToIndex(i);
+        });
+        nextB?.addEventListener('click', () => {
+            const cur = resolveMode(hidden.value);
+            const i = (CHOICES.indexOf(cur) + 1) % CHOICES.length;
+            changeToIndex(i);
+        });
         window.addEventListener('keydown', e => {
-            if (e.key === 'ArrowLeft') { e.preventDefault(); prevBtn.click(); }
-            if (e.key === 'ArrowRight') { e.preventDefault(); nextBtn.click(); }
+            if (e.key === 'ArrowLeft') { e.preventDefault(); prevB.click(); }
+            if (e.key === 'ArrowRight') { e.preventDefault(); nextB.click(); }
         });
 
-        togBtn?.addEventListener('click', () => {
+        togB?.addEventListener('click', () => {
             if (playing) {
                 playing = false; clearTimeout(loopTimer); loopTimer = null; cancelAll(active); cancelAll(idle);
                 togI.textContent = '▶'; togT.textContent = 'Reprendre';
             } else {
-                playing = true; togI.textContent = '⏸'; togT.textContent = 'Pause'; playFromScratch();
+                playing = true; togI.textContent = '⏸'; togT.textContent = 'Pause';
+                playFromScratch();
             }
         });
 
-        inputDur.addEventListener('change', () => { autosave(); playing = true; playFromScratch(); });
+        inputD.addEventListener('change', () => { autosave(); playing = true; playFromScratch(); });
 
-        // ===== Init : NE PAS toucher à hidden.value (on respecte la DB) =====
+        // Init — respecter la valeur DB telle quelle (normalisée côté serveur)
         hidden.value = resolveMode(hidden.value);
         setLabel(hidden.value);
         playing = true;

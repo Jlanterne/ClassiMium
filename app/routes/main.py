@@ -1439,7 +1439,7 @@ def config_export():
 
         flash("Paramètres enregistrés.", "success")
         conn.close()
-        return redirect(url_for("config_export"))
+        return redirect(url_for(".config_export"))
 
     # GET
     conn.close()

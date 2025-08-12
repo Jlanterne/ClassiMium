@@ -108,3 +108,26 @@ html.js-ready .content>.panel-from-actions {
     overflow: hidden;
     contain: layout paint;
 }
+
+/* Toolbar jamais animée */
+.actions-classe {
+    position: sticky;
+    top: 0;
+    z-index: 2000;
+    transform: none !important;
+    opacity: 1 !important;
+    transition: none !important;
+}
+
+/* Scène animée : transitions CSS neutralisées quand JS prêt */
+html.js-ready .content>.panel-from-actions {
+    transition: none !important;
+    will-change: transform, opacity, clip-path;
+}
+
+/* Anti reflow pendant l’anim (et empêche margin-collapsing) */
+#mode-panel {
+    display: flow-root;
+    overflow: hidden;
+    contain: layout paint;
+}

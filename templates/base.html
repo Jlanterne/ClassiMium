@@ -2,6 +2,9 @@
 <html lang="fr">
 
 <head>
+    <script>document.documentElement.classList.add('js-ready');</script>
+    <!-- puis seulement après, tes <link> CSS -->
+
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
 
@@ -11,7 +14,7 @@
     <!-- ===== CSS globales du site ===== -->
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/bulles_notes.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/overrides.css', v=8) }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/overrides.css', v=9) }}">
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
 
     <!-- ===== Librairies externes (CDN) ===== -->
@@ -130,7 +133,7 @@
     </style>
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/anim.css') }}">
-    <script defer src="{{ url_for('static', filename='js/anim.js') }}"></script>
+
 
 
 </head>
@@ -446,6 +449,10 @@
             });
         });
     </script>
+
+
+
+
     {% endblock %}
 </body>
 

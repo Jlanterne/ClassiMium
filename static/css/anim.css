@@ -1,10 +1,15 @@
-/* --- Animations verticales --- */
 #mode-panel {
     will-change: opacity, transform, clip-path;
     transition-property: opacity, transform, clip-path;
     transition-duration: .52s;
-    /* fallback; le JS met la vraie durée */
     transition-timing-function: ease;
+}
+
+
+
+/* État initial masqué tant que le JS n’a pas joué l’entrée */
+#mode-panel[data-enter="pending"] {
+    opacity: 0;
 }
 
 /* FADE (identique, juste opacité) */

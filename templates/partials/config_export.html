@@ -6,7 +6,6 @@
 {% block content %}
 <div class="settings-page">
 
-    <!-- ================== Styles locaux ================== -->
     <style>
         .settings-page {
             max-width: 980px;
@@ -14,7 +13,7 @@
             padding-right: 8px
         }
 
-        .settings-page .panel-card {
+        .panel-card {
             background: #fff;
             border: 1px solid #e5e7eb;
             border-radius: 12px;
@@ -23,29 +22,29 @@
             margin: 14px 0
         }
 
-        .settings-page .section-title {
+        .section-title {
             margin: 0 0 10px;
             font-size: 1.05rem;
             font-weight: 700;
             color: #1f2937
         }
 
-        .settings-page .form-row,
-        .settings-page .field_r {
+        .form-row,
+        .field_r {
             display: flex;
             flex-direction: column;
             gap: 6px;
             margin: 10px 0
         }
 
-        .settings-page label {
+        label {
             font-weight: 600;
             font-size: .95rem;
             color: #111827
         }
 
-        .settings-page input[type="text"],
-        .settings-page input[type="number"] {
+        input[type="text"],
+        input[type="number"] {
             border: 1px solid #d1d5db;
             border-radius: 10px;
             padding: 10px 12px;
@@ -53,19 +52,18 @@
             background: #fff
         }
 
-        /* Barre d’actions : pas de full-width */
-        .settings-page .btnbar {
+        .btnbar {
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
             align-items: center;
-            margin-top: 12px;
-            justify-content: flex-start
+            justify-content: flex-start;
+            margin-top: 12px
         }
 
-        .settings-page .btn-classe {
+        /* Boutons charte */
+        .btn-classe {
             width: auto !important;
-            min-width: unset !important;
             display: inline-flex !important;
             align-items: center;
             gap: 8px;
@@ -80,24 +78,24 @@
             transition: background .15s ease, transform .04s ease
         }
 
-        .settings-page .btn-classe:hover {
+        .btn-classe:hover {
             background: #6B973F
         }
 
-        .settings-page .btn-classe:active {
+        .btn-classe:active {
             transform: translateY(1px)
         }
 
-        .settings-page .btn--muted {
+        .btn--muted {
             background: #BBBBBB !important;
             color: #111 !important
         }
 
-        .settings-page .btn--muted:hover {
+        .btn--muted:hover {
             background: #AFAFAF !important
         }
 
-        .settings-page pre#test_result {
+        pre#test_result {
             background: #f9fafb;
             border: 1px solid #e5e7eb;
             border-radius: 10px;
@@ -105,7 +103,7 @@
             margin-top: 8px
         }
 
-        .settings-page .section-sep {
+        .section-sep {
             height: 2px;
             border: 0;
             margin: 18px 0;
@@ -113,8 +111,8 @@
             border-radius: 9999px
         }
 
-        /* === Aperçu d’animation : double-buffer === */
-        .settings-page .anim-stage {
+        /* Aperçu animé */
+        .anim-stage {
             position: relative;
             height: 190px;
             border: 1px dashed #d1d5db;
@@ -127,7 +125,7 @@
         }
 
         .anim-layer {
-            grid-area: 1 / 1
+            grid-area: 1/1
         }
 
         .anim-preview-box {
@@ -145,7 +143,7 @@
         }
 
         /* Flèches */
-        .settings-page .anim-nav {
+        .anim-nav {
             position: absolute;
             top: 50%;
             transform: translateY(-50%);
@@ -163,19 +161,18 @@
             font-weight: 800
         }
 
-        .settings-page .anim-nav:hover {
+        .anim-nav:hover {
             background: #6B973F
         }
 
-        .settings-page .anim-nav.left {
+        .anim-nav.left {
             left: 10px
         }
 
-        .settings-page .anim-nav.right {
+        .anim-nav.right {
             right: 10px
         }
 
-        /* Lecteur */
         .player-bar {
             display: flex;
             align-items: center;
@@ -184,61 +181,52 @@
             margin-top: 10px
         }
 
-        .player-bar .btn-classe {
-            background: #B5C800
+        /* Nom + index */
+        #anim_name {
+            font-size: 1.05rem
         }
 
-        .player-bar .btn-classe:hover {
-            background: #6B973F
+        #anim_index {
+            font-size: .95rem;
+            color: #6b7280;
+            margin-left: .5rem
         }
 
-        /* Feedback save */
-        #anim_name.just-saved {
-            position: relative
-        }
-
+        /* feedback save */
         #anim_name.just-saved::after {
             content: " • sauvegardé";
             font-weight: 600;
             color: #6B973F;
             margin-left: .35rem
         }
-
-        @media (min-width:1000px) {
-            .settings-page {
-                max-width: 1000px
-            }
-        }
     </style>
 
     <div class="panel-card">
         <h3 class="section-title">Paramètres</h3>
 
-        <!-- ===== Un seul formulaire ===== -->
         <form id="config_form" method="post" action="{{ url_for('main.config_export') }}">
-            {# CSRF Flask-WTF (si dispo) #}
-            {% if csrf_token %}
+            {% if csrf_token is defined %}
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {% endif %}
 
-            <!-- Chemins d’export -->
+
             <h4 class="section-title" style="margin-top:0">Chemins d’export</h4>
 
             <div class="field_r">
                 <label for="primary_root">Chemin principal (UNC)</label>
-                <input type="text" id="primary_root" name="primary_root" value="{{ primary_root or '' }}"
+                <input id="primary_root" name="primary_root" type="text" value="{{ primary_root or '' }}"
                     placeholder="ex. \\serveur\Documents\Education Nationale">
             </div>
 
             <div class="field_r">
                 <label for="secondary_root">Chemin secondaire (lecteur mappé)</label>
-                <input type="text" id="secondary_root" name="secondary_root" value="{{ secondary_root or '' }}"
+                <input id="secondary_root" name="secondary_root" type="text" value="{{ secondary_root or '' }}"
                     placeholder="ex. Z:\Documents\Education Nationale">
             </div>
 
             <div class="field_r">
                 <label for="reunions_dirname">Nom du dossier « Réunions »</label>
-                <input type="text" id="reunions_dirname" name="reunions_dirname" value="{{ reunions_dirname or '' }}"
+                <input id="reunions_dirname" name="reunions_dirname" type="text" value="{{ reunions_dirname or '' }}"
                     placeholder="ex. 19 - Réunions">
             </div>
 
@@ -249,13 +237,12 @@
 
             <hr class="section-sep" aria-hidden="true">
 
-            <!-- Animation des panneaux -->
-            {% set cur = current_anim_mode or (settings.ui.anim_mode if settings and settings.ui else 'slide-down') %}
+            {% set cur = current_anim_mode or (settings.ui.anim_mode if settings and settings.ui else 'slide') %}
             <input type="hidden" id="anim_mode" name="anim_mode" value="{{ cur }}">
 
             <h4 class="section-title">Animation des panneaux</h4>
             <div class="form-row" style="gap:6px;align-items:flex-start;">
-                <strong id="anim_name"></strong>
+                <strong id="anim_name"></strong><span id="anim_index"></span>
             </div>
 
             <div class="anim-stage" id="anim_stage">
@@ -264,19 +251,21 @@
                 <button type="button" id="anim_next_btn" class="anim-nav right"
                     aria-label="Animation suivante">▶</button>
 
-                <!-- Calque A -->
-                <div id="anim_layer_a" class="anim-preview-box anim-layer" data-enter="pending">
+                <div id="anim_layer_a" class="anim-preview-box anim-layer">
                     <div style="font-weight:700;margin-bottom:6px;">Exemple de panneau</div>
                     <div style="font-size:.95rem;color:#4b5563">L’aperçu rejoue en boucle l’animation sélectionnée.
                     </div>
                 </div>
-                <!-- Calque B injecté en JS -->
+                <div id="anim_layer_b" class="anim-preview-box anim-layer" aria-hidden="true" style="opacity:0;">
+                    <div style="font-weight:700;margin-bottom:6px;">Exemple de panneau</div>
+                    <div style="font-size:.95rem;color:#4b5563">L’aperçu rejoue en boucle l’animation sélectionnée.
+                    </div>
+                </div>
             </div>
 
             <div class="player-bar">
-                <button type="button" id="anim_toggle_btn" class="btn-classe">
-                    <span class="icon" aria-hidden="true">⏸</span> <span class="txt">Pause</span>
-                </button>
+                <button type="button" id="anim_toggle_btn" class="btn-classe"><span class="icon">⏸</span> <span
+                        class="txt">Pause</span></button>
             </div>
 
             <div class="form-row" style="margin-top:12px;">
@@ -289,14 +278,14 @@
 
             <div class="btnbar">
                 <button type="submit" class="btn-classe">Enregistrer</button>
-                <a href="{{ url_for('main.index') }}" class="btn-classe btn--muted">← Retour</a>
+                <a class="btn-classe btn--muted" href="{{ url_for('main.index') }}">← Retour</a>
             </div>
         </form>
     </div>
 </div>
 
-<!-- ===== Test d’accès (AJAX, sans submit) ===== -->
 <script>
+    /* ====== Test chemins ====== */
     document.getElementById('btn_test')?.addEventListener('click', async () => {
         const p = document.getElementById('primary_root').value.trim();
         const s = document.getElementById('secondary_root').value.trim();
@@ -305,65 +294,36 @@
         try {
             const r = await fetch(`/api/config/test-paths?primary=${encodeURIComponent(p)}&secondary=${encodeURIComponent(s)}`);
             const data = await r.json();
-            if (!data.ok) throw new Error("Réponse invalide");
             out.textContent =
                 `Principal : ${data.primary.path}
   → ${data.primary.exists ? "✅ accessible" : "❌ indisponible"}
 
 Secondaire : ${data.secondary.path}
   → ${data.secondary.exists ? "✅ accessible" : "❌ indisponible"}`;
-        } catch (e) {
-            out.textContent = "Erreur de test : " + (e.message || e);
-        }
+        } catch (e) { out.textContent = "Erreur de test : " + (e.message || e); }
     });
 </script>
 
-<!-- ===== Aperçu d’animation + Autosave (double-buffer + verrou) ===== -->
 <script>
-    window.addEventListener('DOMContentLoaded', () => {
-        if (window.__configExportPreviewInstalled) return;
-        window.__configExportPreviewInstalled = true;
-
-        const $ = s => document.querySelector(s);
-
-        const form = $('#config_form');
-        const hidden = $('#anim_mode');
-        const inputDur = $('#anim_duration');
-        const nameEl = $('#anim_name');
-        const stage = document.querySelector('.anim-stage');
-        const prevBtn = $('#anim_prev_btn');
-        const nextBtn = $('#anim_next_btn');
-        const togBtn = $('#anim_toggle_btn');
-        const togIcon = togBtn?.querySelector('.icon');
-        const togTxt = togBtn?.querySelector('.txt');
-
-        if (!form || !hidden || !inputDur || !nameEl || !stage) {
-            console.warn('[preview] éléments requis manquants');
-            return;
-        }
-
-        // ---- CSRF (Flask-WTF) ----
-        const CSRF = form.querySelector('input[name="csrf_token"]')?.value
-            || document.querySelector('meta[name="csrf-token"]')?.content
-            || null;
+    /* ====== Aperçu + Autosave (double-buffer + lock + boucle) ====== */
+    (function () {
+        const form = document.getElementById('config_form');
+        const hidden = document.getElementById('anim_mode');
+        const inputDur = document.getElementById('anim_duration');
+        const nameEl = document.getElementById('anim_name');
+        const idxEl = document.getElementById('anim_index');
+        const prevBtn = document.getElementById('anim_prev_btn');
+        const nextBtn = document.getElementById('anim_next_btn');
+        const togBtn = document.getElementById('anim_toggle_btn');
+        const togI = togBtn?.querySelector('.icon');
+        const togT = togBtn?.querySelector('.txt');
+        const A = document.getElementById('anim_layer_a');
+        const B = document.getElementById('anim_layer_b');
+        if (!form || !hidden || !inputDur || !nameEl || !A || !B) { console.warn('[preview] éléments introuvables'); return; }
 
         const CAN = !!(Element.prototype && Element.prototype.animate);
+        const CSRF = form.querySelector('input[name="csrf_token"]')?.value || '';
 
-        // Garantit la présence du layer A
-        let layerA = document.getElementById('anim_preview_panel');
-        if (!layerA) {
-            layerA = document.createElement('div');
-            layerA.id = 'anim_preview_panel';
-            layerA.className = 'anim-preview-box anim-layer';
-            layerA.innerHTML = `
-      <div style="font-weight:700;margin-bottom:6px;">Exemple de panneau</div>
-      <div style="font-size:.95rem;color:#4b5563">
-        L’aperçu rejoue en boucle l’animation sélectionnée.
-      </div>`;
-            stage.appendChild(layerA);
-        }
-
-        // ---- Catalogue ----
         const CHOICES = [
             'fade',
             'slide-up', 'slide-down', 'slide-left', 'slide-right',
@@ -375,9 +335,8 @@ Secondaire : ${data.secondary.path}
             'skew-in', 'rotate-in', 'newspaper',
             'blur-in', 'blur-zoom'
         ];
-        const TOTAL = CHOICES.length;
         const ALIAS = { slide: 'slide-down', wipe: 'wipe-down', clip: 'clip-circle', scale: 'zoom-in' };
-        const LABELS = {
+        const LABEL = {
             'fade': 'Fondu',
             'slide-up': 'Slide vers le haut', 'slide-down': 'Slide vers le bas', 'slide-left': 'Slide vers la gauche', 'slide-right': 'Slide vers la droite',
             'wipe-up': 'Rideau bas → haut', 'wipe-down': 'Rideau haut → bas', 'wipe-left': 'Rideau droite → gauche', 'wipe-right': 'Rideau gauche → droite',
@@ -388,17 +347,19 @@ Secondaire : ${data.secondary.path}
             'skew-in': 'Skew', 'rotate-in': 'Rotation douce', 'newspaper': 'Journal',
             'blur-in': 'Flou → net', 'blur-zoom': 'Flou + zoom'
         };
-        const labelFor = m => LABELS[m] || m;
-        const clamp = (n, min, max) => Math.max(min, Math.min(n, max));
 
+        function resolveMode(m) {
+            const n = ALIAS[m] || m;
+            return CHOICES.includes(n) ? n : 'fade';
+        }
+        function labelFor(m) { return LABEL[m] || m; }
+        function clamp(n, min, max) { return Math.max(min, Math.min(n, max)); }
         function getDur() {
             const base = Number(inputDur.value || 520);
             const IN = clamp(Math.round(base), 50, 5000);
             const OUT = clamp(Math.round(IN * 0.25), 80, Math.max(80, IN - 40));
             return { IN, OUT };
         }
-        const GAP_MS = 3000;
-
         function frames(kind, dir) {
             const show = (a, b) => dir === 'in' ? [a, b] : [b, a];
             switch (kind) {
@@ -407,233 +368,164 @@ Secondaire : ${data.secondary.path}
                 case 'slide-down': return show({ opacity: 0, transform: 'translateY(-12px)' }, { opacity: 1, transform: 'translateY(0)' });
                 case 'slide-left': return show({ opacity: 0, transform: 'translateX(16px)' }, { opacity: 1, transform: 'translateX(0)' });
                 case 'slide-right': return show({ opacity: 0, transform: 'translateX(-16px)' }, { opacity: 1, transform: 'translateX(0)' });
-
                 case 'wipe-down': return show({ clipPath: 'inset(0 0 100% 0)', opacity: 1 }, { clipPath: 'inset(0 0 0 0)', opacity: 1 });
                 case 'wipe-up': return show({ clipPath: 'inset(100% 0 0 0)', opacity: 1 }, { clipPath: 'inset(0 0 0 0)', opacity: 1 });
                 case 'wipe-right': return show({ clipPath: 'inset(0 100% 0 0)', opacity: 1 }, { clipPath: 'inset(0 0 0 0)', opacity: 1 });
                 case 'wipe-left': return show({ clipPath: 'inset(0 0 0 100%)', opacity: 1 }, { clipPath: 'inset(0 0 0 0)', opacity: 1 });
-
                 case 'curtain-h': return show({ clipPath: 'inset(0 50% 0 50%)', opacity: 1 }, { clipPath: 'inset(0 0 0 0)', opacity: 1 });
                 case 'curtain-v': return show({ clipPath: 'inset(50% 0 50% 0)', opacity: 1 }, { clipPath: 'inset(0 0 0 0)', opacity: 1 });
-
                 case 'clip-circle': return show({ opacity: 0, clipPath: 'circle(0% at 50% 40%)' }, { opacity: 1, clipPath: 'circle(140% at 50% 40%)' });
                 case 'clip-ellipse': return show({ opacity: 0, clipPath: 'ellipse(20% 8% at 50% 35%)' }, { opacity: 1, clipPath: 'ellipse(120% 75% at 50% 35%)' });
-
                 case 'zoom-in': return show({ opacity: 0, transform: 'scale(.92)' }, { opacity: 1, transform: 'scale(1)' });
                 case 'zoom-out': return show({ opacity: 0, transform: 'scale(1.08)' }, { opacity: 1, transform: 'scale(1)' });
                 case 'scale-pop': return show({ opacity: 0, transform: 'scale(.85)' }, { opacity: 1, transform: 'scale(1)' });
-
                 case 'flip-x': return show({ opacity: 0, transform: 'rotateX(-90deg)' }, { opacity: 1, transform: 'rotateX(0)' });
                 case 'flip-y': return show({ opacity: 0, transform: 'rotateY(90deg)' }, { opacity: 1, transform: 'rotateY(0)' });
                 case 'hinge-top': return show({ opacity: 0, transformOrigin: 'top', transform: 'rotateX(-35deg)' }, { opacity: 1, transformOrigin: 'top', transform: 'rotateX(0)' });
-
                 case 'skew-in': return show({ opacity: 0, transform: 'skewY(6deg) translateY(-8px)' }, { opacity: 1, transform: 'skewY(0) translateY(0)' });
                 case 'rotate-in': return show({ opacity: 0, transform: 'rotate(-8deg) scale(.98)' }, { opacity: 1, transform: 'rotate(0) scale(1)' });
                 case 'newspaper': return show({ opacity: 0, transform: 'rotate(-540deg) scale(.2)' }, { opacity: 1, transform: 'rotate(0) scale(1)' });
-
                 case 'blur-in': return show({ opacity: 0, filter: 'blur(10px)' }, { opacity: 1, filter: 'blur(0)' });
                 case 'blur-zoom': return show({ opacity: 0, transform: 'scale(.96)', filter: 'blur(12px)' }, { opacity: 1, transform: 'scale(1)', filter: 'blur(0)' });
-
                 default: return show({ opacity: 0 }, { opacity: 1 });
             }
         }
 
-        // ---- Double buffer ----
-        const layerB = layerA.cloneNode(true);
-        layerB.id = 'anim_preview_panel_b';
-        layerB.setAttribute('aria-hidden', 'true');
-        layerB.style.opacity = '0';
-        layerB.classList.add('anim-layer');
-        stage.appendChild(layerB);
+        // état
+        let active = A, idle = B;
+        let playing = true, locked = false, loopTimer = null;
+        const GAP_MS = 3000;
 
-        let active = layerA; // visible
-        let idle = layerB; // prêt
-        let playing = true;
-        let isBusy = false;
-        let loopT = null;
+        function cancelAll(el) { try { el.getAnimations?.forEach(a => a.cancel()); } catch { } }
+        function clearInline(el) { el.style.opacity = ''; el.style.transform = ''; el.style.filter = ''; el.style.clipPath = ''; el.style.transformOrigin = ''; }
+        function applyFrame(el, f) { for (const k in f) { el.style[k] = f[k]; } }
+        function setLabel(mode) {
+            const i = CHOICES.indexOf(mode);
+            nameEl.textContent = labelFor(mode);
+            idxEl.textContent = `(${i + 1}/${CHOICES.length})`;
+        }
 
-        const cancelAll = el => { try { el.getAnimations?.forEach(a => a.cancel()); } catch (_) { } };
-        const clearInline = el => {
-            el.style.opacity = ''; el.style.transform = ''; el.style.filter = '';
-            el.style.clipPath = ''; el.style.transformOrigin = '';
-        };
-        const applyFrame = (el, frame) => { for (const k in frame) el.style[k] = frame[k]; };
-
-        // ---- Autosave (POST sur la même route) ----
+        // AUTOSAVE (form-url-encoded pour compat CSRF)
         async function autosave(immediate = false) {
-            const doSave = async () => {
+            const run = async () => {
+                const params = new URLSearchParams();
+                params.set('anim_mode', hidden.value);
+                params.set('anim_duration', inputDur.value);
+                params.set('csrf_token', CSRF);
                 try {
-                    const params = new URLSearchParams();
-                    params.set('anim_mode', hidden.value);
-                    params.set('anim_duration', inputDur.value);
-                    if (CSRF) params.set('csrf_token', CSRF);
-
                     const res = await fetch(form.action, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'fetch'
+                        },
                         body: params.toString(),
-                        credentials: 'same-origin' // ⚠ cookies / session
+                        credentials: 'same-origin'
                     });
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    console.info('[autosave] ok', hidden.value, inputDur.value);
-                    // Optionnel: si la route renvoie JSON {ui:{anim_mode,anim_duration}}
-                    // const j = await res.json();
-                } catch (e) {
-                    console.warn('[autosave] fail', e);
-                }
+                    if (!res.ok) { console.warn('autosave HTTP', res.status); return; }
+                    const data = await res.json().catch(() => ({}));
+                    nameEl.classList.add('just-saved');
+                    setTimeout(() => nameEl.classList.remove('just-saved'), 900);
+                } catch (e) { console.warn('autosave error', e); }
             };
             clearTimeout(autosave._t);
-            if (immediate) doSave(); else autosave._t = setTimeout(doSave, 250);
-        }
-
-        // ---- Index initial depuis la BDD (ne PAS réécrire hidden ici) ----
-        const startMode = ALIAS[hidden.value] || hidden.value;   // ex: "slide" -> "slide-down"
-        let idx = CHOICES.indexOf(startMode);
-        if (idx < 0) idx = 0; // fallback propre
-        // important: on garde hidden.value = valeur BDD normalisée
-        hidden.value = CHOICES[idx];
-
-        function setTitle() {
-            nameEl.textContent = `${idx + 1} / ${TOTAL} — ${labelFor(hidden.value)}`;
-        }
-
-        function stopLoop() {
-            clearTimeout(loopT);
-            loopT = null;
-            playing = false;
-            cancelAll(active); cancelAll(idle);
+            if (immediate) run(); else autosave._t = setTimeout(run, 200);
         }
 
         function scheduleNext() {
             if (!playing) return;
-            clearTimeout(loopT);
-            requestAnimationFrame(() => {
-                loopT = setTimeout(() => { if (playing) loopOnce(); }, GAP_MS);
-            });
+            clearTimeout(loopTimer);
+            loopTimer = setTimeout(() => { if (playing && !locked) loopOnce(); }, GAP_MS);
         }
 
         function loopOnce() {
-            if (!playing || isBusy) return;
+            if (locked) return;
+            const mode = resolveMode(hidden.value);
             const { IN, OUT } = getDur();
-            const mode = hidden.value;
+            setLabel(mode);
 
             cancelAll(active); cancelAll(idle);
             clearInline(idle);
             applyFrame(idle, frames(mode, 'in')[0]);
             idle.style.opacity = '1';
 
-            if (!CAN) { [active, idle] = [idle, active]; scheduleNext(); return; }
+            if (!CAN) {
+                [active, idle] = [idle, active];
+                scheduleNext(); return;
+            }
 
-            const outAnim = active.animate(frames(mode, 'out'), {
-                duration: Math.max(80, OUT),
-                easing: 'cubic-bezier(.4,0,.2,1)',
-                fill: 'forwards'
-            });
-
-            Promise.resolve(outAnim?.finished).catch(() => { }).then(() => {
-                const inAnim = idle.animate(frames(mode, 'in'), {
-                    duration: IN,
-                    easing: 'cubic-bezier(.22,.61,.36,1)',
-                    fill: 'both'
-                });
-                return Promise.resolve(inAnim?.finished).catch(() => { });
+            locked = true;
+            const outAnim = active.animate(frames(mode, 'out'), { duration: Math.max(80, OUT), easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
+            outAnim.finished.catch(() => { }).then(() => {
+                const inAnim = idle.animate(frames(mode, 'in'), { duration: IN, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'both' });
+                return inAnim.finished.catch(() => { });
             }).finally(() => {
                 [active, idle] = [idle, active];
+                locked = false;
                 scheduleNext();
             });
         }
 
-        function playImmediate() {
-            if (isBusy) return;
+        function playFromScratch() {
+            if (locked) return;
+            const mode = resolveMode(hidden.value);
             const { IN } = getDur();
-            const mode = hidden.value;
+            setLabel(mode);
 
-            setTitle();
-            stopLoop(); playing = true;
-
-            cancelAll(idle); cancelAll(active);
-            clearInline(idle); clearInline(active);
-
+            cancelAll(active); cancelAll(idle);
+            clearInline(active); clearInline(idle);
+            active.style.opacity = '0';
             applyFrame(idle, frames(mode, 'in')[0]);
             idle.style.opacity = '1';
-            active.style.opacity = '0';
 
-            requestAnimationFrame(() => {
-                if (!CAN) { [active, idle] = [idle, active]; scheduleNext(); return; }
-                const inAnim = idle.animate(frames(mode, 'in'), {
-                    duration: IN, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'both'
-                });
-                Promise.resolve(inAnim?.finished).catch(() => { }).finally(() => {
-                    [active, idle] = [idle, active];
-                    scheduleNext();
-                });
+            if (!CAN) { [active, idle] = [idle, active]; scheduleNext(); return; }
+
+            locked = true;
+            const inAnim = idle.animate(frames(mode, 'in'), { duration: IN, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'both' });
+            inAnim.finished.catch(() => { }).finally(() => {
+                [active, idle] = [idle, active];
+                locked = false;
+                scheduleNext();
             });
         }
 
-        async function changeMode(delta) {
-            if (isBusy) return;
-            isBusy = true;
-            stopLoop();
-
-            const oldMode = hidden.value;
-            const { OUT } = getDur();
-
-            // Outro du panneau actuel
-            if (CAN) {
-                cancelAll(active);
-                try {
-                    await Promise.resolve(
-                        active.animate(frames(oldMode, 'out'), {
-                            duration: Math.max(80, OUT),
-                            easing: 'cubic-bezier(.4,0,.2,1)',
-                            fill: 'forwards'
-                        }).finished
-                    );
-                } catch (_) { }
-            }
-
-            // Nouveau mode
-            idx = (idx + delta + TOTAL) % TOTAL;
-            hidden.value = CHOICES[idx];
-            setTitle();
-            autosave(true); // 💾
-
-            // Redémarre proprement la boucle sur le nouveau mode
-            playImmediate();
-            isBusy = false;
+        function setModeByIndex(i) {
+            if (locked) return;
+            const cur = resolveMode(hidden.value);
+            const curIdx = CHOICES.indexOf(cur);
+            const nextIdx = (i + CHOICES.length) % CHOICES.length;
+            if (nextIdx === curIdx) { return; }
+            hidden.value = CHOICES[nextIdx];
+            autosave(true);        // ⬅️ on sauve tout de suite
+            playing = true;
+            playFromScratch();     // ⬅️ OUT complet de l’actuel puis IN du nouveau
         }
 
-        inputDur.addEventListener('change', () => { autosave(); playImmediate(); });
-        prevBtn?.addEventListener('click', () => changeMode(-1));
-        nextBtn?.addEventListener('click', () => changeMode(+1));
+        // contrôles
+        prevBtn?.addEventListener('click', () => setModeByIndex((CHOICES.indexOf(resolveMode(hidden.value)) - 1 + CHOICES.length) % CHOICES.length));
+        nextBtn?.addEventListener('click', () => setModeByIndex((CHOICES.indexOf(resolveMode(hidden.value)) + 1) % CHOICES.length));
+        window.addEventListener('keydown', e => {
+            if (e.key === 'ArrowLeft') { e.preventDefault(); prevBtn.click(); }
+            if (e.key === 'ArrowRight') { e.preventDefault(); nextBtn.click(); }
+        });
 
-        togBtn?.addEventListener('click', function () {
-            if (isBusy) return;
+        togBtn?.addEventListener('click', () => {
             if (playing) {
-                stopLoop();
-                if (togIcon) togIcon.textContent = '▶';
-                if (togTxt) togTxt.textContent = 'Reprendre';
+                playing = false; clearTimeout(loopTimer); loopTimer = null; cancelAll(active); cancelAll(idle);
+                togI.textContent = '▶'; togT.textContent = 'Reprendre';
             } else {
-                playing = true;
-                if (togIcon) togIcon.textContent = '⏸';
-                if (togTxt) togTxt.textContent = 'Pause';
-                playImmediate();
+                playing = true; togI.textContent = '⏸'; togT.textContent = 'Pause'; playFromScratch();
             }
         });
 
-        window.addEventListener('keydown', e => {
-            if (e.key === 'ArrowLeft') { e.preventDefault(); changeMode(-1); }
-            if (e.key === 'ArrowRight') { e.preventDefault(); changeMode(+1); }
-        });
+        inputDur.addEventListener('change', () => { autosave(); playing = true; playFromScratch(); });
 
-        // Init
-        console.info('[server cur]', hidden.value, 'index', idx);
-        setTitle();
-        playImmediate();
-    });
+        // ===== Init : NE PAS toucher à hidden.value (on respecte la DB) =====
+        hidden.value = resolveMode(hidden.value);
+        setLabel(hidden.value);
+        playing = true;
+        playFromScratch();
+    })();
 </script>
-
-
-
-
 {% endblock %}

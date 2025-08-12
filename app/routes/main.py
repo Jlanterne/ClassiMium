@@ -21,6 +21,8 @@ except Exception:
     pass
 
 # --- UI settings helpers ---
+import json
+
 def get_ui_settings_from_db(conn):
     with conn.cursor() as cur:
         cur.execute("SELECT value FROM app_settings WHERE key='ui'")
@@ -34,11 +36,7 @@ def get_ui_settings_from_db(conn):
     }
 
 def set_ui_settings_in_db(conn, ui_dict):
-    payload = {
-        k: ui_dict[k]
-        for k in ("anim_mode", "anim_duration")
-        if k in ui_dict and ui_dict[k] is not None
-    }
+    payload = {k: ui_dict[k] for k in ("anim_mode","anim_duration") if k in ui_dict and ui_dict[k] is not None}
     with conn.cursor() as cur:
         cur.execute("""
             INSERT INTO app_settings (key, value)
@@ -48,6 +46,7 @@ def set_ui_settings_in_db(conn, ui_dict):
                 updated_at = now()
         """, (json.dumps(payload), json.dumps(payload)))
     conn.commit()
+
 
 
 
@@ -1424,15 +1423,9 @@ def api_export_rapport(rapport_id):
 
 ALIAS = {"slide":"slide-down","wipe":"wipe-down","clip":"clip-circle","scale":"zoom-in"}
 @bp.route("/config/export", methods=["GET", "POST"])
+@bp.route("/config/export", methods=["GET", "POST"])
 def config_export():
-    """
-    Page de configuration :
-      - Chemins d’export (mémoire process, surchargés par ENV)
-      - Réglages UI (anim_mode, anim_duration) en DB (app_settings)
-    """
-    global PRIMARY_ROOT, SECONDARY_ROOT, REUNIONS_DIRNAME, _ACTIVE_ROOT, _LAST_CHECK
-
-    # --- sidebar classes ---
+    # Menu latéral (classes)
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT * FROM classes ORDER BY annee DESC")
@@ -1442,19 +1435,25 @@ def config_export():
         cl["niveaux"] = [row["niveau"] for row in cur.fetchall()]
     cur.close()
 
-    # --- valeurs courantes ---
+    # Chemins (ENV > globals)
+    global PRIMARY_ROOT, SECONDARY_ROOT, REUNIONS_DIRNAME, _ACTIVE_ROOT, _LAST_CHECK
     current_primary   = os.getenv("DOCS_ROOT_PRIMARY")   or PRIMARY_ROOT
     current_secondary = os.getenv("DOCS_ROOT_SECONDARY") or SECONDARY_ROOT
     current_reunions  = REUNIONS_DIRNAME
 
-    # --- UI depuis DB ---
-     # UI depuis DB
+    # UI DB
     ui = get_ui_settings_from_db(conn)
-    current_anim_mode = ALIAS.get(ui["anim_mode"], ui["anim_mode"])
-    current_anim_duration = int(ui["anim_duration"])
+    current_anim_mode     = ui["anim_mode"]
+    current_anim_duration = ui["anim_duration"]
 
     if request.method == "POST":
-        # ...
+        # Chemins
+        PRIMARY_ROOT     = (request.form.get("primary_root") or current_primary).strip()
+        SECONDARY_ROOT   = (request.form.get("secondary_root") or current_secondary).strip()
+        REUNIONS_DIRNAME = (request.form.get("reunions_dirname") or current_reunions).strip()
+        _ACTIVE_ROOT = None; _LAST_CHECK = 0
+
+        # UI (normalise alias)
         mode = (request.form.get("anim_mode") or current_anim_mode).strip()
         mode = ALIAS.get(mode, mode)
         try:
@@ -1464,8 +1463,9 @@ def config_export():
 
         set_ui_settings_in_db(conn, {"anim_mode": mode, "anim_duration": duration})
 
-        # autosave (fetch) => renvoie JSON
+        # Réponse autosave (fetch)
         if request.headers.get("X-Requested-With") == "fetch":
+            conn.close()
             return jsonify(ok=True, ui={"anim_mode": mode, "anim_duration": duration})
 
         flash("Paramètres enregistrés.", "success")
@@ -1480,11 +1480,12 @@ def config_export():
         primary_root=current_primary,
         secondary_root=current_secondary,
         reunions_dirname=current_reunions,
-        current_anim_mode=current_anim_mode,           # nom normalisé (ex: slide-down)
+        current_anim_mode=current_anim_mode,           # normalisé si tu normalises dans inject_ui
         current_anim_duration=current_anim_duration,
         toutes_les_classes=toutes_les_classes,
         classe=classe
     )
+
 
 
 

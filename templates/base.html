@@ -114,15 +114,39 @@
     <div class="main-container">
         <!-- ===== Sidebar ===== -->
         <aside class="sidebar">
-            <table style="border-collapse:separate;border-spacing:8px">
-                <tr>
-                    <td
-                        style="background-color:rgba(255,255,255,.6);border-radius:12px;box-shadow:0 0 15px rgba(0,0,0,.1);padding:10px;vertical-align:top;">
-                        <img src="{{ url_for('static', filename='photos/logo_CLassiMium.svg') }}" alt="Logo"
-                            style="display:block;max-width:100%;height:auto;margin-bottom:5px;">
+            <table style="
+    border-collapse:separate;
+    border-spacing:8px;
+    border:none;
+    outline:none;
+">
+                <tr style="border:none;outline:none;">
+                    <td style="
+            padding:10px;
+            vertical-align:top;
+            overflow:visible;      /* permet le débordement */
+            position:relative;
+            height:120px;          /* hauteur fixe */
+            line-height:0;         /* supprime l'espace fantôme */
+            border:none;
+            outline:none;
+            background:none;
+        ">
+                        <img src="{{ url_for('static', filename='photos/logo_CLassiMium.svg') }}" alt="Logo" style="
+                display:block;
+                position:absolute;
+                top:-30px;          /* remonte l'image */
+                left:-12px;         /* décale à gauche */
+                height:100%;
+                z-index:9999;
+                border:none;
+                outline:none;
+                background:none;
+            ">
                     </td>
                 </tr>
             </table>
+
             <br>
 
             {% if classe %}

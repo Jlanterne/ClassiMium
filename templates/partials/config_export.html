@@ -237,7 +237,9 @@
 
             {# Anim UI — valeur DB normalisée injectée #}
             {% set cur = current_anim_mode or 'slide-down' %}
-            <input type="hidden" id="anim_mode" name="anim_mode" value="{{ cur }}">
+            <input type="hidden" id="anim_mode" name="anim_mode" value="{{ current_anim_mode }}">
+            <input type="number" id="anim_duration" name="anim_duration" value="{{ current_anim_duration }}" ...>
+
 
             <h4 class="section-title">Animation des panneaux</h4>
             <div class="form-row" style="gap:6px;align-items:flex-start;">

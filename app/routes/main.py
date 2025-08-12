@@ -1486,6 +1486,25 @@ def config_export():
         classe=classe
     )
 
+# routes/main.py (ou le fichier de ton blueprint)
+from flask import current_app
+
+@bp.app_context_processor
+def inject_ui_settings():
+    """Rend 'ui' dispo dans TOUS les templates héritant de base.html."""
+    try:
+        conn = get_db_connection()
+        ui = get_ui_settings_from_db(conn)  # {"anim_mode": "...", "anim_duration": ...}
+        return {"ui": ui}
+    except Exception as e:
+        current_app.logger.warning("inject_ui_settings fallback: %s", e)
+        # Valeurs sûres par défaut
+        return {"ui": {"anim_mode": "slide-down", "anim_duration": 520}}
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 

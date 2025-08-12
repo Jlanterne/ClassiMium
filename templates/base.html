@@ -23,27 +23,30 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 
+
     <!-- CSS additionnel (pages enfants) -->
     {% block extra_css %}{% endblock %}
 
     <!-- Réglages UI injectés par le serveur -->
     <script id="ui-settings" type="application/json">
-    {{ ui | tojson }}
-  </script>
+  {{ ui | tojson }}
+</script>
     <script>
         (function () {
             try {
                 window.UI = Object.assign(
-                    { anim_mode: 'slide', anim_duration: 520 },
-                    JSON.parse(document.getElementById('ui-settings')?.textContent || '{}')
+                    { anim_mode: 'slide-down', anim_duration: 520 }, // défauts cohérents
+                    JSON.parse(document.getElementById('ui-settings')?.textContent || '{}') || {}
                 );
             } catch {
-                window.UI = { anim_mode: 'slide', anim_duration: 520 };
+                window.UI = { anim_mode: 'slide-down', anim_duration: 520 };
             }
+            // Pousse sur <html> pour que modes.js lise la bonne valeur
             document.documentElement.dataset.animMode = window.UI.anim_mode;
             document.documentElement.dataset.animDuration = String(window.UI.anim_duration);
         })();
     </script>
+
 
     <!-- Fallback jQuery local si le CDN tombe -->
     <script>
@@ -233,6 +236,7 @@
             });
         })();
     </script>
+    <script src="{{ url_for('static', filename='js/throw-to-trash.js') }}"></script>
 
     <!-- JS additionnel (pages enfants) : on y charge le SEUL moteur d’anim -->
     {% block extra_js %}

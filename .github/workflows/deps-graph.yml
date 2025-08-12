@@ -33,6 +33,11 @@ jobs:
           [ -f db/__init__.py ]  || touch db/__init__.py
           [ -f app.py ] && pydeps app.py -o imports_from_app.svg || true
           [ -f run.py ] && pydeps run.py -o imports_from_run.svg || true
+      - name: Stamp files (force update)
+        run: |
+          echo "<!-- regenerated $(date -u) -->" >> imports_app.svg || true
+          echo "<!-- regenerated $(date -u) -->" >> imports_db.svg  || true
+
       - name: Commit diagrams
         run: |
           git config user.name "github-actions[bot]"

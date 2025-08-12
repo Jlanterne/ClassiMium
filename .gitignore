@@ -44,3 +44,6 @@ uploads/
 *.tmp
 
 imports.dot
+
+!imports_app.svg
+!imports_db.svg

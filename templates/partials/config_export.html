@@ -238,13 +238,14 @@
             {# Anim UI — valeur DB normalisée injectée #}
             {% set cur = current_anim_mode or 'slide-down' %}
             <input type="hidden" id="anim_mode" name="anim_mode" value="{{ current_anim_mode }}">
-            <input type="number" id="anim_duration" name="anim_duration" value="{{ current_anim_duration }}" ...>
+
 
 
             <h4 class="section-title">Animation des panneaux</h4>
             <div class="form-row" style="gap:6px;align-items:flex-start;">
                 <strong id="anim_name"></strong><span id="anim_index"></span>
             </div>
+            <div class="anim-swatchbar" id="anim_swatchbar" role="tablist" aria-label="Choisir l’animation"></div>
 
             <div class="anim-stage" id="anim_stage">
                 <button type="button" id="anim_prev_btn" class="anim-nav left"
@@ -281,6 +282,7 @@
                 <button type="submit" class="btn-classe">Enregistrer</button>
                 <a class="btn-classe btn--muted" href="{{ url_for('main.index') }}">← Retour</a>
             </div>
+
         </form>
     </div>
 </div>

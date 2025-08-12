@@ -113,3 +113,44 @@ html.js-ready .panel-card {
 .panel-card {
     perspective: 1000px;
 }
+
+/* ——— Barre de vignettes d’animations ——— */
+.anim-swatchbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin: 8px 0 12px;
+}
+
+.anim-swatch {
+    inline-size: 22px;
+    block-size: 22px;
+    border-radius: 6px;
+    border: 1px solid var(--border, #d1d5db);
+    background: linear-gradient(180deg, #fff, #f3f4f6);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, .03), inset 0 1px 0 rgba(255, 255, 255, .6);
+    cursor: pointer;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    transition: transform .08s ease, box-shadow .12s ease, border-color .12s ease;
+}
+
+.anim-swatch:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .08);
+}
+
+.anim-swatch.is-active {
+    border-color: var(--brand, #3b82f6);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand, #3b82f6) 20%, transparent);
+}
+
+.anim-swatch-dot {
+    inline-size: 8px;
+    block-size: 8px;
+    border-radius: 3px;
+    background: #111827;
+    opacity: .7;
+}

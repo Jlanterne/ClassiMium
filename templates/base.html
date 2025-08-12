@@ -418,7 +418,35 @@
     </script>
 
     <!-- ===== JS additionnel (pages enfants) ===== -->
-    {% block extra_js %}{% endblock %}
+    {% block extra_js %}
+    <script>
+        document.documentElement.classList.add('js-ready');
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const panel = document.querySelector('#mode-panel');
+            if (!panel) return;
+
+            // Choisis le style d'entrée selon data-anim
+            const kind = panel.getAttribute('data-anim') || 'slide';
+
+            /** Présets (mappés sur tes classes de anim.css) */
+            const PRESETS = {
+                fade: [{ opacity: 0 }, { opacity: 1 }],
+                slide: [{ opacity: 0, transform: 'translateY(-14px)' },
+                { opacity: 1, transform: 'translateY(0)' }],
+                wipe: [{ clipPath: 'inset(0 0 100% 0)' },
+                { clipPath: 'inset(0 0   0% 0)' }]
+            };
+
+            const keyframes = PRESETS[kind] || PRESETS.slide;
+            panel.animate(keyframes, {
+                duration: 420,
+                easing: 'cubic-bezier(.22,.61,.36,1)',
+                fill: 'both'
+            });
+        });
+    </script>
+    {% endblock %}
 </body>
 
 </html>

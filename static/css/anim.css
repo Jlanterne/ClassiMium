@@ -1,6 +1,5 @@
 /* --- Animations verticales --- */
-#view,
-#page {
+#mode-panel {
     will-change: opacity, transform, clip-path;
     transition-property: opacity, transform, clip-path;
     transition-duration: .52s;

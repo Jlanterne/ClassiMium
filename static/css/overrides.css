@@ -84,3 +84,27 @@ html.js-ready .content .panel-from-actions {
 .panel-card {
     display: flow-root !important;
 }
+
+/* === Modes: toolbar fixe + scène d'animation isolée === */
+.actions-classe {
+    position: sticky;
+    top: 0;
+    z-index: 2000;
+    transform: none !important;
+    transition: none !important;
+    /* jamais d'anim sur la toolbar */
+}
+
+/* On n'anime JAMAIS le wrapper global ; seulement la scène .panel-from-actions */
+html.js-ready .content>.panel-from-actions {
+    /* les transitions CSS sont neutralisées, WAAPI gère l'anim */
+    transition: none !important;
+    will-change: transform, opacity, clip-path;
+}
+
+/* sécurité anti "margin-collapsing" (tu l'as déjà, je le rappelle) */
+#mode-panel {
+    display: flow-root;
+    overflow: hidden;
+    contain: layout paint;
+}

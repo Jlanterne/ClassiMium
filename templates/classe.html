@@ -24,22 +24,22 @@
      Le style inline empêche tout flash avant l'anim. -->
 <!-- garde tes boutons/onglets/filtres AU-DESSUS, hors de ce bloc -->
 
-<div id="view" class="panel-from-actions panel-card">
+<!-- ⬇︎⬇︎ NOUVEAU : scène animée UNIQUEMENT pour le contenu des modes -->
+<section id="mode-panel" class="panel-from-actions panel-card" data-anim="slide">
     {% if mode == 'ajouter_dictee' %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/dictees.css') }}">
     {% include 'partials/ajouter_dictee.html' %}
     {% elif mode == 'ajout_evaluation' %}
     {% include 'partials/ajout_evaluation.html' %}
     {% elif mode == 'liste_evaluations' %}
     {% include 'partials/liste_evaluations.html' %}
     {% elif mode == 'ajouter_rapport' %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/rapports.css') }}">
     {% include 'partials/ajouter_rapport.html' %}
     {% elif mode == 'saisie_resultats' %}
     {% include 'partials/saisie_resultats.html' %}
     {% else %}
     {% include 'partials/ajout_eleve.html' %}
     {% endif %}
-</div>
+</section>
+<!-- ⬆︎⬆︎ FIN scène animée -->
 
 {% endblock %}

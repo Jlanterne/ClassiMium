@@ -56,3 +56,6 @@ exports_local/
 
 !imports_app.svg
 !imports_db.svg
+
+!imports_app.svg
+!imports_db.svg

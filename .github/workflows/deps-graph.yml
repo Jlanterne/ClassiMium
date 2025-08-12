@@ -36,12 +36,19 @@ jobs:
             echo "<!-- regenerated $(date -u +%F\ %T) ${GITHUB_SHA} -->" >> "$f"
           done
 
-      - name: Pull, commit & push
+           - name: Commit & rebase, then push
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin
-          git rebase origin/main || git rebase --abort
+
+          # 1) Commit d'abord les SVG générés (pour avoir un workspace clean)
           git add imports_app.svg imports_db.svg
           git commit -m "CI: update import graphs" || echo "No changes"
-          git push origin HEAD:main
+
+          # 2) Se mettre à jour proprement par-dessus la branche distante
+          git fetch origin ${{ github.ref_name }}
+          git pull --rebase origin ${{ github.ref_name }} || true
+
+          # 3) Pousser le commit généré par la CI
+          git push origin HEAD:${{ github.ref_name }}
+

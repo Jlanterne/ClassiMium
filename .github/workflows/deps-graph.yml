@@ -1,5 +1,3 @@
-git remote add origin https://github.com/Jlanterne/ClassiMium.git
-git push -u origin main
 name: Build import graphs
 
 on:

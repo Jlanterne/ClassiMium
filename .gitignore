@@ -61,3 +61,8 @@ exports_local/
 !imports_db.svg
 
 .env
+
+# backups & scripts de fix
+templates/*.bak2
+templates/**/*.bak2
+fix_urlfor_*.py

@@ -1,5 +1,7 @@
 # app/routes/main.py — généré automatiquement (extract_routes.py v2)
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app, abort, g
+import json
+
 from app.utils import (
     get_db_connection,
     export_docx_best_effort,
@@ -1446,40 +1448,23 @@ def config_export():
     current_reunions  = REUNIONS_DIRNAME
 
     # --- UI depuis DB ---
-    ui = get_ui_settings_from_db(conn) or {}
-    ALIAS = {
-        "slide": "slide-down",
-        "wipe":  "wipe-down",
-        "clip":  "clip-circle",
-        "scale": "zoom-in",
-    }
-    mode_db = (ui.get("anim_mode") or "slide-down").strip()
-    current_anim_mode = ALIAS.get(mode_db, mode_db)
-    try:
-        current_anim_duration = int(ui.get("anim_duration") or 520)
-    except (TypeError, ValueError):
-        current_anim_duration = 520
+     # UI depuis DB
+    ui = get_ui_settings_from_db(conn)
+    current_anim_mode = ALIAS.get(ui["anim_mode"], ui["anim_mode"])
+    current_anim_duration = int(ui["anim_duration"])
 
     if request.method == "POST":
-        # chemins
-        new_primary   = (request.form.get("primary_root") or "").strip() or current_primary
-        new_secondary = (request.form.get("secondary_root") or "").strip() or current_secondary
-        new_reunions  = (request.form.get("reunions_dirname") or "").strip() or current_reunions
-        PRIMARY_ROOT, SECONDARY_ROOT, REUNIONS_DIRNAME = new_primary, new_secondary, new_reunions
-        _ACTIVE_ROOT = None; _LAST_CHECK = 0
-
-        # UI
+        # ...
         mode = (request.form.get("anim_mode") or current_anim_mode).strip()
-        mode = ALIAS.get(mode, mode)  # normalise à l'écriture
+        mode = ALIAS.get(mode, mode)
         try:
             duration = int(request.form.get("anim_duration", current_anim_duration))
         except (TypeError, ValueError):
             duration = current_anim_duration
 
         set_ui_settings_in_db(conn, {"anim_mode": mode, "anim_duration": duration})
-        conn.commit()  # <-- IMPORTANT
 
-        # Autosave (fetch) => JSON, sinon redirect classique
+        # autosave (fetch) => renvoie JSON
         if request.headers.get("X-Requested-With") == "fetch":
             return jsonify(ok=True, ui={"anim_mode": mode, "anim_duration": duration})
 

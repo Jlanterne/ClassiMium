@@ -2,7 +2,8 @@ name: Build import graphs
 
 on:
   push:
-  workflow-dispatch:
+  workflow_dispatch:
+
 
 permissions:
   contents: write

@@ -53,3 +53,6 @@ imports.dot
 imports_*.svg
 exports_local/
 *_DEBUG.html
+
+!imports_app.svg
+!imports_db.svg

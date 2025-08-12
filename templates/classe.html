@@ -2,40 +2,25 @@
 {% block title %}Classe {{ classe.niveaux | join(' / ') }} {{ classe.annee }}{% endblock %}
 
 {% block content %}
+
 <div class="actions-classe">
     <a class="action-button js-mode-link"
-        href="{{ url_for('main.page_classe', classe_id=classe.id, mode='creation_classe') }}">
-        Liste des élèves
-    </a>
-
+        href="{{ url_for('main.page_classe', classe_id=classe.id, mode='creation_classe') }}">Liste des élèves</a>
     <a class="action-button js-mode-link"
-        href="{{ url_for('main.page_classe', classe_id=classe.id, mode='ajout_evaluation') }}">
-        Ajouter une évaluation
-    </a>
-
+        href="{{ url_for('main.page_classe', classe_id=classe.id, mode='ajout_evaluation') }}">Ajouter une
+        évaluation</a>
     <a class="action-button js-mode-link"
-        href="{{ url_for('main.page_classe', classe_id=classe.id, mode='liste_evaluations') }}">
-        Saisir les évaluations
-    </a>
-
+        href="{{ url_for('main.page_classe', classe_id=classe.id, mode='liste_evaluations') }}">Saisir les
+        évaluations</a>
     <a class="action-button js-mode-link"
-        href="{{ url_for('main.page_classe', classe_id=classe.id, mode='ajouter_dictee') }}">
-        Ajouter une dictée
-    </a>
-
+        href="{{ url_for('main.page_classe', classe_id=classe.id, mode='ajouter_dictee') }}">Ajouter une dictée</a>
     <a class="action-button js-mode-link"
-        href="{{ url_for('main.page_classe', classe_id=classe.id, mode='ajouter_rapport') }}">
-        Écrire un rapport
-    </a>
+        href="{{ url_for('main.page_classe', classe_id=classe.id, mode='ajouter_rapport') }}">Écrire un rapport</a>
 </div>
 
 
-<!-- 👇 Contenu qui DESCEND depuis derrière les boutons.
-     Le style inline empêche tout flash avant l'anim. -->
-<!-- garde tes boutons/onglets/filtres AU-DESSUS, hors de ce bloc -->
+<section id="mode-panel" class="panel-from-actions panel-card" data-anim="wipe" data-enter="pending">
 
-<!-- ⬇︎⬇︎ NOUVEAU : scène animée UNIQUEMENT pour le contenu des modes -->
-<section id="mode-panel" class="panel-from-actions panel-card" data-anim="slide" data-enter="pending">
     {% if mode == 'ajouter_dictee' %}
     {% include 'partials/ajouter_dictee.html' %}
     {% elif mode == 'ajout_evaluation' %}
@@ -50,6 +35,6 @@
     {% include 'partials/ajout_eleve.html' %}
     {% endif %}
 </section>
-<!-- ⬆︎⬆︎ FIN scène animée -->
+
 
 {% endblock %}

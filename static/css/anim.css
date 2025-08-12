@@ -5,9 +5,6 @@
     transition-timing-function: ease;
 }
 
-
-
-/* État initial masqué tant que le JS n’a pas joué l’entrée */
 #mode-panel[data-enter="pending"] {
     opacity: 0;
 }

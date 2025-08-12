@@ -1,4 +1,8 @@
-/* Empilement et carte blanche (overrides) */
+/* ==========================================================================
+   OVERRIDES — layout propre + scène d’animation isolée
+   ========================================================================== */
+
+/* Empilement maîtrisé pour le contenu principal */
 .content {
     position: relative;
     isolation: isolate;
@@ -6,128 +10,94 @@
     z-index: 0;
 }
 
-.actions-classe {
-    position: relative !important;
-    z-index: 2000 !important;
-    /* la barre reste au-dessus */
-    background: #EDF3FA !important;
-    /* opaque pour bien voir l’effet */
-}
-
-main.content .panel-from-actions {
-    position: relative !important;
-    z-index: 1 !important;
-    /* sous la barre */
-    will-change: transform, opacity;
-    transition: transform 520ms cubic-bezier(.22, .61, .36, 1), opacity 240ms ease-out;
-}
-
-/* Carte blanche autour du contenu qui descend */
-main.content .actions-classe+.panel-from-actions.panel-card,
-main.content .panel-from-actions.panel-card {
-    background: #fff !important;
-    border: 1px solid rgba(0, 0, 0, .06) !important;
-    border-radius: 12px !important;
-    padding: 20px 24px !important;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, .06) !important;
-    margin-top: 16px !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-}
-
-/* Pas de scroll horizontal pendant l’anim */
+/* Pas de scroll horizontal pendant les slides/wipes */
 .main-container {
     overflow-x: hidden !important;
 }
 
-/* ===== Patch anti-saut v8 ===== */
-
-/* 1) Quand le JS est là, on coupe TOUTES les transitions CSS du conteneur animé */
-html.js-ready .panel-from-actions,
-html.js-ready .panel-card {
+/* --------------------------------------------------------------------------
+   TOOLBAR (boutons d’actions) — reste au-dessus, jamais animée
+   -------------------------------------------------------------------------- */
+.actions-classe {
+    position: sticky;
+    top: 0;
+    z-index: 2000;
+    transform: none !important;
+    opacity: 1 !important;
     transition: none !important;
+    background: #EDF3FA;
+    /* optionnel : surligner la barre */
 }
 
-/* 2) Conteneur stable : pas de margin-collapsing, découpe possible pour wipe/clip */
+/* --------------------------------------------------------------------------
+   SCÈNE (contenu qui s’anime) — le JS (WAAPI) pilote les transitions
+   -------------------------------------------------------------------------- */
 .panel-from-actions,
 .panel-card {
+    /* Conteneurs stables : pas de margin-collapsing, découpe OK pour wipe/clip */
     display: flow-root !important;
     overflow: hidden !important;
     contain: layout paint !important;
-    padding-top: 12px !important;
-    /* le h3 ne “pousse” jamais le haut */
 }
 
-/* 3) Le premier enfant (souvent le h3) ne doit JAMAIS avoir de marge haute */
+/* Carte visuelle autour du contenu (si tu utilises .panel-card) */
+.panel-card {
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, .06);
+    border-radius: 12px;
+    padding: 20px 24px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .06);
+    box-sizing: border-box;
+}
+
+/* La scène est sous la toolbar, évite les micro-jumps et active le lissage GPU */
+.panel-from-actions {
+    position: relative;
+    z-index: 1;
+    min-height: 12px;
+    /* anti micro-saut */
+    transform: translateZ(0);
+    /* GPU hint */
+}
+
+/* Le premier enfant ne “pousse” jamais le haut (anti margin-collapsing) */
 .panel-from-actions> :first-child,
 .panel-card> :first-child {
     margin-top: 0 !important;
 }
 
-/* === HOTFIX global animations panneau === */
+/* Neutraliser toute transition CSS côté scène quand le JS est prêt
+   (WAAPI s’occupe de transform/opacity/clip-path) */
 html.js-ready .content>.panel-from-actions,
-html.js-ready .content .panel-from-actions {
-    /* on neutralise l'ancien fallback CSS */
-    transform: none !important;
-    opacity: 1 !important;
-}
-
-/* Pas de transition CSS sur le conteneur animé (WAAPI s'en charge) */
-.content>.panel-from-actions,
-.panel-from-actions {
+html.js-ready .panel-from-actions,
+html.js-ready .panel-card {
     transition: none !important;
     will-change: transform, opacity, clip-path;
 }
 
-/* Tue toute chance de "margin collapsing" au titre h3 */
-.panel-from-actions,
-.panel-card {
-    display: flow-root !important;
-}
-
-/* === Modes: toolbar fixe + scène d'animation isolée === */
-.actions-classe {
-    position: sticky;
-    top: 0;
-    z-index: 2000;
-    transform: none !important;
-    transition: none !important;
-    /* jamais d'anim sur la toolbar */
-}
-
-/* On n'anime JAMAIS le wrapper global ; seulement la scène .panel-from-actions */
-html.js-ready .content>.panel-from-actions {
-    /* les transitions CSS sont neutralisées, WAAPI gère l'anim */
-    transition: none !important;
-    will-change: transform, opacity, clip-path;
-}
-
-/* sécurité anti "margin-collapsing" (tu l'as déjà, je le rappelle) */
+/* Le panneau ciblé par les animations (si tu utilises un id dédié) */
 #mode-panel {
     display: flow-root;
     overflow: hidden;
     contain: layout paint;
 }
 
-/* Toolbar jamais animée */
-.actions-classe {
-    position: sticky;
-    top: 0;
-    z-index: 2000;
-    transform: none !important;
-    opacity: 1 !important;
-    transition: none !important;
+/* --------------------------------------------------------------------------
+   Divers utilitaires
+   -------------------------------------------------------------------------- */
+.divider {
+    border: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
+    margin: 14px 0;
 }
 
-/* Scène animée : transitions CSS neutralisées quand JS prêt */
-html.js-ready .content>.panel-from-actions {
-    transition: none !important;
-    will-change: transform, opacity, clip-path;
-}
+/* Accessibilité : respecter "réduire les animations" */
+@media (prefers-reduced-motion: reduce) {
 
-/* Anti reflow pendant l’anim (et empêche margin-collapsing) */
-#mode-panel {
-    display: flow-root;
-    overflow: hidden;
-    contain: layout paint;
+    .panel-from-actions,
+    .panel-card {
+        transition: none !important;
+        animation: none !important;
+    }
 }

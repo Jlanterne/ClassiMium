@@ -1,18 +1,13 @@
 // @ts-nocheck
 "use strict";
 (function () {
-    // Anti double-charge : si ce script est inclus 2x, on sort
     if (window.__modes_anim_installed__) return;
     window.__modes_anim_installed__ = true;
 
-    const EASE_IN = 'cubic-bezier(.22,.61,.36,1)';
-    const EASE_OUT = 'cubic-bezier(.4,0,.2,1)';
-    const DUR_IN = 220;
-    const DUR_OUT = 180;
-    const PANEL_ID = 'mode-panel';
+    const EASE_IN = 'cubic-bezier(.22,.61,.36,1)', EASE_OUT = 'cubic-bezier(.4,0,.2,1)';
+    const DUR_IN = 220, DUR_OUT = 180, PANEL_ID = 'mode-panel';
     let navInProgress = false;
-
-    const CAN_ANIMATE = !!(Element.prototype && Element.prototype.animate);
+    const CAN = !!(Element.prototype && Element.prototype.animate);
 
     function frames(kind, dir) {
         const IN = {
@@ -28,66 +23,42 @@
         return (dir === 'in' ? IN : OUT)[kind] || (dir === 'in' ? IN.fade : OUT.fade);
     }
 
-    function cancelAll(panel) {
-        if (!panel.getAnimations) return;
-        try { panel.getAnimations().forEach(a => a.cancel()); } catch (e) { }
-    }
-
-    function prefersReducedMotion() {
-        try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
-        catch (e) { return false; }
-    }
+    function prefersReduced() { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } }
+    function cancelAll(p) { if (!p.getAnimations) return; try { p.getAnimations().forEach(a => a.cancel()); } catch (e) { } }
 
     function fadeIn(panel) {
         const kind = panel.getAttribute('data-anim') || 'fade';
-        if (!CAN_ANIMATE || prefersReducedMotion()) {
-            panel.style.opacity = '1';
-            panel.removeAttribute('data-enter');
-            return;
-        }
+        if (!CAN || prefersReduced()) { panel.style.opacity = '1'; panel.removeAttribute('data-enter'); return; }
         cancelAll(panel);
         panel.animate(frames(kind, 'in'), { duration: DUR_IN, easing: EASE_IN, fill: 'both' })
             .finished.finally(() => panel.removeAttribute('data-enter'));
     }
 
     function fadeOutAndGo(panel, href) {
-        if (navInProgress) return;
-        navInProgress = true;
-
+        if (navInProgress) return; navInProgress = true;
         const kind = panel.getAttribute('data-anim') || 'fade';
-        const goNow = () => window.location.assign(href);
-
-        if (!CAN_ANIMATE || prefersReducedMotion()) {
-            goNow();
-            return;
-        }
+        const go = () => location.assign(href);
+        if (!CAN || prefersReduced()) { go(); return; }
         cancelAll(panel);
-
-        // Figer la hauteur pour éviter les “sauts”
         panel.style.height = panel.offsetHeight + 'px';
         panel.style.overflow = 'hidden';
-        panel.style.willChange = 'transform, opacity';
-
+        panel.style.willChange = 'transform,opacity';
         const anim = panel.animate(frames(kind, 'out'), { duration: DUR_OUT, easing: EASE_OUT, fill: 'forwards' });
-        const safety = setTimeout(goNow, DUR_OUT + 120);
-        anim.finished.then(() => { clearTimeout(safety); goNow(); })
-            .catch(() => { clearTimeout(safety); goNow(); });
+        const safety = setTimeout(go, DUR_OUT + 120);
+        anim.finished.then(() => { clearTimeout(safety); go(); })
+            .catch(() => { clearTimeout(safety); go(); });
     }
 
-    // IN
     window.addEventListener('DOMContentLoaded', () => {
         const panel = document.getElementById(PANEL_ID);
         if (panel) fadeIn(panel);
     }, { once: true });
 
-    // OUT
     document.addEventListener('click', (e) => {
         const a = e.target && e.target.closest ? e.target.closest('a.js-mode-link') : null;
         if (!a) return;
-        const href = a.getAttribute('href');
-        if (!href) return;
-        const panel = document.getElementById(PANEL_ID);
-        if (!panel) return;
+        const href = a.getAttribute('href'); if (!href) return;
+        const panel = document.getElementById(PANEL_ID); if (!panel) return;
         e.preventDefault();
         fadeOutAndGo(panel, href);
     }, true);

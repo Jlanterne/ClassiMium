@@ -1,0 +1,22 @@
+<div class="main-content">
+    <h2>Créer une nouvelle classe</h2>
+
+    <form method="POST" action="/ajouter_classe">
+        <div>
+            <label for="niveaux">Niveaux :</label><br>
+            <label><input type="checkbox" name="niveau" value="CP"> CP</label>
+            <label><input type="checkbox" name="niveau" value="CE1"> CE1</label>
+            <label><input type="checkbox" name="niveau" value="CE2"> CE2</label>
+            <label><input type="checkbox" name="niveau" value="CM1"> CM1</label>
+            <label><input type="checkbox" name="niveau" value="CM2"> CM2</label>
+        </div>
+        <br>
+        <div>
+            <label>Année scolaire :
+                <input name="annee" placeholder="Année de début (ex: 2025)">
+            </label>
+        </div>
+        <br>
+        <button type="submit">Créer la classe</button>
+    </form>
+</div>

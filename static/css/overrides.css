@@ -1,0 +1,86 @@
+/* Empilement et carte blanche (overrides) */
+.content {
+    position: relative;
+    isolation: isolate;
+    overflow: visible;
+    z-index: 0;
+}
+
+.actions-classe {
+    position: relative !important;
+    z-index: 2000 !important;
+    /* la barre reste au-dessus */
+    background: #EDF3FA !important;
+    /* opaque pour bien voir l’effet */
+}
+
+main.content .panel-from-actions {
+    position: relative !important;
+    z-index: 1 !important;
+    /* sous la barre */
+    will-change: transform, opacity;
+    transition: transform 520ms cubic-bezier(.22, .61, .36, 1), opacity 240ms ease-out;
+}
+
+/* Carte blanche autour du contenu qui descend */
+main.content .actions-classe+.panel-from-actions.panel-card,
+main.content .panel-from-actions.panel-card {
+    background: #fff !important;
+    border: 1px solid rgba(0, 0, 0, .06) !important;
+    border-radius: 12px !important;
+    padding: 20px 24px !important;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .06) !important;
+    margin-top: 16px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* Pas de scroll horizontal pendant l’anim */
+.main-container {
+    overflow-x: hidden !important;
+}
+
+/* ===== Patch anti-saut v8 ===== */
+
+/* 1) Quand le JS est là, on coupe TOUTES les transitions CSS du conteneur animé */
+html.js-ready .panel-from-actions,
+html.js-ready .panel-card {
+    transition: none !important;
+}
+
+/* 2) Conteneur stable : pas de margin-collapsing, découpe possible pour wipe/clip */
+.panel-from-actions,
+.panel-card {
+    display: flow-root !important;
+    overflow: hidden !important;
+    contain: layout paint !important;
+    padding-top: 12px !important;
+    /* le h3 ne “pousse” jamais le haut */
+}
+
+/* 3) Le premier enfant (souvent le h3) ne doit JAMAIS avoir de marge haute */
+.panel-from-actions> :first-child,
+.panel-card> :first-child {
+    margin-top: 0 !important;
+}
+
+/* === HOTFIX global animations panneau === */
+html.js-ready .content>.panel-from-actions,
+html.js-ready .content .panel-from-actions {
+    /* on neutralise l'ancien fallback CSS */
+    transform: none !important;
+    opacity: 1 !important;
+}
+
+/* Pas de transition CSS sur le conteneur animé (WAAPI s'en charge) */
+.content>.panel-from-actions,
+.panel-from-actions {
+    transition: none !important;
+    will-change: transform, opacity, clip-path;
+}
+
+/* Tue toute chance de "margin collapsing" au titre h3 */
+.panel-from-actions,
+.panel-card {
+    display: flow-root !important;
+}

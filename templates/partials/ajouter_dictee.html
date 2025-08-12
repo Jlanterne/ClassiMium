@@ -1,0 +1,1415 @@
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dictees.css') }}">
+
+<div class="page-dictees">
+
+    <div class="dictees-scope">
+        <div class="legende-couleurs"
+            style="display:flex;gap:12px;align-items:center;padding:8px 16px;font-size:14px;font-weight:bold;">
+            <span style="padding:4px 8px;background-color:#ff000075;border-radius:4px;">NA</span>
+            <span style="padding:4px 8px;background-color:#ff7d1aa6;border-radius:4px;">PA-</span>
+            <span style="padding:4px 8px;background-color:#ffe223;border-radius:4px;">PA</span>
+            <span style="padding:4px 8px;background-color:#d4f5b0;border-radius:4px;">PA+</span>
+            <span style="padding:4px 8px;background-color:#a7e9b7;border-radius:4px;">A-</span>
+            <span style="padding:4px 8px;background-color:#5cc995;border-radius:4px;color:black;">A</span>
+            <span style="padding:4px 8px;background-color:#3dbcb9;border-radius:4px;color:black;">A+</span>
+            <span style="padding:4px 8px;background-color:#00d3f8;border-radius:4px;color:black;">D</span>
+        </div>
+
+
+
+
+
+        <div id="contenu-niveaux" data-classe-id="{{ classe.id }}"></div>
+    </div>
+
+
+    <script>
+        /* =========================================================================
+           DICTÉES — Script complet (FR, ultra commenté)
+           =========================================================================
+           Sommaire (recherche "§" pour naviguer) :
+           §0  : Déclarations & helpers généraux (date, uid, utilitaires DOM)
+           §0.1: Verrouillage colonne (source de vérité = dataset)
+           §0.2: Autosave (debounce) + anti double-POST
+           §0.3: Badge d’état (Brouillon / Enregistrement / Enregistré / Erreur)
+           §1  : Données injectées (élèves, groupes) + utilitaires
+           §2  : Pourcentages (calcul, rendu, classes de couleur)
+           §2.bis : Moyenne de colonne (pastille entête)
+           §3  : Toggle "simple ↔ bilan" (entête + radios par élève)
+           §4  : Branchement des événements (autosave + % live)
+           §5  : Construction des tableaux (par niveau) + “+” en fin de tableau
+           §6  : Sauvegarde (POST /api/dictees) — squelette & résultats
+           §7  : Reload depuis l’API (reconstruction fidèle)
+           §8  : Avertissement fermeture (F5) si brouillons non sauvés
+           §9  : Boot
+           ========================================================================= */
+
+
+        /* =======================================================================
+           §0 — Déclarations & helpers généraux
+           ======================================================================= */
+
+        /** Pose data-type="simple"|"bilan" sur le <th> selon la case Bilan. */
+        function applyTypeFromCheckbox(th) {
+            const isBilan = !!th.querySelector('.checkbox-bilan_d')?.checked;
+            th.setAttribute('data-type', isBilan ? 'bilan' : 'simple');
+        }
+
+        /** Initialise data-type au montage/reload si absent. */
+        function initHeaderType(th) {
+            if (!th.hasAttribute('data-type')) applyTypeFromCheckbox(th);
+        }
+
+        /** Ajoute des zéros à gauche (2 -> "02"). */
+        const pad = (n) => String(n).padStart(2, "0");
+
+        /** Transforme Date -> "YYYY-MM-DD". */
+        function toDateOnlyLocal(date) {
+            const y = date.getFullYear();
+            const m = pad(date.getMonth() + 1);
+            const d = pad(date.getDate());
+            return `${y}-${m}-${d}`;
+        }
+
+        /** Normalise "YYYY-MM-DDTHH:MM" -> "YYYY-MM-DD". */
+        function toDateOnlyString(s) {
+            if (!s) return "";
+            const t = String(s);
+            return t.includes("T") ? t.split("T")[0] : t.slice(0, 10);
+        }
+
+        /** uid "suffisamment unique" (fallback si crypto.randomUUID absent). */
+        function uid() {
+            return (crypto?.randomUUID?.() || `u_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+        }
+
+        /** Récupère le <th> d’une colonne via colUid dans une table. */
+        function findThByColUid(table, colUid) {
+            return table?.querySelector?.(`th.entete-dictee_d[data-coluid="${colUid}"]`) || null;
+        }
+
+        /** Ajoute/retire une classe si l’élément existe. */
+        function toggleClass(el, cls, on) {
+            if (!el) return;
+            el.classList.toggle(cls, !!on);
+        }
+
+        /** Modifie textContent si l’élément existe. */
+        function setText(el, txt) {
+            if (!el) return;
+            el.textContent = txt;
+        }
+
+        /** Supprime un timer existant (autosave). */
+        function clearTimer(map, key) {
+            if (map.has(key)) {
+                clearTimeout(map.get(key));
+                map.delete(key);
+            }
+        }
+
+
+        /* =======================================================================
+           §0.1 — Verrouillage colonne (dataset = vérité)
+           ======================================================================= */
+
+        /** Applique disabled sur tous les champs de la colonne. */
+        function lockColumnFields(th, table, colUid, locked) {
+            // Date
+            const dateInput = th.querySelector(".date-dictee_d");
+            if (dateInput) dateInput.disabled = locked;
+
+            // Case Bilan
+            const chkBilan = th.querySelector(".checkbox-bilan_d");
+            if (chkBilan) chkBilan.disabled = locked;
+
+            // nb_mots (selon l’UI courante)
+            const isBilanUI = !!chkBilan?.checked;
+            if (isBilanUI) {
+                th.querySelectorAll(".input-nbmots-groupe_d").forEach(i => i.disabled = locked);
+            } else {
+                const s = th.querySelector(".input-nbmots_d");
+                if (s) s.disabled = locked;
+            }
+
+            // Erreurs (corps)
+            table.querySelectorAll(`td[data-coluid="${colUid}"] .input-erreurs_d`).forEach(i => i.disabled = locked);
+
+            // Radios (corps)
+            table.querySelectorAll(`td[data-coluid="${colUid}"] .radio-groupe_d input[type="radio"]`).forEach(r => r.disabled = locked);
+        }
+
+        /** Met à jour l’état complet (dataset + icône + classes + disabled). */
+        function setLockedState(th, table, colUid, locked) {
+            // 1) vérité
+            th.dataset.locked = locked ? "1" : "0";
+
+            // 2) bouton
+            const btn = th.querySelector(".btn-verrou_d");
+            if (btn) {
+                btn.textContent = locked ? "🔒" : "🔓";
+                btn.classList.toggle("verrouille_d", locked);
+            }
+
+            // 3) entête
+            th.classList.toggle("verrouille_d", locked);
+
+            // 4) disabled
+            lockColumnFields(th, table, colUid, locked);
+        }
+
+        /** Lit l’état depuis dataset (ne JAMAIS lire l’icône). */
+        function getLockedState(th) {
+            return th?.dataset?.locked === "1";
+        }
+
+
+        /* =======================================================================
+           §0.2 — Autosave (debounce) + anti double-POST
+           ======================================================================= */
+
+        const SAVE_IDLE_MS = 1200;       // délai d’inactivité avant POST
+        const columnTimers = new Map();  // colUid -> timeout id
+        const inFlight = new Set();      // clés de POST en vol
+
+        /** Exécute doPost si aucune requête avec la même clé n’est en vol. */
+        async function postOnce(key, doPost) {
+            if (inFlight.has(key)) return;
+            inFlight.add(key);
+            try {
+                await doPost();
+            } finally {
+                inFlight.delete(key);
+            }
+        }
+
+
+        /* =======================================================================
+           §0.3 — Badge d’état (Brouillon / Enregistrement / Enregistré / Erreur)
+           ======================================================================= */
+
+        const savingState = new Map(); // colUid -> 'draft'|'saving'|'saved'|'error'
+
+        function setColState(th, state) {
+            const colUid = th.dataset.coluid;
+            savingState.set(colUid, state);
+
+            let badge = th.querySelector(".save-badge_d");
+            if (!badge) {
+                badge = document.createElement("div");
+                badge.className = "save-badge_d";
+                badge.style.cssText = "font:12px/1.2 sans-serif;margin-top:4px;";
+                th.appendChild(badge);
+            }
+            const labels = {
+                draft: "⏺️ Brouillon",
+                saving: "⏳ Enregistrement…",
+                saved: "✅ Enregistré",
+                error: "❌ Erreur",
+            };
+            badge.textContent = labels[state] || state;
+        }
+
+
+
+
+
+
+
+        /* =======================================================================
+           §1 — Données injectées & helpers
+           ======================================================================= */
+
+        const niveaux = JSON.parse('{{ eleves_par_niveau | tojson | safe }}');
+        const groupesDict = JSON.parse(`{{ groupes_dict | tojson | safe }}`);
+        const ordreNiveaux = ["CP", "CE1", "CE2", "CM1", "CM2"];
+
+        const container = document.getElementById("contenu-niveaux");
+        const classeId = Number(container?.dataset?.classeId);
+
+        /** Retourne le dernier groupe connu d’un élève via l’historique (fallback G3). */
+        function getDernierGroupe(eleveId) {
+            const hist = groupesDict?.[String(eleveId)];
+            if (!hist) return "G3";
+            let best = "G3";
+            let max = new Date("1900-01-01");
+            for (const [k, v] of Object.entries(hist)) {
+                const d = new Date(k.includes("T") ? k : k.replace(" ", "T"));
+                if (d > max) { max = d; best = v; }
+            }
+            return best || "G3";
+        }
+
+        /** Date locale à partir d’un <input type="date"> ; défaut = 12:00 */
+        function dateInputToLocalNoon(dateInputEl) {
+            const val = dateInputEl?.value;
+            if (!val) return new Date();
+            const [y, m, d] = val.split("-").map(Number);
+            return new Date(y, (m || 1) - 1, d || 1, 12, 0, 0);
+        }
+
+        /** Groupe d’un élève à l’instant donné (using groupesDict horodaté) */
+        function getGroupeAtInstant(eleveId, when) {
+            const hist = groupesDict?.[String(eleveId)];
+            if (!hist) return "G3";
+            let best = "G3";
+            let bestTime = new Date("1900-01-01T00:00:00");
+            for (const [k, v] of Object.entries(hist)) {
+                const d = new Date(k.includes("T") ? k : k.replace(" ", "T"));
+                if (d <= when && d > bestTime) { bestTime = d; best = v; }
+            }
+            return best || "G3";
+        }
+
+        /** Instant de la dictée porté par le <th> (dataset.dateDt sinon date+12:00) */
+        function getDicteeInstant(th) {
+            const ds = th?.dataset?.dateDt;
+            if (ds) {
+                const s = ds.includes("T") ? ds : ds.replace(" ", "T");
+                const dt = new Date(s);
+                if (!isNaN(dt)) return dt;
+            }
+            return dateInputToLocalNoon(th.querySelector(".date-dictee_d"));
+        }
+
+
+        /** Affiche une mini disquette 💾 en haut-gauche du .table-container_d pendant 5s */
+        function flashSavedNearList(fromEl) {
+            const wrap = ensureGroupeWrap(fromEl);
+            if (!wrap) return;
+            let pip = wrap.querySelector('.save-pip_d');
+            if (!pip) {
+                pip = document.createElement('div');
+                pip.className = 'save-pip_d';
+                pip.setAttribute('aria-hidden', 'true');
+                pip.textContent = '💾';
+                wrap.appendChild(pip);
+            }
+            pip.classList.add('is-on');
+            clearTimeout(pip._t);
+            pip._t = setTimeout(() => pip.classList.remove('is-on'), 3000);
+        }
+
+
+
+        // Entoure un <select.select-groupe_d> d’un .groupe-wrap (idempotent)
+        function ensureGroupeWrap(sel) {
+            if (!sel || !sel.parentNode) return null;
+            const exists = sel.closest?.('.groupe-wrap');
+            if (exists) return exists;
+            const wrap = document.createElement('span');
+            wrap.className = 'groupe-wrap';
+            sel.parentNode.insertBefore(wrap, sel);
+            wrap.appendChild(sel);
+            return wrap;
+        }
+
+        function wrapAllGroupeSelects() {
+            document.querySelectorAll('select.select-groupe_d').forEach(ensureGroupeWrap);
+        }
+
+
+
+        function wireGroupeSelect(sel) {
+            ensureGroupeWrap(sel);
+            sel.addEventListener("change", () => {
+                fetch("/changer_groupe", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        eleve_id: sel.dataset.eleveId,
+                        groupe: sel.value,
+                        date_changement: new Date().toISOString(),
+                    }),
+                })
+                    .then((r) => r.json())
+                    .then(() => {
+                        const idStr = String(sel.dataset.eleveId);
+                        if (!groupesDict[idStr]) groupesDict[idStr] = {};
+                        groupesDict[idStr][new Date().toISOString()] = sel.value;
+                        flashSavedNearList(sel);
+                    })
+                    .catch(() => alert("Erreur mise à jour groupe"));
+            });
+        }
+
+        // Mesure épaisseur scrollbar (Windows ≈ 17px, Mac often 0 -> on fallback)
+        function getScrollbarThickness() {
+            const t = document.createElement('div');
+            t.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:100px;height:50px;overflow:scroll;';
+            document.body.appendChild(t);
+            const h = t.offsetHeight - t.clientHeight; // épaisseur horizontale ~ verticale
+            document.body.removeChild(t);
+            return Math.max(12, h || 14); // fallback raisonnable
+        }
+
+        // Installe la “ghost bar” pour un .table-container_d
+        function setupGhostScrollbar(container) {
+            // crée la barre si absente
+            let ghost = container.querySelector('.ghost-scrollbar');
+            if (!ghost) {
+                ghost = document.createElement('div');
+                ghost.className = 'ghost-scrollbar';
+                ghost.innerHTML = '<div class="ghost-inner"></div>';
+                container.appendChild(ghost);
+            }
+            const inner = ghost.firstElementChild;
+
+            function fixedLeftWidth() {
+                // largeur ÉLÈVES + GROUPE depuis les variables CSS
+                const cs = getComputedStyle(document.documentElement);
+                const wEleve = parseFloat(cs.getPropertyValue('--w-col-eleve')) || 0;
+                const wGroupe = parseFloat(cs.getPropertyValue('--w-col-groupe')) || 0;
+                return wEleve + wGroupe;
+            }
+
+            function refresh() {
+                const sbH = getScrollbarThickness();
+                container.style.setProperty('--sb-h', sbH + 'px');    // pour le CSS
+                container.style.paddingBottom = 'var(--sb-h)';         // réserve la place
+
+                const leftFixed = fixedLeftWidth();
+                const totalScrollable = Math.max(0, container.scrollWidth - leftFixed);
+                inner.style.width = totalScrollable + 'px';
+
+                // garder la même position entre les deux
+                ghost.scrollLeft = container.scrollLeft;
+            }
+
+            // Sync scroll dans les 2 sens (évite boucles en testant l’écart)
+            ghost.addEventListener('scroll', () => {
+                if (Math.abs(container.scrollLeft - ghost.scrollLeft) > 1) {
+                    container.scrollLeft = ghost.scrollLeft;
+                }
+            });
+            container.addEventListener('scroll', () => {
+                if (Math.abs(ghost.scrollLeft - container.scrollLeft) > 1) {
+                    ghost.scrollLeft = container.scrollLeft;
+                }
+            });
+
+            // resize/layout
+            window.addEventListener('resize', refresh);
+            // petit délai pour être après la mise en page
+            requestAnimationFrame(refresh);
+        }
+
+        // Installe pour toutes les tables de la page
+        function setupAllGhostScrollbars() {
+            document.querySelectorAll('.table-container_d').forEach(setupGhostScrollbar);
+        }
+
+
+
+
+
+
+
+        /* =======================================================================
+           §2 — Pourcentages (calcul, rendu, classes de couleur)
+           ======================================================================= */
+
+        /** Supprime toutes les classes couleur d’une bulle %. */
+        function clearPctClasses(el) {
+            el.classList.remove(
+                "pct-0-30", "pct-30-45", "pct-45-55", "pct-55-65",
+                "pct-65-75", "pct-75-85", "pct-85-100", "pct-100"
+            );
+        }
+
+        function pctHTML(value) {
+            if (value == null || isNaN(value)) return '--';
+            const v = Number(value);
+            const s = v.toFixed(2).replace('.', ','); // virgule au lieu du point
+            const [entier, dec] = s.split(',');
+            return `<span class="pct"><span class="pct__int">${entier}</span><span class="pct__sep">,</span><span class="pct__dec">${dec}</span><span class="pct__sign">%</span></span>`;
+        }
+
+        /** Applique la bonne classe couleur en fonction du % (0..100). */
+        function applyPctClass(el, pct) {
+            clearPctClasses(el);
+            if (pct === 100) { el.classList.add("pct-100"); return; }
+            if (pct >= 85) { el.classList.add("pct-85-100"); return; }
+            if (pct >= 75) { el.classList.add("pct-75-85"); return; }
+            if (pct >= 65) { el.classList.add("pct-65-75"); return; }
+            if (pct >= 55) { el.classList.add("pct-55-65"); return; }
+            if (pct >= 45) { el.classList.add("pct-45-55"); return; }
+            if (pct >= 30) { el.classList.add("pct-30-45"); return; }
+            if (pct >= 0) { el.classList.add("pct-0-30"); return; }
+        }
+
+        /** Réinitialise la bulle : texte "--" + plus aucune classe + pas de style inline. */
+        function resetPctBubble(el) {
+            el.textContent = "--";
+            clearPctClasses(el);
+            el.removeAttribute("style"); // sécurité
+        }
+
+        /** Calcule le % ; renvoie null si valeurs invalides ou incomplètes. */
+        function computePct(erreurs, nbMots) {
+            const e = Number(erreurs), n = Number(nbMots);
+            if (!Number.isFinite(e) || !Number.isFinite(n) || n <= 0 || e < 0) return null;
+            const pct = 100 * (1 - e / n);
+            return Number(Math.max(0, Math.min(100, pct)).toFixed(2));
+        }
+
+        /** Lit nb_mots applicable pour UNE cellule selon le mode et la radio. */
+        function getNbMotsForCell(th, td) {
+            const isBilan = !!th.querySelector(".checkbox-bilan_d")?.checked;
+            if (!isBilan) {
+                const simple = parseInt(th.querySelector(".input-nbmots_d")?.value, 10);
+                return Number.isFinite(simple) ? simple : 0;
+            }
+            // bilan : dépend de la radio cochée
+            const r = td.querySelector('.radio-groupe_d input[type="radio"]:checked');
+            const grp = r ? r.value : "G3";
+            const map = { G1: 1, G2: 2, G3: 3 };
+            const val = parseInt(th.querySelector(`.input-nbmots-groupe_d[data-groupe="${map[grp]}"]`)?.value, 10);
+            return Number.isFinite(val) ? val : 0;
+        }
+
+        /** Met à jour le % d’UNE cellule. */
+        function updateCellPercent(th, td) {
+            const span = td.querySelector(".cell-pourcentage_d");
+            const inputErr = td.querySelector(".input-erreurs_d");
+            if (!span || !inputErr) return;
+
+            // 1) erreurs : OBLIGATOIRE
+            const rawErr = (inputErr.value || "").trim();
+            const hasErr = rawErr !== "";
+            const errVal = hasErr ? parseInt(rawErr, 10) : null;
+
+            // 2) nb_mots (selon mode) : OBLIGATOIRE
+            const isBilan = !!th.querySelector(".checkbox-bilan_d")?.checked;
+            let nbMotsRaw = "";
+            if (!isBilan) {
+                nbMotsRaw = (th.querySelector(".input-nbmots_d")?.value || "").trim();
+            } else {
+                const checked = td.querySelector('.radio-groupe_d input[type="radio"]:checked');
+                const g = checked ? checked.value : "G3";
+                const map = { G1: 1, G2: 2, G3: 3 };
+                nbMotsRaw = (th.querySelector(`.input-nbmots-groupe_d[data-groupe="${map[g]}"]`)?.value || "").trim();
+            }
+            const hasNb = nbMotsRaw !== "";
+            const nbVal = hasNb ? parseInt(nbMotsRaw, 10) : null;
+
+            // 3) Si l’un manque → bulle neutre
+            if (!hasErr || !hasNb) {
+                resetPctBubble(span);
+                return;
+            }
+
+            // 4) Calcul + rendu
+            const pct = computePct(errVal, nbVal);
+            if (pct == null) {
+                resetPctBubble(span);
+            } else {
+                span.innerHTML = pctHTML(pct);
+                applyPctClass(span, pct);
+            }
+        }
+
+        /** Recalcule toutes les cellules d’une colonne + moyenne. */
+        function updateColumnPercents(th, table, colUid) {
+            table.querySelectorAll(`td[data-coluid="${colUid}"]`).forEach(td => updateCellPercent(th, td));
+            updateColumnAverage(th, table, colUid);
+        }
+
+
+        /* =======================================================================
+           §2.bis — Moyenne de colonne (pastille entête)
+           ======================================================================= */
+
+        function getCellPercent(th, td) {
+            const inputErr = td.querySelector(".input-erreurs_d");
+            if (!inputErr) return null;
+            const rawErr = (inputErr.value || "").trim();
+            if (rawErr === "") return null;
+            const errVal = parseInt(rawErr, 10);
+            if (!Number.isFinite(errVal) || errVal < 0) return null;
+
+            const nbMots = getNbMotsForCell(th, td);
+            if (!Number.isFinite(nbMots) || nbMots <= 0) return null;
+
+            return computePct(errVal, nbMots);
+        }
+
+        function computeColumnAverage(th, table, colUid) {
+            let sum = 0, count = 0;
+            table.querySelectorAll(`td[data-coluid="${colUid}"]`).forEach(td => {
+                const p = getCellPercent(th, td);
+                if (p != null) { sum += p; count++; }
+            });
+            if (count === 0) return null;
+            return Number((sum / count).toFixed(2));
+        }
+
+        function renderColumnAverage(th, avg) {
+            let badge = th.querySelector(".avg-badge_d");
+            if (!badge) {
+                badge = document.createElement("div");
+                badge.className = "avg-badge_d cell-pourcentage_d";
+                badge.title = "Moyenne de la dictée";
+                const lockBtn = th.querySelector(".btn-verrou_d");
+                if (lockBtn && lockBtn.nextSibling) {
+                    th.insertBefore(badge, lockBtn.nextSibling);
+                } else {
+                    th.insertBefore(badge, th.firstChild);
+                }
+            }
+
+            clearPctClasses(badge);
+            if (avg == null) {
+                badge.textContent = "--";
+                return;
+            }
+            badge.innerHTML = pctHTML(avg);
+            applyPctClass(badge, avg);
+        }
+
+        function updateColumnAverage(th, table, colUid) {
+            const avg = computeColumnAverage(th, table, colUid);
+            renderColumnAverage(th, avg);
+        }
+
+
+        /* =======================================================================
+           §3 — Toggle "simple ↔ bilan" (instantané)
+           ======================================================================= */
+
+        function setupBilanToggle(th, table, colUid) {
+            const chk = th.querySelector(".checkbox-bilan_d");
+            const blocS = th.querySelector(".nbmots-label_d.simple");
+            const blocB = th.querySelector(".nbmots-label_d.bilan");
+
+            const apply = (isBilan) => {
+                // Entête
+                if (blocS) blocS.style.display = isBilan ? "none" : "block";
+                if (blocB) blocB.style.display = isBilan ? "flex" : "none";
+
+                // Corps : radios visibles en bilan
+                table.querySelectorAll(`td[data-coluid="${colUid}"] .radio-groupe_d`)
+                    .forEach(div => div.style.display = isBilan ? "flex" : "none");
+
+                // Type d’entête (pour le style)
+                th.setAttribute('data-type', isBilan ? 'bilan' : 'simple');
+
+                // Recalculs
+                updateColumnPercents(th, table, colUid);
+                autoSelectBilanRadios(th, table, colUid);
+
+            };
+
+            // État initial
+            apply(!!chk?.checked);
+
+            // Bascule au clic
+            chk?.addEventListener("change", () => apply(!!chk.checked));
+        }
+
+        /** Pré-coche les radios G1/G2/G3 d’une colonne Bilan selon l’historique à l’instant T. */
+        function autoSelectBilanRadios(th, table, colUid) {
+            const isBilan = !!th.querySelector(".checkbox-bilan_d")?.checked;
+            if (!isBilan) return;
+
+            const when = getDicteeInstant(th);
+            let changed = false;
+
+            table.querySelectorAll(`td[data-coluid="${colUid}"]`).forEach((td) => {
+                // si l’utilisateur a déjà choisi manuellement, on n’écrase pas
+                if (td.dataset.userGroupe === "1") return;
+
+                const eleveId = parseInt(td.closest("tr")?.dataset?.eleveId, 10);
+                if (!Number.isFinite(eleveId)) return;
+
+                const wanted = getGroupeAtInstant(eleveId, when) || "G3";
+                const inp = td.querySelector(`.radio-groupe_d input[type="radio"][value="${wanted}"]`)
+                    || td.querySelector(`.radio-groupe_d input[type="radio"][value="G3"]`);
+                if (inp && !inp.checked) {
+                    inp.checked = true;
+                    changed = true;
+                }
+                // met à jour la bulle %
+                updateCellPercent(th, td);
+            });
+
+            if (changed) updateColumnAverage(th, table, colUid);
+        }
+
+
+
+        /* =======================================================================
+           §4 — Branchement des événements (autosave + % live)
+           ======================================================================= */
+
+        function attachColumnEvents(th, table, colUid) {
+            // Planifie un POST après inactivité — n’opère pas si verrouillé
+            function scheduleColumnSave() {
+                if (getLockedState(th)) return;
+                setColState(th, "draft");
+                clearTimer(columnTimers, colUid);
+                const t = setTimeout(() => saveDictee(colUid, table), SAVE_IDLE_MS);
+                columnTimers.set(colUid, t);
+            }
+
+            // a) Date
+            th.querySelector(".date-dictee_d")?.addEventListener("change", () => {
+                scheduleColumnSave();
+                autoSelectBilanRadios(th, table, colUid);   // recalcule les groupes à la nouvelle date
+                updateColumnPercents(th, table, colUid);
+            });
+
+
+            // b) Bilan
+            th.querySelector(".checkbox-bilan_d")?.addEventListener("change", () => {
+                scheduleColumnSave();
+                updateColumnPercents(th, table, colUid);
+            });
+
+            // c) nb_mots simple
+            const inpSimple = th.querySelector(".input-nbmots_d");
+            if (inpSimple) {
+                inpSimple.addEventListener("input", () => {
+                    scheduleColumnSave();
+                    updateColumnPercents(th, table, colUid);
+                });
+            }
+
+            // d) nb_mots G1/G2/G3
+            th.querySelectorAll(".input-nbmots-groupe_d").forEach((i) => {
+                i.addEventListener("input", () => {
+                    scheduleColumnSave();
+                    updateColumnPercents(th, table, colUid);
+                });
+            });
+
+            // e) erreurs (corps)
+            table.querySelectorAll(`td[data-coluid="${colUid}"] .input-erreurs_d`).forEach((inp) => {
+                inp.addEventListener("input", (e) => {
+                    scheduleColumnSave();
+                    updateCellPercent(th, e.target.closest("td"));
+                    updateColumnAverage(th, table, colUid);
+                });
+                inp.addEventListener("blur", () => {
+                    clearTimer(columnTimers, colUid);
+                    saveDictee(colUid, table);
+                    updateColumnAverage(th, table, colUid);
+                });
+            });
+
+            // f) radios (corps)
+            table.querySelectorAll(`td[data-coluid="${colUid}"] .radio-groupe_d input[type="radio"]`).forEach((r) => {
+                r.addEventListener("change", (e) => {
+                    const td = e.target.closest("td");
+                    if (td) td.dataset.userGroupe = "1"; // <<< on n’écrasera plus ce TD automatiquement
+                    updateCellPercent(th, td);
+                    updateColumnAverage(th, table, colUid);
+                    clearTimer(columnTimers, colUid);
+                    saveDictee(colUid, table);
+                });
+            });
+
+        }
+
+
+        /* =======================================================================
+           §5 — Construction des tableaux (par niveau) + “+” en fin de tableau
+           ======================================================================= */
+        function centerPlusColumn(container, smooth = false) {
+            const thAdd = container.querySelector('th.col-add_d');
+            if (!thAdd) return;
+
+            // Position absolue du centre de la colonne "+" dans le conteneur qui scrolle
+            const rect = thAdd.getBoundingClientRect();
+            const crect = container.getBoundingClientRect();
+            const leftInContainer = rect.left - crect.left + container.scrollLeft;
+            const targetCenter = leftInContainer + rect.width / 2;
+
+            // Scroll voulu = centre de "+" au centre du viewport du conteneur
+            let desired = Math.round(targetCenter - container.clientWidth / 2);
+
+            // Clamp aux bornes
+            const max = container.scrollWidth - container.clientWidth;
+            if (desired < 0) desired = 0;
+            if (desired > max) desired = max;
+
+            container.scrollTo({ left: desired, behavior: smooth ? "smooth" : "auto" });
+        }
+
+        function centerAllPlusColumns(smooth = false) {
+            document.querySelectorAll('.table-container_d').forEach(c => centerPlusColumn(c, smooth));
+        }
+
+        window._tables = {};
+        window._adders = {};
+
+        /** Ajoute la dernière colonne “+” (si absente) et aligne le tbody */
+        function ensureAddColumn(table, trh, niveau) {
+            const tbody = table.querySelector('tbody');
+
+            // 1) créer le TH "colonne + " s'il n'existe pas
+            let thAdd = trh.querySelector('th.col-add_d');
+            if (!thAdd) {
+                thAdd = document.createElement('th');
+                thAdd.className = 'col-add_d';
+                thAdd.title = 'Nouvelle dictée';
+
+                // Le bouton + (entièrement cliquable si tu préfères : mets l'écouteur sur thAdd)
+                thAdd.innerHTML = `<div class="add-plus_d" aria-label="Ajouter une dictée" role="button">+</div>`;
+
+                // Clique → ajoute une nouvelle dictée pour ce niveau
+                thAdd.addEventListener('click', () => {
+                    if (typeof window._adders[niveau] === 'function') window._adders[niveau]();
+                });
+
+                // IMPORTANT : on place la colonne + à la FIN de l’en-tête
+                trh.appendChild(thAdd);
+            }
+
+            // 2) la cellule est fusionnée sur TOUTES les lignes (1 entête + N élèves)
+            const nbLignes = tbody?.querySelectorAll('tr').length || 0;
+            thAdd.rowSpan = 1 + nbLignes;
+
+            // 3) nettoyage défensif (au cas où une ancienne version avait ajouté des <td> vides)
+            tbody?.querySelectorAll('td.col-add_d')?.forEach(td => td.remove());
+        }
+
+
+
+        /** Renumérote 1..N les colonnes d’une table (badge haut-gauche). */
+        function renumTable(tableEl) {
+            const ths = Array.from(tableEl.querySelectorAll("thead th.entete-dictee_d"));
+            ths.forEach((th, i) => {
+                let badge = th.querySelector(".dictee-num_badge");
+                if (!badge) {
+                    badge = document.createElement("div");
+                    badge.className = "dictee-num_badge";
+                    badge.title = "Numéro de dictée";
+                    th.appendChild(badge);
+                }
+                badge.textContent = String(i + 1);
+            });
+        }
+
+        /** Renumérote toutes les tables de la page. */
+        function renumAll() {
+            document.querySelectorAll("table.table-dictee_d").forEach(renumTable);
+        }
+
+        ordreNiveaux.forEach((niv) => {
+            const eleves = niveaux[niv];
+            if (!Array.isArray(eleves) || !eleves.length) return;
+
+            // -- Conteneur qui SCROLLE horizontalement
+            const tableContainer = document.createElement("div");
+            tableContainer.className = "table-container_d";
+
+            // -- Bandeau NIVEAU (CP/CE1/CE2/...) AVANT la table, DANS tableContainer
+            const bandeau = document.createElement("div");
+            bandeau.className = `titre-niveau ${niv.toLowerCase()}`; // ex: "cp", "ce2"
+            bandeau.textContent = niv;                                // ex: "CP"
+            tableContainer.appendChild(bandeau);
+
+            // -- Table
+            const table = document.createElement("table");
+            table.className = "table-dictee_d";
+
+            // -- THEAD
+            const thead = document.createElement("thead");
+            const trh = document.createElement("tr");
+            trh.innerHTML = `
+    <th class="col-eleve-titre_d">Élèves</th>
+    <th class="col-groupe-titre_d">Groupe</th>`;
+            thead.appendChild(trh);
+            table.appendChild(thead);
+
+            // -- TBODY : lignes élèves
+            const tbody = document.createElement("tbody");
+            eleves
+                .sort((a, b) => a.prenom.localeCompare(b.prenom))
+                .forEach((e) => {
+                    const tr = document.createElement("tr");
+                    tr.className = "row-eleve_d";
+                    tr.dataset.eleveId = e.id;
+
+                    const tdN = document.createElement("td");
+                    tdN.className = "col-eleve_d";
+                    const prenoms = e.prenom
+                        .split(" ")
+                        .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+                        .join(" ");
+                    tdN.innerHTML = `<span style="color:#00688B;font-weight:bold;">${prenoms}</span> ${e.nom.toUpperCase()}`;
+
+                    const tdG = document.createElement("td");
+                    tdG.className = "col-groupe_d";
+                    const sel = document.createElement("select");
+                    sel.className = "select-groupe_d";
+                    sel.dataset.eleveId = e.id;
+                    ["G1", "G2", "G3"].forEach((g) => {
+                        const o = document.createElement("option");
+                        o.value = g;
+                        o.text = g;
+                        if (g === getDernierGroupe(e.id)) o.selected = true;
+                        sel.appendChild(o);
+                    });
+                    wireGroupeSelect(sel);
+
+
+                    tdG.appendChild(sel);
+                    tr.appendChild(tdN);
+                    tr.appendChild(tdG);
+                    tbody.appendChild(tr);
+                });
+            table.appendChild(tbody);
+
+            // -- Fabrique de colonnes Dictées
+            function ajouterDictee() {
+                const colUid = uid();
+                const bid = `b-${colUid}`;
+
+                // ENTÊTE dictée
+                const th = document.createElement("th");
+                th.className = "entete-dictee_d";
+                th.dataset.niveau = niv;
+                th.dataset.coluid = colUid;
+                th.dataset.requestId = uid();
+                th.innerHTML = `
+      <div class="th-tools_d">
+        <button class="btn-verrou_d" title="Verrouiller/Déverrouiller">🔒</button>
+        <div class="avg-badge_d cell-pourcentage_d" title="Moyenne de la dictée">--</div>
+      </div>
+      <div class="dictee-num_badge" title="Numéro de dictée"></div>
+      <div class="zone-param_d">
+        <div class="date_d">
+          <input type="date" class="date-dictee_d" lang="en-CA" value="${toDateOnlyLocal(new Date())}">
+        </div>
+        <div class="checkbox-container_d">
+          <input type="checkbox" class="checkbox-bilan_d" id="${bid}">
+          <label for="${bid}">Bilan</label>
+        </div>
+        <div class="nbmots_d">
+          <div class="nbmots-label_d simple">
+            <input type="number" class="input-nbmots_d" min="1" max="200" placeholder="nb mots">
+          </div>
+          <div class="nbmots-label_d bilan" style="display:none">
+            <label><input type="number" class="input-nbmots-groupe_d" data-groupe="1" placeholder="G1"></label>
+            <label><input type="number" class="input-nbmots-groupe_d" data-groupe="2" placeholder="G2"></label>
+            <label><input type="number" class="input-nbmots-groupe_d" data-groupe="3" placeholder="G3"></label>
+          </div>
+        </div>
+      </div>`;
+                initHeaderType(th);
+
+                // Insérer avant la colonne “+” si elle existe
+                const thAdd = trh.querySelector("th.col-add_d");
+                if (thAdd) trh.insertBefore(th, thAdd); else trh.appendChild(th);
+
+                // Colonne neuve = déverrouillée
+                setLockedState(th, table, colUid, false);
+
+                // Corps : une cellule par élève
+                Array.from(tbody.querySelectorAll("tr")).forEach((tr) => {
+                    const eleveId = parseInt(tr.dataset.eleveId, 10);
+                    const td = document.createElement("td");
+                    td.className = "cell-dictee_d";
+                    td.dataset.coluid = colUid;
+
+                    const wrap = document.createElement("div");
+                    wrap.className = "cell-wrapper_d";
+
+                    const inp = document.createElement("input");
+                    inp.type = "text";
+                    inp.className = "input-erreurs_d";
+
+                    const radioWrap = document.createElement("div");
+                    radioWrap.className = "radio-groupe_d";
+                    const name = `groupe_${colUid}_${eleveId}`;
+                    radioWrap.innerHTML = `
+        <label><input type="radio" name="${name}" value="G1"> G1</label>
+        <label><input type="radio" name="${name}" value="G2"> G2</label>
+        <label><input type="radio" name="${name}" value="G3" checked> G3</label>`;
+
+                    const span = document.createElement("span");
+                    span.className = "cell-pourcentage_d";
+                    resetPctBubble(span);
+
+                    wrap.appendChild(inp);
+                    wrap.appendChild(radioWrap);
+                    wrap.appendChild(span);
+                    td.appendChild(wrap);
+
+                    // Insérer avant la cellule “+” si elle existe
+                    const tdAdd = tr.querySelector("td.col-add_d");
+                    if (tdAdd) tr.insertBefore(td, tdAdd); else tr.appendChild(td);
+                });
+
+                setupBilanToggle(th, table, colUid);
+                autoSelectBilanRadios(th, table, colUid); // pré-cochage initial si on est en Bilan
+
+                updateColumnAverage(th, table, colUid);
+
+                const btn = th.querySelector(".btn-verrou_d");
+                btn.addEventListener("click", async () => {
+                    const goingToLock = !getLockedState(th);
+                    clearTimer(columnTimers, colUid);
+                    if (goingToLock) {
+                        await saveDictee(colUid, table, { skipResults: false, lockOnly: false });
+                    }
+                    setLockedState(th, table, colUid, goingToLock);
+                    await saveDictee(colUid, table, { lockOnly: true });
+                });
+
+                attachColumnEvents(th, table, colUid);
+
+                setColState(th, "saving");
+                setTimeout(() => saveDictee(colUid, table, { skipResults: true }), 50);
+
+                renumTable(table);
+            }
+
+            // Colonne “+” finale
+            ensureAddColumn(table, trh, niv);
+
+            // Montage DOM : table PUIS ajout au conteneur, puis au parent
+            tableContainer.appendChild(table);
+            container.appendChild(tableContainer);
+
+            // Exposition
+            window._tables[niv] = table;
+            window._adders[niv] = ajouterDictee;
+        });
+
+
+
+        /* =======================================================================
+           §6 — Sauvegarde (POST /api/dictees) — par colonne
+           ======================================================================= */
+
+        async function saveDictee(colUid, tableEl, options = {}) {
+            const { skipResults = false, lockOnly = false } = options;
+            try {
+                const th = findThByColUid(tableEl, colUid);
+                if (!th) return;
+
+                const niveau = th.dataset.niveau;
+                const isBilan = !!th.querySelector(".checkbox-bilan_d")?.checked;
+                const locked = getLockedState(th);
+                const dateOnly = th.querySelector(".date-dictee_d")?.value || toDateOnlyLocal(new Date());
+
+                // Si la dictée est nouvelle (pas encore d'id), on fixe date+heure de création
+                const isNew = !th.dataset.dicteeId;
+                // Si nouvelle dictée et pas encore d'horodatage, fixe date_dt = date choisie + heure système
+                if (isNew && !th.dataset.dateDt) {
+                    const now = new Date();
+                    const [y, m, d] = (dateOnly || toDateOnlyLocal(now)).split("-").map(Number);
+                    const dtLocal = new Date(y, (m || 1) - 1, d || 1, now.getHours(), now.getMinutes(), now.getSeconds());
+                    th.dataset.dateDt = dtLocal.toISOString(); // UTC
+                }
+
+
+
+                // Lis les nb_mots UNIQUEMENT si pas lockOnly
+                let nbSimple = null, nbG1 = null, nbG2 = null, nbG3 = null;
+                if (!lockOnly) {
+                    if (isBilan) {
+                        nbG1 = parseInt(th.querySelector('.input-nbmots-groupe_d[data-groupe="1"]')?.value, 10);
+                        nbG2 = parseInt(th.querySelector('.input-nbmots-groupe_d[data-groupe="2"]')?.value, 10);
+                        nbG3 = parseInt(th.querySelector('.input-nbmots-groupe_d[data-groupe="3"]')?.value, 10);
+                    } else {
+                        nbSimple = parseInt(th.querySelector(".input-nbmots_d")?.value, 10);
+                    }
+                }
+
+                // Résultats : uniquement si ni skipResults ni lockOnly
+                let resultats = [];
+                if (!skipResults && !lockOnly) {
+                    tableEl.querySelectorAll(`td[data-coluid="${colUid}"]`).forEach((cell) => {
+                        const eleveId = parseInt(cell.closest("tr")?.dataset?.eleveId, 10);
+                        if (!eleveId) return;
+
+                        // erreurs
+                        const raw = (cell.querySelector(".input-erreurs_d")?.value || "").trim().toLowerCase();
+                        let erreurs = null;
+                        if (raw !== "" && raw !== "a") {
+                            const n = parseInt(raw, 10);
+                            if (Number.isFinite(n) && n >= 0) erreurs = n;
+                        }
+
+                        // groupe (bilan) ou null (simple)
+                        // groupe (bilan) ou null (simple)
+                        let groupe = null;
+                        if (isBilan) {
+                            const r = cell.querySelector('.radio-groupe_d input[type="radio"]:checked');
+                            groupe = r ? r.value : "G3";
+                        }
+
+
+                        const nbMots = (() => {
+                            if (isBilan) {
+                                if (groupe === "G1") return nbG1;
+                                if (groupe === "G2") return nbG2;
+                                return nbG3;
+                            }
+                            return nbSimple;
+                        })();
+
+                        resultats.push({
+                            eleve_id: eleveId,
+                            groupe,
+                            erreurs,
+                            nb_mots: Number.isFinite(nbMots) ? nbMots : 0,
+                        });
+                    });
+                }
+
+                const payload = {
+                    dictee_id: th.dataset.dicteeId ? parseInt(th.dataset.dicteeId, 10) : null,
+                    classe_id: classeId,
+                    niveau,
+                    date: dateOnly,
+                    type: isBilan ? "bilan" : "simple",
+                    verrouille: locked
+                };
+
+                // ➕ Ajoute l’horodatage uniquement à la création :
+                // ➕ n'envoyer date_dt QUE à la création
+                if (isNew && th.dataset.dateDt) {
+                    payload.date_dt = th.dataset.dateDt;
+                }
+
+
+
+                // n’ajouter les nb_mots_* que si ce n’est PAS un lock-only
+                if (!lockOnly) {
+                    if (isBilan) {
+                        const g1 = Number.isFinite(nbG1) ? nbG1 : null;
+                        const g2 = Number.isFinite(nbG2) ? nbG2 : null;
+                        const g3 = Number.isFinite(nbG3) ? nbG3 : null;
+                        payload.nb_mots_g1 = g1;
+                        payload.nb_mots_g2 = g2;
+                        payload.nb_mots_g3 = g3;
+                    } else {
+                        payload.nb_mots_simple = Number.isFinite(nbSimple) ? nbSimple : null;
+                    }
+                }
+
+                // n’ajouter les résultats que si ce n’est PAS un lock-only et PAS skipResults
+                if (!skipResults && !lockOnly) {
+                    payload.resultats = resultats;
+                }
+
+                const reqId = th.dataset.requestId || "no-reqid";
+                setColState(th, "saving");
+
+                await postOnce(
+                    `dictee:${classeId}:${niveau}:${colUid}:${reqId}:${dateOnly}:${isBilan ? "bilan" : "simple"}:lock=${locked}`,
+                    async () => {
+                        const r = await fetch("/api/dictees", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(payload),
+                        });
+                        const data = await r.json();
+                        if (!data.ok) throw new Error(data.error || "Erreur inconnue");
+
+                        th.dataset.dicteeId = data.dictee_id;
+
+                        setColState(th, "saved");
+                        th.style.outline = "";
+
+                        if (!lockOnly) {
+                            updateColumnPercents(th, tableEl, colUid);
+                            updateColumnAverage(th, tableEl, colUid);
+                        }
+                    }
+                );
+            } catch (e) {
+                console.error("❌ saveDictee:", e);
+                const th = findThByColUid(tableEl, colUid);
+                if (th) {
+                    th.style.outline = "2px solid red";
+                    setColState(th, "error");
+                }
+                alert("Échec de l'enregistrement de cette dictée. Regarde l'onglet Réseau/Network.");
+            }
+        }
+
+
+        /* =======================================================================
+           §7 — Reload depuis l’API (reconstruction fidèle)
+           ======================================================================= */
+
+        async function reloadFromDB() {
+            try {
+                if (!Number.isFinite(classeId)) return;
+
+                const res = await fetch(`/api/dictees?classe_id=${classeId}`);
+                const data = await res.json();
+                if (!data.ok) return;
+
+                const tablesParNiveau = {};
+                const niveauxAvecDictees = [...new Set(data.dictees.map((d) => d.niveau))];
+
+                // 1) Créer la table de chaque niveau manquant
+                for (const niv of niveauxAvecDictees) {
+                    tablesParNiveau[niv] = window._tables[niv];
+                    if (!tablesParNiveau[niv]) {
+                        const eleves = (window.niveaux || {})[niv] || [];
+                        if (!eleves.length) continue;
+
+                        // (NOUVEAU) bandeau DANS le scroller, avant la table
+                        const tableContainer = document.createElement("div");
+                        tableContainer.className = "table-container_d";
+
+                        const bandeau = document.createElement("div");
+                        bandeau.className = `titre-niveau ${niv.toLowerCase()}`;
+                        bandeau.textContent = niv;
+                        tableContainer.appendChild(bandeau);
+
+
+                        const table = document.createElement("table");
+                        table.className = "table-dictee_d";
+
+                        const thead = document.createElement("thead");
+                        const trh = document.createElement("tr");
+                        trh.innerHTML = `
+              <th class="col-eleve-titre_d">Élèves</th>
+              <th class="col-groupe-titre_d">Groupe</th>`;
+                        thead.appendChild(trh);
+                        table.appendChild(thead);
+
+                        const tbody = document.createElement("tbody");
+                        eleves
+                            .sort((a, b) => a.prenom.localeCompare(b.prenom))
+                            .forEach((e) => {
+                                const tr = document.createElement("tr");
+                                tr.className = "row-eleve_d";
+                                tr.dataset.eleveId = e.id;
+
+                                const tdN = document.createElement("td");
+                                tdN.className = "col-eleve_d";
+                                const prenoms = e.prenom
+                                    .split(" ")
+                                    .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+                                    .join(" ");
+                                tdN.innerHTML = `<span style="color:#00688B;font-weight:bold;">${prenoms}</span> ${e.nom.toUpperCase()}`;
+
+                                const tdG = document.createElement("td");
+                                tdG.className = "col-groupe_d";
+                                const sel = document.createElement("select");
+                                sel.className = "select-groupe_d";
+                                sel.dataset.eleveId = e.id;
+                                ["G1", "G2", "G3"].forEach((g) => {
+                                    const o = document.createElement("option");
+                                    o.value = g;
+                                    o.text = g;
+                                    if (g === getDernierGroupe(e.id)) o.selected = true;
+                                    sel.appendChild(o);
+                                });
+                                sel.addEventListener("change", () => {
+                                    fetch("/changer_groupe", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({
+                                            eleve_id: e.id,
+                                            groupe: sel.value,
+                                            date_changement: new Date().toISOString(),
+                                        }),
+                                    }).then((r) => r.json()).catch(() => alert("Erreur mise à jour groupe"));
+                                });
+                                tdG.appendChild(sel);
+
+                                tr.appendChild(tdN);
+                                tr.appendChild(tdG);
+                                tbody.appendChild(tr);
+                            });
+
+                        table.appendChild(tbody);
+
+                        // 👉 Colonne “+” finale
+                        ensureAddColumn(table, trh, niv);
+
+                        tableContainer.appendChild(table);
+
+                        container.appendChild(tableContainer);
+
+                        tablesParNiveau[niv] = table;
+                        window._tables[niv] = table;
+                    } else {
+                        // S’assurer que la colonne “+” existe pour les tables déjà présentes
+                        const table = tablesParNiveau[niv];
+                        const trh = table.querySelector('thead tr');
+                        ensureAddColumn(table, trh, niv);
+                    }
+                }
+
+                // 2) Injecter chaque dictée DB comme une colonne
+                for (const d of data.dictees) {
+                    const table = tablesParNiveau[d.niveau] || window._tables[d.niveau];
+                    if (!table) continue;
+
+                    const theadRow = table.querySelector("thead tr");
+                    const tbody = table.querySelector("tbody");
+                    const colUid = uid();
+
+                    const resByEleve = (data.resultats || {})[d.id] || {};
+
+                    // ENTÊTE
+                    const th = document.createElement("th");
+                    th.className = "entete-dictee_d";
+                    th.dataset.niveau = d.niveau;
+                    th.dataset.dicteeId = d.id;
+                    th.dataset.coluid = colUid;
+                    th.dataset.requestId = uid();
+                    th.dataset.dateDt = d.date_dt || d.date || "";  // expose l’instant exact au front
+
+                    th.innerHTML = `
+            <div class="th-tools_d">
+              <button class="btn-verrou_d" title="Verrouiller/Déverrouiller">🔒</button>
+              <div class="avg-badge_d cell-pourcentage_d" title="Moyenne de la dictée">--</div>
+            </div>
+            <div class="dictee-num_badge" title="Numéro de dictée"></div>
+            <div class="zone-param_d">
+              <div class="date_d"><input type="date" class="date-dictee_d" lang="en-CA" value="${toDateOnlyString(d.date_dt || d.date || "")}"></div>
+              <div class="checkbox-container_d"><input type="checkbox" class="checkbox-bilan_d" ${d.type === "bilan" ? "checked" : ""}><label>Bilan</label></div>
+              <div class="nbmots_d">
+                <div class="nbmots-label_d simple" style="display:${d.type === "simple" ? "block" : "none"}">
+                  <input type="number" class="input-nbmots_d" value="${d.nb_mots_simple ?? ""}">
+                </div>
+                <div class="nbmots-label_d bilan" style="display:${d.type === "bilan" ? "flex" : "none"}">
+                  <label><input type="number" class="input-nbmots-groupe_d" data-groupe="1" value="${d.nb_mots_g1 ?? ""}"></label>
+                  <label><input type="number" class="input-nbmots-groupe_d" data-groupe="2" value="${d.nb_mots_g2 ?? ""}"></label>
+                  <label><input type="number" class="input-nbmots-groupe_d" data-groupe="3" value="${d.nb_mots_g3 ?? ""}"></label>
+                </div>
+              </div>
+            </div>
+          `;
+                    initHeaderType(th);
+
+                    // 👉 Insérer juste avant la colonne “+”
+                    const thAdd = theadRow.querySelector('th.col-add_d');
+                    if (thAdd) theadRow.insertBefore(th, thAdd); else theadRow.appendChild(th);
+
+                    // CORPS
+                    Array.from(tbody.querySelectorAll("tr")).forEach((tr) => {
+                        const eleveId = parseInt(tr.dataset.eleveId, 10);
+                        const r = resByEleve[eleveId];
+
+                        const td = document.createElement("td");
+                        td.className = "cell-dictee_d";
+                        td.dataset.coluid = colUid;
+
+                        const wrap = document.createElement("div");
+                        wrap.className = "cell-wrapper_d";
+
+                        const input = document.createElement("input");
+                        input.type = "text";
+                        input.className = "input-erreurs_d";
+                        if (r && r.erreurs !== null) input.value = r.erreurs;
+
+                        const radioWrap = document.createElement("div");
+                        radioWrap.className = "radio-groupe_d";
+                        const name = `groupe_${colUid}_${eleveId}`;
+                        radioWrap.innerHTML = `
+              <label><input type="radio" name="${name}" value="G1"> G1</label>
+              <label><input type="radio" name="${name}" value="G2"> G2</label>
+              <label><input type="radio" name="${name}" value="G3"> G3</label>`;
+                        const gSaved = (r && r.groupe) ? r.groupe : "G3";
+                        (radioWrap.querySelector(`input[value="${gSaved}"]`) || radioWrap.querySelector(`input[value="G3"]`)).checked = true;
+
+                        const span = document.createElement("span");
+                        span.className = "cell-pourcentage_d";
+                        resetPctBubble(span);
+                        if (r && r.groupe) {
+                            td.dataset.userGroupe = "1";
+                        }
+                        // Affichage immédiat si données présentes
+                        if (r && r.erreurs !== null) {
+                            const nb = r.nb_mots || d.nb_mots_simple || 0;
+                            const pct = computePct(r.erreurs, nb);
+                            if (pct == null) { resetPctBubble(span); }
+                            else { span.innerHTML = pctHTML(pct); applyPctClass(span, pct); }
+                        }
+
+                        wrap.appendChild(input);
+                        wrap.appendChild(radioWrap);
+                        wrap.appendChild(span);
+                        td.appendChild(wrap);
+
+                        // 👉 Insérer juste avant la cellule “+”
+                        const tdAdd = tr.querySelector('td.col-add_d');
+                        if (tdAdd) tr.insertBefore(td, tdAdd); else tr.appendChild(td);
+                    });
+
+                    // Toggle UI + radios
+                    setupBilanToggle(th, table, colUid);
+
+                    // Verrouillage initial + bouton
+                    const startLocked = !!d.verrouille;
+                    setLockedState(th, table, colUid, startLocked);
+
+                    const btn = th.querySelector(".btn-verrou_d");
+                    btn.addEventListener("click", async () => {
+                        const goingToLock = !getLockedState(th);
+                        clearTimer(columnTimers, colUid);
+                        if (goingToLock) {
+                            await saveDictee(colUid, table, { skipResults: false, lockOnly: false });
+                        }
+                        setLockedState(th, table, colUid, goingToLock);
+                        await saveDictee(colUid, table, { lockOnly: true });
+                    });
+
+                    // État visuel d’init
+                    setColState(th, "saved");
+
+                    // Autosave & % live
+                    attachColumnEvents(th, table, colUid);
+
+                    // Recalcul complet (inclut moyenne)
+                    updateColumnPercents(th, table, colUid);
+                }
+            } catch (e) {
+                console.error("reloadFromDB:", e);
+            }
+
+            // Numérotation finale (1..N) par table
+            renumAll();
+        }
+
+
+        /* =======================================================================
+           §8 — Avertissement fermeture (F5) si brouillons non sauvés
+           ======================================================================= */
+
+        window.addEventListener("beforeunload", (e) => {
+            const hasUnsaved = Array.from(document.querySelectorAll("th.entete-dictee_d"))
+                .some((th) => !th.dataset.dicteeId || ["draft", "saving"].includes(savingState.get(th.dataset.coluid)));
+            if (hasUnsaved) {
+                e.preventDefault();
+                e.returnValue = "";
+            }
+        });
+
+
+        /* =======================================================================
+           §9 — Boot
+           ======================================================================= */
+
+        (async function boot() {
+            await reloadFromDB();
+
+            // ⬅️ ajoute ceci pour que chaque <select.select-groupe_d> ait son wrapper .groupe-wrap
+            wrapAllGroupeSelects();
+
+            // Attends un frame pour que le layout soit prêt, puis centre les colonnes “+”
+            await new Promise(requestAnimationFrame);
+            centerAllPlusColumns(true); // mets true si tu veux un scroll doux
+
+            // Nettoyage défensif
+            document.querySelectorAll(".cell-pourcentage_d").forEach(el => el.removeAttribute("style"));
+        })();
+
+
+
+    </script>
+</div>

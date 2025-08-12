@@ -1,0 +1,57 @@
+<div class="ajout-eleve-container">
+    <h3>Ajouter un élève</h3>
+    <form method="POST" enctype="multipart/form-data" action="{{ url_for('importer_eleve_csv', classe_id=classe.id) }}">
+        <input type="file" name="csv_file" accept=".csv">
+        <button type="submit">📂 Importer élèves (CSV)</button>
+    </form>
+    <form action="{{ url_for('ajouter_eleve', classe_id=classe.id) }}" method="post" class="ajout-eleve-form">
+        <input type="text" name="nom" placeholder="Nom" required>
+        <input type="text" name="prenom" placeholder="Prénom" required>
+        <input type="date" name="date_naissance" required>
+        <input type="text" name="niveau" placeholder="Niveau" required>
+        <button type="submit">Ajouter</button>
+    </form>
+
+    {% if eleves %}
+    <div class="table-container">
+        <h3>Élèves de la classe</h3>
+        <table id="eleves-table" class="display">
+            <thead>
+                <tr>
+                    <th>Nom</th>
+                    <th>Prénom</th>
+                    <th>Date de naissance</th>
+                    <th>Niveau</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for eleve in eleves %}
+                <tr style="cursor: pointer;"
+                    onclick="window.location.href='{{ url_for('detail_eleve', eleve_id=eleve.id, classe_id=classe.id) }}';">
+                    <td>{{ eleve.nom }}</td>
+                    <td>{{ eleve.prenom }}</td>
+                    <td>{{ eleve.date_naissance }}</td>
+                    <td>{{ eleve.niveau }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p>Aucun élève enregistré pour cette classe.</p>
+    {% endif %}
+
+
+</div>
+
+<script>
+    $(document).ready(function () {
+        $('#eleves-table').DataTable({
+            paging: false,
+            info: false,
+            searching: false,
+            order: [[0, 'asc'], [3, 'asc']]
+        });
+    });
+
+</script>

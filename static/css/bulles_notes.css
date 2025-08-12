@@ -1,0 +1,429 @@
+/****************************************************
+ * STYLE GLOBAL
+ ****************************************************/
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background-color: #EDF3FA;
+    color: #333;
+}
+
+/****************************************************
+ * CONTENEUR GLOBAL EN GRILLE (2 COLONNES)
+ ****************************************************/
+.container-global-bulles {
+    display: grid;
+    grid-template-columns: 1fr auto;
+
+    padding: 0px 0px 20px 0px;
+    /* aligné à gauche */
+    align-items: flex-start;
+}
+
+
+/****************************************************
+ * CONTENEUR DES MATIÈRES
+ ****************************************************/
+.matiere-container {
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+    align-items: flex-start;
+    margin-left: 0;
+    padding-left: 0;
+    padding-bottom: 20px;
+    scrollbar-width: none;
+    /* Firefox */
+}
+
+.matiere-container::-webkit-scrollbar {
+    display: none;
+    /* Chrome */
+}
+
+
+/****************************************************
+ * BLOC MATIÈRE
+ ****************************************************/
+.bloc-matiere {
+    position: relative;
+    flex-shrink: 0;
+    width: 120px;
+    transition: width 0.4s ease, margin-left 0.4s ease;
+    background-color: var(--matiere-color);
+    border-radius: 10px;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    min-height: 60px;
+    height: 100%;
+}
+
+/* effet superposition sauf pour le 1er bloc */
+.bloc-matiere:not(:first-child) {
+    margin-left: -40px;
+}
+
+.bloc-matiere.active {
+    width: 400px;
+    z-index: 10;
+}
+
+.bloc-matiere.moved {
+    transform: translateX(50px);
+    z-index: 0;
+}
+
+.bloc-matiere.active.moved {
+    transform: none !important;
+}
+
+
+/****************************************************
+ * TITRE MATIÈRE
+ ****************************************************/
+.titre-matiere {
+    font-weight: bold;
+    padding: 10px;
+    background-color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 40px;
+}
+
+.bloc-matiere.active .titre-matiere {
+    text-align: center;
+}
+
+
+/****************************************************
+ * MOYENNES – PAR MATIÈRE
+ ****************************************************/
+.moyenne-droite {
+    display: none;
+    gap: 5px;
+    align-items: center;
+}
+
+.bloc-matiere.active .moyenne-droite {
+    display: inline-flex;
+    margin-left: auto;
+}
+
+.moyenne-repliee {
+    padding: 5px 10px 10px;
+    background-color: rgba(255, 255, 255, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0 0 10px 10px;
+    height: 28px;
+    min-height: 28px;
+}
+
+.moyenne-repliee .pastille-niveau {
+    margin: 0;
+    font-size: 12px;
+    padding: 3px 10px;
+    transform: translateX(-20px);
+}
+
+.bloc-matiere.active .moyenne-repliee {
+    display: none;
+}
+
+
+/****************************************************
+ * PASTILLE NIVEAU
+ ****************************************************/
+.pastille-niveau {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    width: 35px;
+    /* largeur fixe */
+    height: 15px;
+    /* hauteur constante si tu veux */
+    border-radius: 20px;
+
+    font-size: 13px;
+    font-weight: bold;
+    color: black;
+    text-align: center;
+    white-space: nowrap;
+    box-shadow: 1px 1px 4px rgba(0, 0, 0, 0.3);
+    border: 2px solid rgba(0, 0, 0, 0.2);
+}
+
+/* Couleurs */
+.pastille-niveau.NA {
+    background-color: #e6d6f5;
+    /* lavande pâle */
+    border-color: #c8aee0;
+    color: #000;
+}
+
+.pastille-niveau.PA\- {
+    background-color: #f5d1b5;
+    /* corail lavande chaud */
+    border-color: #dfa886;
+    color: #000;
+}
+
+.pastille-niveau.PA {
+    background-color: #f8eb9c;
+    /* jaune doux pastel */
+    border-color: #d9c46b;
+    color: #000;
+}
+
+.pastille-niveau.PA\+ {
+    background-color: #d4f5b0;
+    /* vert pastel tirant vers anis */
+    border-color: #a6d986;
+    color: #000;
+}
+
+.pastille-niveau.A\- {
+    background-color: #a7e9b7;
+    /* vert pastel doux */
+    border-color: #7acb91;
+    color: #000;
+}
+
+.pastille-niveau.A {
+    background-color: #5cc995;
+    /* vert franc */
+    border-color: #3a9e71;
+    color: #000;
+}
+
+.pastille-niveau.A\+ {
+    background-color: #3dbcb9;
+    /* vert bleuté / turquoise foncé */
+    border-color: #2c9390;
+    color: #000;
+}
+
+
+
+
+.pastille-niveau.D {
+    position: relative;
+    background: linear-gradient(135deg, #cce7ff, #3399ff, #0047ab);
+    /* bleu ciel → vif → foncé */
+    border: 2px solid #4e7fc4;
+    color: #000000;
+    font-weight: bold;
+    text-shadow: 0 0 2px #000;
+    box-shadow:
+        0 0 6px rgba(0, 0, 0, 0.3),
+        inset 0 0 6px rgba(255, 255, 255, 0.3);
+    overflow: hidden;
+    z-index: 1;
+}
+
+.pastille-niveau.D::after {
+    content: "";
+    position: absolute;
+    top: -50%;
+    left: -100%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(100deg,
+            rgba(255, 255, 255, 0) 0%,
+            rgba(255, 255, 255, 0.8) 50%,
+            rgba(255, 255, 255, 0) 100%);
+    transform: skewX(200deg);
+    animation: shimmerFlash 2.5s ease-in-out infinite alternate;
+    pointer-events: none;
+    z-index: 2;
+}
+
+@keyframes shimmerFlash {
+    0% {
+        left: -100%;
+    }
+
+    100% {
+        left: 100%;
+    }
+}
+
+
+
+
+
+
+/****************************************************
+ * CONTENU DES MATIÈRES
+ ****************************************************/
+.contenu-matiere {
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+    overflow: hidden;
+    padding: 0 10px;
+    padding-right: 80px;
+}
+
+.bloc-matiere.active .contenu-matiere {
+    max-height: 2000px;
+    opacity: 1;
+    padding: 10px;
+}
+
+
+/****************************************************
+ * LISTE DES SOUS-MATIÈRES
+ ****************************************************/
+.liste-sous-matieres {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 100%;
+}
+
+.sous-matiere {
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+}
+
+
+/****************************************************
+ * DÉTAILS SOUS-MATIÈRES
+ ****************************************************/
+.detail-sous-matiere {
+    display: none;
+    background-color: rgba(255, 255, 255, 0.85);
+    margin-top: 6px;
+    padding: 8px;
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+.detail-sous-matiere.visible {
+    display: block;
+}
+
+
+/****************************************************
+ * ÉVALUATION & OBJECTIFS
+ ****************************************************/
+.evaluation {
+    background-color: #f9f9f9;
+    border: 1px solid #ccc;
+    margin-bottom: 8px;
+    padding: 6px;
+    border-radius: 5px;
+}
+
+.titre-eval {
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+.objectifs-liste {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.objectif-ligne {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.objectif-texte {
+    font-size: 14px;
+}
+
+.note-objectif {
+    display: flex;
+    align-items: center;
+}
+
+
+/****************************************************
+ * NOTE ÉVAL GLOBALE
+ ****************************************************/
+.ligne-eval {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.note {
+    font-style: italic;
+    font-size: 13px;
+
+    align-items: center;
+}
+
+
+/****************************************************
+ * MOYENNES – À DROITE
+ ****************************************************/
+.bloc-moyennes-aligne {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    min-width: 220px;
+}
+
+.moyenne-eleve {
+    background: #fff;
+    border-radius: 12px;
+    padding: 15px 25px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    margin-bottom: 12px;
+    text-align: center;
+}
+
+.moyenne-classe {
+    background: #f8f8f8;
+    border-radius: 8px;
+    padding: 10px 15px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    text-align: center;
+    font-size: 14px;
+}
+
+.moyenne-eleve .titre,
+.moyenne-classe .titre {
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 5px;
+    color: #444;
+}
+
+.note {
+    font-size: 20px;
+    font-weight: bold;
+    color: #222;
+}
+
+.pastille-niveau.pastille-grande {
+    margin-top: 10px;
+    font-size: 28px;
+    padding: 10px 22px;
+    border-radius: 25px;
+    background-color: #8ae234;
+    color: #000;
+    font-weight: bold;
+    box-shadow: 0 0 6px rgba(0, 0, 0, 0.2);
+}

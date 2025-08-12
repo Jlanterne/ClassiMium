@@ -1,0 +1,336 @@
+/* =========================================================================
+   RAPPORTS — styles page "ajouter_rapport.html"
+   Scopé sous .rapports-wrap_r pour éviter tout conflit global
+   ========================================================================= */
+
+.rapports-wrap_r {
+    --c-bg: #f6f8fb;
+    --c-card: #ffffff;
+    --c-text: #1f2937;
+    --c-sub: #6b7280;
+    --c-border: #e5e7eb;
+    --c-brand: #2563eb;
+    --c-brand-2: #1d4ed8;
+    --c-ok: #16a34a;
+    --c-warn: #d97706;
+    --c-err: #dc2626;
+    --radius: 12px;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 6px 20px rgba(0, 0, 0, .06);
+    --shadow-soft: 0 1px 2px rgba(0, 0, 0, .03), 0 4px 10px rgba(0, 0, 0, .05);
+    color: var(--c-text);
+}
+
+/* Header (titre + retour) */
+.rapports-header_r {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 8px 0 18px;
+}
+
+.rapports-title_r {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: .2px;
+    color: #0f172a;
+}
+
+.btn_r {
+    --btn-bg: var(--c-brand);
+    --btn-bg-h: var(--c-brand-2);
+    --btn-fg: #fff;
+    --btn-br: var(--c-brand-2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--btn-br);
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    font-weight: 600;
+    font-size: 14px;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform .06s ease, background .12s ease, box-shadow .12s ease;
+    box-shadow: var(--shadow-soft);
+}
+
+.btn_r:hover {
+    background: var(--btn-bg-h);
+}
+
+.btn_r:active {
+    transform: translateY(1px);
+}
+
+.btn_r.outline {
+    --btn-bg: #fff;
+    --btn-fg: #111827;
+    --btn-br: var(--c-border);
+    color: var(--btn-fg);
+    background: var(--btn-bg);
+}
+
+.btn_r+.btn_r {
+    margin-left: 8px;
+}
+
+/* Carte formulaire */
+.card_r {
+    background: var(--c-card);
+    border: 1px solid var(--c-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 16px;
+}
+
+/* Grille champs top */
+.grid_r {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.field_r {
+    grid-column: span 4;
+}
+
+.field--full_r {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 980px) {
+    .field_r {
+        grid-column: span 6;
+    }
+}
+
+@media (max-width: 680px) {
+
+    .field_r,
+    .field--full_r {
+        grid-column: 1 / -1;
+    }
+}
+
+/* Inputs */
+.label_r {
+    display: block;
+    font-weight: 600;
+    font-size: 13px;
+    color: #111827;
+    margin: 6px 0 6px;
+}
+
+.input_r,
+.select_r,
+.textarea_r {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--c-border);
+    background: #fff;
+    color: var(--c-text);
+    font-size: 14px;
+    outline: none;
+    transition: border-color .12s ease, box-shadow .12s ease;
+}
+
+.input_r:focus,
+.select_r:focus,
+.textarea_r:focus {
+    border-color: var(--c-brand);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .15);
+}
+
+.textarea_r {
+    min-height: 220px;
+    resize: vertical;
+}
+
+/* Barre méta (heure début/fin + état sauvegarde) */
+.meta_r {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    font-size: 13px;
+    color: var(--c-sub);
+    margin: 8px 0 4px;
+}
+
+.save_r {
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #3730a3;
+    border: 1px solid #e5e7eb;
+    font-weight: 600;
+}
+
+.save_r.is-saving {
+    background: #fff7ed;
+    color: #9a3412;
+}
+
+.save_r.is-ok {
+    background: #ecfdf5;
+    color: #065f46;
+}
+
+.save_r.is-error {
+    background: #fef2f2;
+    color: #991b1b;
+}
+
+/* Boutons export à droite de la barre méta */
+.meta_r .btn_r {
+    padding: 8px 12px;
+    font-size: 13px;
+}
+
+/* ---------- Combo “Élève” (sélecteur custom) ---------- */
+.combo_r {
+    position: relative;
+    width: 100%;
+}
+
+.combo-toggle_r {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--c-border);
+    background: #fff;
+    font-size: 14px;
+    color: var(--c-text);
+    cursor: pointer;
+    transition: border-color .12s ease, box-shadow .12s ease;
+}
+
+.combo_r.open_r .combo-toggle_r,
+.combo-toggle_r:focus {
+    border-color: var(--c-brand);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .15);
+}
+
+.combo-panel_r {
+    position: absolute;
+    inset: auto 0 0 0;
+    transform: translateY(calc(100% + 6px));
+    z-index: 60;
+    background: #fff;
+    border: 1px solid var(--c-border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    padding: 8px;
+}
+
+.combo-search_r {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--c-border);
+    font-size: 14px;
+    outline: none;
+    margin-bottom: 8px;
+}
+
+.combo-search_r:focus {
+    border-color: var(--c-brand);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .15);
+}
+
+.combo-list_r {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 220px;
+    overflow: auto;
+}
+
+.combo-list_r li {
+    margin: 0;
+    padding: 0;
+}
+
+.combo-item_r {
+    width: 100%;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 10px;
+    border-radius: 8px;
+    border: 0;
+    background: transparent;
+    color: var(--c-text);
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.combo-item_r:hover,
+.combo-item_r:focus {
+    background: #f1f5f9;
+    outline: none;
+}
+
+.combo-item_r .prenom_r {
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.combo-item_r .nom_r {
+    color: #475569;
+    font-weight: 600;
+    margin-left: 4px;
+}
+
+/* ---------- TinyMCE (conteneur + petit ajustement) ---------- */
+/* NE PAS cibler .tox globalement. On ne touche qu’à l’enveloppe locale. */
+#contenu {
+    min-height: 320px;
+}
+
+.rapports-wrap_r .tox.tox-tinymce {
+    border-radius: 12px;
+    box-shadow: var(--shadow-soft);
+    border: 1px solid var(--c-border);
+}
+
+.rapports-wrap_r .tox .tox-edit-area__iframe {
+    background: #fff;
+}
+
+/* Petite bande “tips” éventuelle */
+.tip_r {
+    margin: 12px 0 0;
+    font-size: 13px;
+    color: var(--c-sub);
+}
+
+/* Espace de respi sous la page */
+.rapports-wrap_r {
+    padding-bottom: 24px;
+}
+
+/* --------- Helpers d’espacement --------- */
+.mt-8 {
+    margin-top: 8px;
+}
+
+.mt-12 {
+    margin-top: 12px;
+}
+
+.mt-16 {
+    margin-top: 16px;
+}

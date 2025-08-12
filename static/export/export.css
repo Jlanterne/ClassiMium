@@ -1,0 +1,120 @@
+/* === Export PDF (Playwright / wkhtmltopdf) === */
+@page {
+    size: A4;
+    margin: 20mm;
+}
+
+/* Police & base */
+body {
+    font-family: Arial, "Liberation Sans", "DejaVu Sans", sans-serif;
+    font-size: 12pt;
+    line-height: 1.5;
+    color: #000;
+}
+
+/* Titres (aligne-toi à ton reference.docx) */
+h1 {
+    color: #c00000;
+    font-size: 20pt;
+    margin: .3em 0 .2em;
+}
+
+h2 {
+    color: #c00000;
+    font-size: 16pt;
+    margin: .25em 0 .2em;
+}
+
+h3 {
+    color: #c00000;
+    font-size: 14pt;
+    margin: .2em 0 .15em;
+}
+
+/* Paragraphes & listes */
+p {
+    margin: 0 0 8pt;
+}
+
+ul,
+ol {
+    margin: 6pt 0 8pt 22pt;
+}
+
+li {
+    margin: 2pt 0;
+}
+
+/* Alignements utilitaires (TinyMCE) */
+.alignleft {
+    text-align: left;
+}
+
+.aligncenter {
+    text-align: center;
+}
+
+.alignright {
+    text-align: right;
+}
+
+.alignjustify {
+    text-align: justify;
+}
+
+/* Tables propres */
+table {
+    border-collapse: collapse;
+    width: 100%;
+    page-break-inside: auto;
+}
+
+table,
+th,
+td {
+    border: 1px solid #ddd;
+}
+
+th,
+td {
+    padding: 6px 8px;
+    vertical-align: top;
+}
+
+th {
+    background: #f5f5f5;
+    font-weight: bold;
+}
+
+/* Images */
+img {
+    max-width: 100%;
+    height: auto;
+    page-break-inside: avoid;
+}
+
+/* Citations & code (si besoin) */
+blockquote {
+    border-left: 3px solid #ddd;
+    padding: 6px 10px;
+    margin: 8pt 0;
+    color: #333;
+}
+
+code,
+pre {
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 10pt;
+}
+
+pre {
+    white-space: pre-wrap;
+    background: #fafafa;
+    border: 1px solid #eee;
+    padding: 6px 8px;
+}
+
+/* Coupure de page manuelle */
+.page-break {
+    break-before: page;
+}

@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- ===== Titre (surchargé par les pages enfants) ===== -->
+    <title>{% block title %}Gestion de classe{% endblock %}</title>
+
+    <!-- ===== CSS globales du site ===== -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/bulles_notes.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/overrides.css', v=8) }}">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+
+    <!-- ===== Librairies externes (CDN) ===== -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+
+    <!-- ===== CSS additionnel (pages enfants) ===== -->
+    {% block extra_css %}{% endblock %}
+
+    <!-- =======================================================================
+       RÉGLAGES UI — transmis côté serveur via inject_settings()
+       On imprime le JSON *brut* dans un <script type="application/json">,
+       puis on le lit proprement côté JS (pas de variables en dur).
+     ======================================================================= -->
+    <!-- 1) JSON venant du context_processor -->
+    <script id="ui-settings" type="application/json">
+  {{ ui | tojson }}
+</script>
+
+    <!-- 2) Expose window.UI + data-attributes (UNE SEULE FOIS) -->
+    <script>
+        (function () {
+            try {
+                window.UI = Object.assign(
+                    { anim_mode: 'slide', anim_duration: 520 },
+                    JSON.parse(document.getElementById('ui-settings')?.textContent || '{}')
+                );
+            } catch {
+                window.UI = { anim_mode: 'slide', anim_duration: 520 };
+            }
+            console.info('[UI]', window.UI);
+            document.documentElement.dataset.animMode = window.UI.anim_mode;
+            document.documentElement.dataset.animDuration = String(window.UI.anim_duration);
+        })();
+    </script>
+
+
+
+
+
+
+    <!-- ===== Fallback jQuery local si le CDN tombe ===== -->
+    <script>
+        if (!window.jQuery) {
+            console.warn('CDN jQuery indisponible → chargement local…');
+            var s = document.createElement('script');
+            s.src = "{{ url_for('static', filename='vendor/jquery-3.7.1.min.js') }}";
+            document.head.appendChild(s);
+        }
+        // Marqueur “JS prêt” si tu en as besoin dans ton CSS
+        document.documentElement.classList.add('js-ready');
+    </script>
+
+    <!-- =======================================================================
+       STYLES PANNEAU & STRATES — Empêche les “sauts” de layout en fin d’anim
+       et garantit que le panneau passe SOUS la barre d’actions.
+     ======================================================================= -->
+    <style>
+        /* Le panneau principal (cartes du contenu) */
+        .panel-card {
+            display: flow-root;
+            /* tue le margin-collapsing du 1er enfant */
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, .08);
+            padding: 16px;
+            will-change: transform, opacity, clip-path;
+            contain: layout paint;
+            /* stabilise le layout pendant l’anim */
+        }
+
+        .panel-card> :first-child {
+            margin-top: 0;
+        }
+
+        /* titres sans “saut” */
+
+        /* Le conteneur qui s’anime (descend/monte derrière la barre d’actions) */
+        .panel-from-actions {
+            position: relative;
+            z-index: 1;
+            /* sous la barre d’actions */
+            display: flow-root;
+            overflow: hidden;
+            /* requis pour wipe/clip */
+            min-height: 12px;
+            /* évite micro-jumps */
+            transform: translateZ(0);
+            /* lissage GPU */
+        }
+
+        /* La barre d’actions reste au-dessus */
+        .actions-classe {
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Ligne de séparation réutilisable (pour tes pages de paramètres, etc.) */
+        .divider {
+            border: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
+            margin: 14px 0;
+        }
+
+        /* Accessibilité : si l’OS demande “réduire les animations”, on coupe tout */
+        @media (prefers-reduced-motion: reduce) {
+            .panel-from-actions {
+                transition: none !important;
+                animation: none !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- ===== Layout principal (sidebar + contenu) ===== -->
+    <div class="main-container">
+
+        <!-- ================= Sidebar (au-dessus grâce au z-index) ================= -->
+        <aside class="sidebar">
+            <!-- Logo -->
+            <table style="border-collapse:separate;border-spacing:8px">
+                <tr>
+                    <td
+                        style="background-color:rgba(255,255,255,.6);border-radius:12px;box-shadow:0 0 15px rgba(0,0,0,.1);padding:10px;vertical-align:top;">
+                        <img src="{{ url_for('static', filename='photos/logo_taille_petite.svg') }}" alt="Logo"
+                            style="display:block;max-width:100%;height:auto;margin-bottom:5px;">
+                    </td>
+                </tr>
+            </table>
+            <br>
+
+            <!-- Bouton “Créer une nouvelle classe” (optionnel) -->
+            {% if classe %}
+            <form method="get" action="{{ url_for('page_classe', classe_id=classe.id) }}">
+                <input type="hidden" name="mode" value="creation_classe">
+                <button type="submit" class="btn-nouvelle-classe">➕ Créer une nouvelle classe</button>
+            </form>
+            {% endif %}
+
+            <hr style="margin:20px 0">
+
+            <!-- Liste des classes -->
+            {% for cl in toutes_les_classes %}
+            <form action="{{ url_for('page_classe', classe_id=cl.id) }}" method="get">
+                <button type="submit" class="btn-classe">{{ cl.niveaux | join(' / ') }} {{ cl.annee }}</button>
+            </form>
+            {% endfor %}
+
+            <hr style="margin:20px 0">
+
+            <!-- Lien Paramètres -->
+            <form action="{{ url_for('config_export') }}" method="get">
+                <button type="submit" class="btn-classe btn-parametres">
+                    <i class="fa-solid fa-gear" style="margin-right:6px;"></i> Paramètres
+                </button>
+            </form>
+        </aside>
+        <!-- /sidebar -->
+
+        <!-- =========================== Contenu =========================== -->
+        <main class="content">
+            <!-- Bandeau titre (les enfants peuvent surcharger “header_title”) -->
+            <div class="bandeau-titre">
+                {% block header_title %}
+                {% if classe %}
+                Classe {{ classe.niveaux | join(' / ') }} {{ classe.annee }}
+                {% elif evaluation %}
+                Classe {{ evaluation.classe_id }}
+                {% else %}
+                Gestion de classe
+                {% endif %}
+                {% endblock %}
+            </div>
+
+            {#
+            Messages flash : si tu veux les enlever partout, laisse ce bloc commenté.
+            Sinon, décommente et style-les avec une classe “toast” ou autre.
+            #}
+            {#
+            {% with messages = get_flashed_messages() %}
+            {% if messages %}
+            <ul class="flashes">
+                {% for message in messages %}
+                <li>{{ message }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+            {% endwith %}
+            #}
+
+            <!-- Contenu spécifique à chaque page -->
+            {% block content %}{% endblock %}
+        </main>
+        <!-- /content -->
+    </div>
+    <!-- /main-container -->
+
+    <!-- =======================================================================
+       MOTEUR D’ANIMATIONS (unique)
+       - lit window.UI.anim_mode / window.UI.anim_duration
+       - stabilise “fade”, “wipe”, “clip” (pas de reflow ⇒ pas de saut)
+       - “slide” descend à l’entrée et REMONTE à la sortie
+       - intercepte les clics/submit dans .actions-classe pour jouer la sortie
+     ======================================================================= -->
+    <script>
+        (function () {
+            const UI = window.UI || { anim_mode: 'slide', anim_duration: 520 };
+            const EASE = 'cubic-bezier(.22,.61,.36,1)';
+
+            function play(el, keyframes, opts) {
+                const anim = el.animate(keyframes, { ...opts, fill: 'both' });
+                return anim.finished.then(() => {
+                    if (anim.commitStyles) anim.commitStyles(); // fige l'état final
+                    anim.cancel(); // supprime l’anim sans perdre l’état figé
+                });
+            }
+
+            async function animatePanel(el, mode = UI.anim_mode, direction = 'in', duration = UI.anim_duration) {
+                const d = Math.max(200, Math.min(+duration || 520, 2000));
+                el.style.transformOrigin = 'top';
+
+                // Neutralise toute transition CSS concurrente pendant WAAPI
+                const prevTransition = el.style.transition;
+                el.style.transition = 'none';
+
+                // PRIMING : état de départ (évite les entrées “qui ne se jouent pas”)
+                if (direction === 'in') {
+                    if (mode === 'slide') { el.style.transform = 'translateY(-16px)'; el.style.opacity = '0'; }
+                    else if (mode === 'fade') { el.style.opacity = '0'; }
+                    else if (mode === 'scale') { el.style.transform = 'scale(.98)'; el.style.opacity = '0'; }
+                    else if (mode === 'wipe') { el.style.transform = 'scaleY(0.995)'; el.style.opacity = '0'; }
+                    else if (mode === 'clip') { el.style.clipPath = 'inset(0 0 100% 0)'; el.style.opacity = '0'; }
+                    el.getBoundingClientRect(); // force reflow
+                } else {
+                    // En sortie : qu’on soit en fade/wipe/clip/slide, on bloque les interactions
+                    el.style.pointerEvents = 'none';
+                }
+
+                // KEYFRAMES
+                let kf = [];
+                switch (mode) {
+                    case 'fade':
+                        kf = direction === 'in'
+                            ? [{ opacity: 0 }, { opacity: 1 }]
+                            : [{ opacity: 1 }, { opacity: 0 }];
+                        break;
+
+                    case 'scale':
+                        kf = direction === 'in'
+                            ? [{ transform: 'scale(.98)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }]
+                            : [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.98)', opacity: 0 }];
+                        break;
+
+                    case 'wipe': // scaleY => pas de reflow
+                        kf = direction === 'in'
+                            ? [{ transform: 'scaleY(0.995)', opacity: 0 }, { transform: 'scaleY(1)', opacity: 1 }]
+                            : [{ transform: 'scaleY(1)', opacity: 1 }, { transform: 'scaleY(0.995)', opacity: 0 }];
+                        break;
+
+                    case 'clip': // clip-path => pas de reflow
+                        kf = direction === 'in'
+                            ? [{ clipPath: 'inset(0 0 100% 0)', opacity: 0 }, { clipPath: 'inset(0 0 0 0)', opacity: 1 }]
+                            : [{ clipPath: 'inset(0 0 0 0)', opacity: 1 }, { clipPath: 'inset(0 0 100% 0)', opacity: 0 }];
+                        break;
+
+                    default: // slide
+                        kf = direction === 'in'
+                            ? [{ transform: 'translateY(-16px)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }]
+                            : [{ transform: 'translateY(0)', opacity: 1 }, { transform: 'translateY(-16px)', opacity: 0 }];
+                        break;
+                }
+
+                // Joue l'anim
+                await play(el, kf, { duration: d, easing: EASE });
+
+                // >>> IMPORTANT : pas de “POP” après une sortie
+                if (direction === 'out') {
+                    // on garde l'état final (opacity:0 / translateY(-16px) / clip etc.)
+                    // pour que le panneau ne se ré-affiche pas avant la navigation
+                    return;
+                }
+
+                // Nettoyage léger après une entrée
+                el.style.removeProperty('transform');
+                el.style.removeProperty('opacity');
+                el.style.removeProperty('clip-path');
+                el.style.removeProperty('transform-origin');
+
+                // Restaure la transition CSS précédente (si tu en avais besoin)
+                el.style.transition = prevTransition || '';
+            }
+
+            // ... le reste de ton script ne change pas ...
+            window.PanelFX = { animatePanel };
+        })();
+    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // 1) on cible le premier panneau rendu par le serveur
+            const first =
+                document.querySelector('main.content .panel-from-actions') ||
+                document.querySelector('main.content .panel-card');
+            if (!first) return;
+
+            // 2) on neutralise toute transform héritée avant l’animation d’entrée
+            first.style.transform = 'none';   // <= c’est ICI
+            first.style.opacity = '1';
+
+            // 3) on joue l’animation d’entrée avec les réglages BDD
+            const mode = (window.UI && window.UI.anim_mode) || 'slide';
+            const dur = (window.UI && window.UI.anim_duration) || 520;
+            window.PanelFX.animatePanel(first, mode, 'in', dur);
+        });
+    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const zone =
+                document.querySelector('.actions-classe');
+            const panel =
+                document.querySelector('main.content .panel-from-actions') ||
+                document.querySelector('main.content .panel-card');
+            if (!zone || !panel) return;
+
+            const mode = (window.UI && window.UI.anim_mode) || 'slide';
+            const dur = (window.UI && window.UI.anim_duration) || 520;
+
+            zone.addEventListener('click', (e) => {
+                const a = e.target.closest('a[href]');
+                if (!a) return;
+                const url = new URL(a.href, location.href);
+                if (url.origin !== location.origin) return; // liens externes => pas d’anim
+                e.preventDefault();
+                window.PanelFX
+                    .animatePanel(panel, mode, 'out', Math.max(200, dur - 80))
+                    .then(() => { location.href = a.href; });
+            });
+
+            zone.addEventListener('submit', (e) => {
+                const form = e.target.closest('form');
+                if (!form || (form.method || 'GET').toUpperCase() !== 'GET') return;
+                e.preventDefault();
+                window.PanelFX
+                    .animatePanel(panel, mode, 'out', Math.max(200, dur - 80))
+                    .then(() => form.submit());
+            });
+        });
+    </script>
+
+
+
+
+    <!-- =======================================================================
+       DataTables : init sécurisée (zéro double init)
+     ======================================================================= -->
+    <script>
+        (function initDataTables() {
+            if (!window.jQuery) { console.warn('jQuery absent → skip DataTables'); return; }
+
+            jQuery(function ($) {
+                const $tbl = $('#eleves-table');
+                if (!$tbl.length || !$.fn || !$.fn.DataTable) return;
+
+                if ($.fn.DataTable.isDataTable($tbl)) {
+                    $tbl.DataTable().columns.adjust().draw(false);
+                    return;
+                }
+
+                $tbl.DataTable({
+                    paging: false,
+                    info: false,
+                    searching: false,
+                    order: [],
+                    columnDefs: [{ targets: 3, orderData: [3, 0] }]
+                });
+
+                // Tri custom sur “Niveau” (col 3)
+                const table = $tbl.DataTable();
+                const $th3 = $tbl.find('thead th').eq(3);
+                if ($th3.length) {
+                    $th3.off('click.dt-niveau').on('click.dt-niveau', function () {
+                        const cur = table.order();
+                        let dir = 'asc';
+                        if (cur.length && cur[0][0] === 3) dir = (cur[0][1] === 'asc') ? 'desc' : 'asc';
+                        table.order([[3, dir], [0, 'asc']]).draw();
+                    });
+                }
+            });
+        })();
+    </script>
+
+    <!-- ===== JS additionnel (pages enfants) ===== -->
+    {% block extra_js %}{% endblock %}
+</body>
+
+</html>

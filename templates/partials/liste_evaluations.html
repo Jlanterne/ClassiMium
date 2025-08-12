@@ -1,0 +1,154 @@
+<h3>Évaluations de la classe</h3>
+
+<form method="get" action="{{ url_for('page_classe', classe_id=classe.id) }}">
+    <input type="hidden" name="mode" value="liste_evaluations">
+
+    <table>
+        <thead>
+            <tr>
+                <!-- Niveau -->
+                <th>
+                    <select name="filtre_niveau" onchange="this.form.submit()">
+                        <option value="">Niveau</option>
+                        {% for niveau in niveaux_filtres %}
+                        <option value="{{ niveau }}" {% if request.args.get('filtre_niveau')==niveau %}selected{% endif
+                            %}>
+                            {{ niveau }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </th>
+
+                <!-- Matière -->
+                <th>
+                    <select name="filtre_matiere" onchange="this.form.submit()">
+                        <option value="">Matière</option>
+                        {% for matiere in matieres %}
+                        <option value="{{ matiere.nom }}" {% if request.args.get('filtre_matiere')==matiere.nom
+                            %}selected{% endif %}>
+                            {{ matiere.nom }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </th>
+
+                <!-- Sous-matière -->
+                <th>
+                    <select name="filtre_sous_matiere" onchange="this.form.submit()">
+                        <option value="">Sous-matière</option>
+                        {% for sm in sous_matieres %}
+                        <option value="{{ sm.nom }}" {% if request.args.get('filtre_sous_matiere')==sm.nom %}selected{%
+                            endif %}>
+                            {{ sm.nom }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </th>
+
+                <!-- Titre -->
+                <th>Titre</th>
+
+                <!-- Date -->
+                <th>Date</th>
+
+                <!-- Action -->
+                <th>Action</th>
+
+                <!-- Avancement -->
+                <th>Avancement</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for eval in evaluations %}
+            <tr>
+                <!-- Niveau -->
+                <td>
+                    {% set niveaux = eval.niveaux if eval.niveaux is defined else [] %}
+                    {{ niveaux | join(' / ') }}
+                </td>
+
+                <!-- Matière -->
+                <td>
+                    {% if eval.matiere %}
+                    <span class="bulle-matiere-{{ eval.matiere | replace(' ', '') }}">
+                        {{ eval.matiere }}
+                    </span>
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+
+                <!-- Sous-matière -->
+                <td>
+                    {% if eval.sous_matiere %}
+                    <span class="bulle-sousmatiere-{{ eval.sous_matiere | replace(' ', '') }}">
+                        {{ eval.sous_matiere }}
+                    </span>
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+
+                <!-- Titre -->
+                <td>{{ eval.titre }}</td>
+
+                <!-- Date -->
+                <td>{{ eval.date }}</td>
+
+                <!-- Action -->
+                <td>
+                    <div class="action-button-container">
+                        <!-- Bouton Commencer / Continuer -->
+                        {% set niveau_par_defaut = eval.niveaux[0] if eval.niveaux else None %}
+                        {% if niveau_par_defaut %}
+                        <a class="action-button icon-btn"
+                            href="{{ url_for('saisir_resultats', classe_id=classe.id, evaluation_id=eval.id, niveau=eval.niveaux[0]) }}"
+                            title="Continuer">
+                            <i class="fas fa-play"></i>
+                        </a>
+                        {% else %}
+                        <a class="action-button icon-btn"
+                            href="{{ url_for('saisir_resultats', classe_id=classe.id, evaluation_id=eval.id, niveau=eval.niveaux[0]) }}"
+                            title="Commencer">
+                            <i class="fas fa-play"></i>
+                        </a>
+                        {% endif %}
+
+                        <!-- Bouton Modifier -->
+                        <a class="action-button modify icon-btn"
+                            href="{{ url_for('modifier_evaluation', evaluation_id=eval.id) }}" title="Modifier">
+                            <i class="fas fa-pen"></i>
+                        </a>
+
+                        <!-- Bouton Supprimer avec confirmation -->
+                        <form method="POST" action="{{ url_for('supprimer_evaluation', evaluation_id=eval.id) }}"
+                            onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette évaluation et tous ses résultats associés ?');"
+                            style="display:inline-block; margin: 0;">
+                            <input type="hidden" name="classe_id" value="{{ classe.id }}">
+                            <button type="submit" class="action-button delete icon-btn" title="Supprimer">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </form>
+                    </div>
+                </td>
+
+
+
+                <!-- Avancement -->
+                <td>
+                    {% set avancement = (avancements.get(eval.id) or 0) | int %}
+                    {% if avancement == 100 %}
+                    <div class="checkmark">✔</div>
+                    {% else %}
+                    <div class="progress-bar small">
+                        <div class="progress-fill progress-{{ avancement }}"></div>
+                    </div>
+                    <div class="progress-text">{{ avancement }} %</div>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</form>

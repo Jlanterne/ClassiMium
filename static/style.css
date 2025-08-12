@@ -1,0 +1,1213 @@
+/* =========================================================================
+   STYLE GLOBAL — Gestion de classe
+   =========================================================================
+   Sections :
+   0) Base & reset
+   1) Layout (main-container, sidebar, content)
+   2) Bandeau titre
+   3) Boutons d'action
+   4) Formulaires
+   5) Tableaux (généraux)
+   6) Tableaux résultats/saisie
+   7) Sélecteurs de niveau & bulles (matières / sous-matières)
+   8) Carte identité (fiche élève)
+   9) Formulaire dictée
+   10) Animation panneau (slide depuis le menu, menu au-dessus)
+   ========================================================================= */
+
+
+/* =========================
+   0) Base & reset
+   ========================= */
+/* Variables utilisées par le layout et l’animation */
+:root {
+    --sidebar-w: 250px;
+    /* largeur du menu latéral (doit correspondre à .sidebar) */
+    --gap-side: 16px;
+    /* petit écart visuel lors de la sortie du panneau */
+}
+
+/* Reset simple / couleurs globales */
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background-color: #EDF3FA;
+    color: #333;
+}
+
+h2,
+h3 {
+    margin-top: 0;
+}
+
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+
+/* =========================
+   1) Layout (structure)
+   ========================= */
+/* Conteneur principal : sidebar + contenu */
+.main-container {
+    display: flex;
+    min-height: 100vh;
+    width: 100vw;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    /* évite le scroll horizontal pendant l’anim */
+}
+
+/* Menu latéral (toujours au-dessus du panneau) */
+.sidebar {
+    width: var(--sidebar-w);
+    background-color: #00688B;
+    color: #fff;
+    padding: 20px;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1000;
+    /* >>> le menu passe AU-DESSUS du panneau */
+}
+
+/* Contenu principal (la scène de l’animation) */
+.content {
+    flex: 1;
+    padding: 40px 30px;
+    min-width: 1400px;
+    /* ajuste selon tes écrans */
+    width: 100%;
+    box-sizing: border-box;
+    position: relative;
+    /* contexte z-index + base pour le panneau */
+    overflow: visible;
+    /* permet au panneau de déborder sous le menu */
+}
+
+
+/* =========================
+   2) Bandeau titre
+   ========================= */
+.bandeau-titre {
+    background-color: #4078A0;
+    color: #fff;
+    padding: 20px;
+    font-size: 26px;
+    font-weight: bold;
+    border-radius: 10px;
+    text-align: center;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+
+/* =========================
+   3) Boutons d'action
+   ========================= */
+.action-button {
+    background-color: #B5C800;
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-weight: bold;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    transition: background-color .3s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    text-decoration: none;
+    font-size: 16px;
+    border: none;
+    margin-bottom: 20px;
+}
+
+.action-button:hover {
+    background-color: #6B973F;
+}
+
+/* Petits boutons icône (dans les tableaux) */
+.action-button.icon-btn {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    margin: 0 8px 0 0;
+    font-size: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    transition: background-color .3s ease, filter .2s ease;
+    vertical-align: middle;
+}
+
+.action-button.icon-btn:hover {
+    filter: brightness(.8);
+}
+
+.action-button.icon-btn i {
+    pointer-events: none;
+}
+
+.action-button.icon-btn+.action-button.icon-btn,
+.action-button.icon-btn+form {
+    margin-left: 8px;
+}
+
+/* Variantes couleur pour actions */
+.action-button.modify.icon-btn {
+    background-color: #007BFF;
+}
+
+.action-button.modify.icon-btn:hover {
+    background-color: #0056b3;
+}
+
+.action-button.delete.icon-btn {
+    background-color: #dc3545;
+}
+
+.action-button.delete.icon-btn:hover {
+    background-color: #a71d2a;
+}
+
+/* Conteneur horizontal de boutons (dans cellules de tableau) */
+.action-button-container {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    white-space: nowrap;
+}
+
+.action-button-container form {
+    display: inline-block;
+    margin: 0;
+}
+
+
+/* =========================
+   4) Formulaires
+   ========================= */
+form {
+    max-width: 900px;
+    margin: 0;
+    padding-left: 20px;
+    box-sizing: border-box;
+}
+
+.form-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.form-row label {
+    width: 150px;
+    font-weight: bold;
+}
+
+.form-row input,
+.form-row select {
+    flex: 1;
+    padding: 10px;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background-color: #f9f9f9;
+    box-sizing: border-box;
+}
+
+#objectifs-container {
+    margin-top: 20px;
+}
+
+.valider-btn,
+.annuler-btn {
+    padding: 10px 20px;
+    border-radius: 6px;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+    display: inline-block;
+    font-size: 16px;
+}
+
+.valider-btn {
+    background-color: #B5C800;
+    color: #fff;
+    margin-right: 15px;
+}
+
+.valider-btn:hover {
+    background-color: #6B973F;
+}
+
+.annuler-btn {
+    background-color: #ccc;
+    color: #000;
+}
+
+.annuler-btn:hover {
+    background-color: #bbb;
+}
+
+
+/* =========================
+   5) Tableaux (généraux)
+   ========================= */
+.table-container {
+    margin-top: 30px;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    background-color: #fff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    overflow-x: auto;
+    /* scroll horizontal si besoin */
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 16px;
+    margin-left: 0;
+}
+
+thead {
+    background-color: #00688B;
+    color: #fff;
+}
+
+th,
+td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #ddd;
+    text-align: left;
+    vertical-align: middle;
+}
+
+tbody tr:nth-child(even) {
+    background-color: #EDF3FA;
+}
+
+
+/* =========================
+   6) Tableaux résultats/saisie
+   ========================= */
+.saisie-resultats {
+    margin-left: 0;
+    max-width: fit-content;
+}
+
+.table-resultats {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15px;
+    margin-top: 20px;
+    box-sizing: border-box;
+}
+
+.table-resultats thead {
+    background-color: #00688B;
+    color: #fff;
+}
+
+.table-resultats thead tr {
+    height: 140px;
+}
+
+.table-resultats thead th {
+    padding: 8px 6px;
+    width: 80px;
+    max-width: 80px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+/* Texte d’en-tête pivoté à 90° dans une div interne */
+.table-resultats thead th div.rotate-90 {
+    width: 80px;
+    height: 140px;
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    font-size: 12px;
+    line-height: 1.3;
+    transform-origin: center center;
+    transform: rotate(-90deg);
+    margin: 0 auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0 6px;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.table-resultats th,
+.table-resultats td {
+    border: 1px solid #ccc;
+}
+
+/* Cellule prénom + nom (tronquée proprement) */
+.table-resultats td.nom-prenom {
+    max-width: 220px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    text-align: left;
+}
+
+.table-resultats td.nom-prenom .prenom {
+    font-weight: bold;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.table-resultats td.nom-prenom .nom {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+    display: inline-block;
+    vertical-align: bottom;
+}
+
+/* Colonne Absent (checkbox) */
+.table-resultats td:nth-child(2),
+.table-resultats thead th:nth-child(2) {
+    width: 60px;
+    max-width: 60px;
+    text-align: center;
+}
+
+
+/* =========================
+   7) Niveaux & bulles
+   ========================= */
+/* Sélecteur de niveau avec couleurs douces */
+.select-niveau {
+    padding: 4px;
+    border-radius: 4px;
+    border: 1px solid #aaa;
+    font-size: 13px;
+    transition: background-color .3s ease;
+    color: #000;
+}
+
+.select-niveau.A {
+    background-color: #c8e6c9;
+    color: #256029;
+}
+
+.select-niveau.PA {
+    background-color: #fff9c4;
+    color: #6f6000;
+}
+
+.select-niveau.NA {
+    background-color: #ffcdd2;
+    color: #8b0000;
+}
+
+.select-niveau.default {
+    background-color: #fff;
+    color: #000;
+}
+
+/* Bulle niveau générique */
+.niveau-bulle {
+    display: inline-block;
+    padding: 6px 12px;
+    margin-left: 10px;
+    background-color: #ccc;
+    color: #333;
+    font-weight: bold;
+    border-radius: 12px;
+    text-decoration: none;
+    transition: background-color .3s ease;
+    white-space: nowrap;
+}
+
+.niveau-bulle:hover {
+    background-color: #bbb;
+}
+
+.niveau-selectionne {
+    background-color: #4078A0;
+    color: #fff;
+}
+
+/* Bulles matières (palette) */
+.bulle-matiere-Français {
+    background-color: #87cefa;
+    color: #000;
+}
+
+.bulle-matiere-Mathématiques {
+    background-color: #f4a460;
+    color: #000;
+}
+
+.bulle-matiere-QLM {
+    background-color: #98fb98;
+    color: #000;
+}
+
+.bulle-matiere-EMC {
+    background-color: #a9a9a9;
+    color: #fff;
+}
+
+.bulle-matiere-Artsplastiques {
+    background-color: #a0522d;
+    color: #fff;
+}
+
+.bulle-matiere-Musique {
+    background-color: #7b68ee;
+    color: #fff;
+}
+
+.bulle-matiere-EPS {
+    background-color: #ffff00;
+    color: #000;
+}
+
+.bulle-matiere-Anglais {
+    background-color: #ff4500;
+    color: #fff;
+}
+
+.bulle-matiere-Autres {
+    background-color: #607D8B;
+    color: #fff;
+}
+
+.bulle-matiere-Français,
+.bulle-matiere-Mathématiques,
+.bulle-matiere-QLM,
+.bulle-matiere-EMC,
+.bulle-matiere-Artsplastiques,
+.bulle-matiere-Musique,
+.bulle-matiere-EPS,
+.bulle-matiere-Anglais,
+.bulle-matiere-Autres {
+    padding: 3px 8px;
+    border-radius: 12px;
+    display: inline-block;
+    margin: 2px 4px;
+    font-weight: bold;
+    font-size: .8rem;
+    white-space: nowrap;
+}
+
+/* Bulles sous-matières (couleurs) */
+.bulle-sousmatiere-Orthographe {
+    background: #32cd32;
+    color: #fff;
+}
+
+.bulle-sousmatiere-Vocabulaire {
+    background: #8a2be2;
+    color: #fff;
+}
+
+.bulle-sousmatiere-Grammaire {
+    background: #1e90ff;
+    color: #fff;
+}
+
+.bulle-sousmatiere-Conjugaison {
+    background: #ff8c00;
+    color: #fff;
+}
+
+.bulle-sousmatiere-Dictée {
+    background: #ff6347;
+    color: #fff;
+}
+
+.bulle-sousmatiere-Lecture {
+    background: #20b2aa;
+    color: #fff;
+}
+
+.bulle-sousmatiere-Écriture {
+    background: #d2691e;
+    color: #fff;
+}
+
+.bulle-sousmatiere-ExpressionOrale {
+    background: #9acd32;
+    color: #000;
+}
+
+.bulle-sousmatiere-Poésie {
+    background: #ff69b4;
+    color: #fff;
+}
+
+.bulle-sousmatiere-Numération {
+    background: #ff1493;
+    color: #fff;
+}
+
+.bulle-sousmatiere-Calcul {
+    background: #ff4500;
+    color: #fff;
+}
+
+.bulle-sousmatiere-Calculmental {
+    background: #ffa07a;
+    color: #000;
+}
+
+.bulle-sousmatiere-Géométrie {
+    background: #20b2aa;
+    color: #fff;
+}
+
+.bulle-sousmatiere-Mesures {
+    background: #ffa500;
+    color: #000;
+}
+
+.bulle-sousmatiere-Problèmes {
+    background: #ff8c00;
+    color: #fff;
+}
+
+.bulle-sousmatiere-LeTemps {
+    background: #c8e6c9;
+    color: #000;
+}
+
+.bulle-sousmatiere-Lespace {
+    background: #aed581;
+    color: #000;
+}
+
+.bulle-sousmatiere-LeVivant {
+    background: #9ccc65;
+    color: #000;
+}
+
+.bulle-sousmatiere-Orthographe,
+.bulle-sousmatiere-Vocabulaire,
+.bulle-sousmatiere-Grammaire,
+.bulle-sousmatiere-Conjugaison,
+.bulle-sousmatiere-Dictée,
+.bulle-sousmatiere-Lecture,
+.bulle-sousmatiere-Écriture,
+.bulle-sousmatiere-ExpressionOrale,
+.bulle-sousmatiere-Poésie,
+.bulle-sousmatiere-Numération,
+.bulle-sousmatiere-Calcul,
+.bulle-sousmatiere-Calculmental,
+.bulle-sousmatiere-Géométrie,
+.bulle-sousmatiere-Mesures,
+.bulle-sousmatiere-Problèmes,
+.bulle-sousmatiere-LeTemps,
+.bulle-sousmatiere-Lespace,
+.bulle-sousmatiere-LeVivant {
+    padding: 2px 6px;
+    border-radius: 10px;
+    display: inline-block;
+    margin: 1px 4px;
+    font-weight: 600;
+    font-size: .75rem;
+    white-space: nowrap;
+}
+
+
+/* =========================
+   8) Carte identité (fiche élève)
+   ========================= */
+.carte-identite {
+    border: 1px solid #4078A0;
+    border-radius: 10px;
+    background-color: #dfeefcff;
+    padding: 20px;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 20px auto;
+    font-family: Arial, sans-serif;
+    color: #333;
+    box-shadow: 0 2px 6px rgba(64, 120, 160, 0.4);
+}
+
+.carte-header {
+    background: linear-gradient(90deg, #4078A0, #4078A0);
+    color: #fff;
+    font-weight: bold;
+    font-size: 1.6em;
+    text-align: center;
+    padding: 20px 10px;
+    border-radius: 10px;
+    letter-spacing: 1.5px;
+    margin-bottom: 25px;
+    box-shadow: 0 4px 8px rgba(29, 77, 178, 0.5);
+}
+
+.carte-body {
+    display: flex;
+    gap: 25px;
+    padding: 10px 5px 5px;
+}
+
+.photo-col {
+    flex: 0 0 180px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.photo-col img {
+    width: 160px;
+    height: 220px;
+    object-fit: cover;
+    border-radius: 12px;
+    border: 2px solid #1d4db2;
+    cursor: pointer;
+    box-shadow: 0 0 12px rgba(64, 120, 160, 0.8);
+    transition: transform .3s ease;
+}
+
+.photo-col img:hover {
+    transform: scale(1.05);
+}
+
+/* Variante infos en 2 colonnes (grille) */
+.infos-col-two-cols {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    align-content: start;
+}
+
+/* Variante infos en 2 colonnes (flex) */
+.infos-container {
+    display: flex;
+    flex: 1;
+    gap: 20px;
+    justify-content: space-between;
+}
+
+.infos-col {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* Petites bulles d’infos */
+.bulle-info {
+    background-color: #4078A0;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    border-radius: 18px;
+    padding: 8px 16px;
+    font-weight: bold;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(64, 120, 160, 0.4);
+    gap: 8px;
+    font-size: 1em;
+}
+
+.bulle-info i {
+    font-size: 1.2em;
+    color: #a6c9e9;
+}
+
+/* Lien retour */
+.retour-link {
+    display: block;
+    text-align: left;
+    font-size: .9em;
+    margin-left: 0;
+    color: #4078A0;
+    font-weight: 600;
+    transition: color .25s ease;
+}
+
+.retour-link:hover {
+    color: #1d4db2;
+    text-decoration: underline;
+}
+
+
+/* =========================
+   9) Formulaire dictée
+   ========================= */
+.form-ajout-dictee {
+    max-width: 500px;
+    margin-top: 20px;
+}
+
+.form-ajout-dictee .form-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 15px;
+}
+
+.form-ajout-dictee label {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.form-ajout-dictee input,
+.form-ajout-dictee select {
+    padding: 8px;
+    font-size: 14px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+}
+
+.btn-valider {
+    background-color: #00688B;
+    color: #fff;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.btn-valider:hover {
+    background-color: #004d6d;
+}
+
+
+/* =========================
+   10) Animation panneau (menu au-dessus)
+   ========================= */
+/*
+  But :
+  - Le panneau central (enfant direct de <main.content>) glisse depuis la gauche
+    comme s'il sortait de derrière le menu.
+  - Le menu reste TOUJOURS au-dessus (z-index plus élevé).
+  - On laisse aussi un "fallback" CSS si tu veux garder l’ancienne logique .js-ready/.is-open.
+*/
+
+/* Cible UNIQUEMENT le panneau racine sous <main> */
+.content>.panel-from-sidebar {
+    position: relative;
+    z-index: 1;
+    /* plus bas que .sidebar (1000) pour passer DESSOUS le menu */
+    /* Transitions utiles si tu utilises encore la version CSS (.js-ready/.is-open) */
+    transition: transform 520ms cubic-bezier(.22, .61, .36, 1), opacity 240ms ease-out;
+    will-change: transform, opacity;
+}
+
+/* État “sans JS” : on ne cache pas le contenu */
+.content>.panel-from-sidebar {
+    transform: none;
+    opacity: 1;
+}
+
+/* Fallback CSS (si tu gardes le script qui ajoute js-ready/is-open) */
+html.js-ready .content>.panel-from-sidebar {
+    transform: translateX(calc(-1 * var(--sidebar-w) - var(--gap-side)));
+    /* hors écran, SOUS le menu */
+    opacity: 0;
+}
+
+html.js-ready .content>.panel-from-sidebar.is-open {
+    transform: translateX(0);
+    opacity: 1;
+    filter: drop-shadow(0 6px 16px rgba(0, 0, 0, .1));
+}
+
+/* Accessibilité : si l’utilisateur demande moins d’animations, on coupe la transition CSS.
+   (La version WAAPI côté JS continue d’afficher le panneau correctement.) */
+@media (prefers-reduced-motion: reduce) {
+    .content>.panel-from-sidebar {
+        transition: none;
+        transform: none;
+        opacity: 1;
+        filter: none;
+    }
+}
+
+/* =========================
+   OVERRIDES D'EMPILEMENT (MENU AU-DESSUS)
+   ========================= */
+
+/* Le menu doit toujours recouvrir le panneau */
+.sidebar {
+    position: relative;
+    z-index: 2000 !important;
+}
+
+/* La scène : laisse déborder le panneau vers la gauche, pas de z-index élevé ici */
+.content {
+    position: relative;
+    overflow: visible;
+    z-index: auto !important;
+    /* évite de créer une pile au-dessus du menu */
+}
+
+/* Cible UNIQUEMENT le panneau racine sous <main.content> :
+   - on lui donne un z-index FAIBLE pour qu’il reste sous le menu
+   - on garde la transition (utile si tu as encore la version CSS d’anim) */
+.content>.panel-from-sidebar {
+    position: relative;
+    z-index: 1 !important;
+    /* <<< CLEF : toujours sous .sidebar (2000) */
+    transition: transform 520ms cubic-bezier(.22, .61, .36, 1), opacity 240ms ease-out;
+    will-change: transform, opacity;
+}
+
+/* (Optionnel si tu utilises encore .js-ready/.is-open)
+html.js-ready .content > .panel-from-sidebar {
+  transform: translateX(calc(-1 * var(--sidebar-w) - var(--gap-side)));
+  opacity: 0;
+}
+html.js-ready .content > .panel-from-sidebar.is-open {
+  transform: translateX(0);
+  opacity: 1;
+  filter: drop-shadow(0 6px 16px rgba(0,0,0,.1));
+}
+*/
+
+/* Menu toujours AU-DESSUS */
+.sidebar {
+    position: relative;
+    z-index: 2000 !important;
+}
+
+/* Scène de l’animation : le panneau peut déborder à gauche */
+.content {
+    position: relative;
+    overflow: visible;
+    z-index: auto !important;
+}
+
+.main-container {
+    overflow-x: hidden;
+}
+
+/* Seul le panneau RACINE (enfant direct) — SOUS le menu */
+.content>.panel-from-sidebar {
+    position: relative;
+    z-index: 1 !important;
+    /* << inférieur au 2000 du menu */
+    transition: transform 520ms cubic-bezier(.22, .61, .36, 1), opacity 240ms ease-out;
+    will-change: transform, opacity;
+}
+
+/* === Empilement figé : le menu recouvre TOUT === */
+.main-container {
+    position: relative;
+    isolation: isolate;
+    /* crée un contexte d’empilement racine */
+}
+
+.sidebar {
+    position: relative;
+    z-index: 10000 !important;
+    /* menu au-dessus de tout */
+    transform: none !important;
+    /* évite un stacking context parasite */
+    filter: none !important;
+}
+
+/* La scène reste sous le menu */
+.content {
+    position: relative;
+    overflow: visible;
+    z-index: 0 !important;
+}
+
+/* Le panneau animé DOIT rester sous le menu  */
+.content>.panel-from-sidebar {
+    position: relative;
+    z-index: 0 !important;
+    /* plus bas que la sidebar */
+    filter: none !important;
+    /* neutralise le drop-shadow qui crée un contexte */
+    /* pas d'opacity <1 ni de transform ici en dehors de l’animation */
+}
+
+/* === Effet "descendre de derrière la barre d’actions" === */
+/* La barre est au-dessus ; le panneau descend dessous */
+.actions-classe {
+    position: relative;
+    z-index: 1000;
+    /* au-dessus du panneau */
+}
+
+/* La scène laisse passer l’animation vers le haut */
+.content {
+    position: relative;
+    overflow: visible;
+}
+
+/* Le panneau animé : SOUS la barre d’actions */
+.content>.panel-from-actions {
+    position: relative;
+    z-index: 1;
+    /* transitions utiles si tu veux aussi une version CSS */
+    transition: transform 520ms cubic-bezier(.22, .61, .36, 1), opacity 240ms ease-out;
+    will-change: transform, opacity;
+}
+
+/* (facultatif) Fallback CSS si tu veux aussi l’utiliser sans JS */
+html.js-ready .content>.panel-from-actions {
+    transform: translateY(-24px);
+    /* petit décalage par défaut */
+    opacity: 0;
+}
+
+html.js-ready .content>.panel-from-actions.is-open {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+/* Empêche une éventuelle barre de scroll horizontale */
+.main-container {
+    overflow-x: hidden;
+}
+
+/* --- La barre de boutons est AU-DESSUS --- */
+.actions-classe {
+    position: relative;
+    z-index: 1000;
+    /* au-dessus du panneau */
+}
+
+/* --- La scène permet de déborder vers le haut --- */
+.content {
+    position: relative;
+    overflow: visible;
+    z-index: 0;
+}
+
+/* --- Le panneau qui descend (conteneur BLANC) --- */
+.content>.panel-from-actions {
+    position: relative;
+    z-index: 1;
+    /* sous .actions-classe */
+    background: #fff;
+    /* conteneur blanc demandé */
+    border-radius: 12px;
+    padding: 16px 20px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .06);
+    margin-top: 16px;
+    will-change: transform, opacity;
+    transition: transform 520ms cubic-bezier(.22, .61, .36, 1), opacity 240ms ease-out;
+    /* fallback si besoin */
+}
+
+/* --- ÉTAT INITIAL si JS présent : évite le "flash" --- */
+html.js-ready .content>.panel-from-actions {
+    transform: translateY(-24px);
+    /* départ un peu au-dessus */
+    opacity: 0;
+}
+
+/* --- ÉTAT OUVERT (si tu veux aussi gérer en CSS) --- */
+html.js-ready .content>.panel-from-actions.is-open {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+/* Pas de scroll horizontal parasite */
+.main-container {
+    overflow-x: hidden;
+}
+
+/* --- Barre des boutons TOUJOURS au-dessus --- */
+.actions-classe {
+    position: relative;
+    z-index: 1000;
+}
+
+/* --- La scène laisse passer l'anim vers le haut --- */
+.content {
+    position: relative;
+    overflow: visible;
+    z-index: 0;
+}
+
+/* --- Conteneur blanc autour du contenu (large, propre) --- */
+.content .panel-card {
+    background: #fff !important;
+    /* conteneur blanc, prioritaire */
+    border-radius: 12px;
+    padding: 16px 20px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .06);
+    margin-top: 16px;
+    box-sizing: border-box;
+    width: 100%;
+}
+
+/* --- Panneau qui descend SOUS la barre --- */
+.content .panel-from-actions {
+    position: relative;
+    z-index: 1;
+    /* sous .actions-classe (1000) */
+    will-change: transform, opacity;
+    transition: transform 520ms cubic-bezier(.22, .61, .36, 1), opacity 240ms ease-out;
+    /* fallback */
+}
+
+/* --- Optionnel: si tu utilises encore .js-ready/.is-open en CSS --- */
+html.js-ready .content .panel-from-actions {
+    transform: translateY(-24px);
+    opacity: 0;
+}
+
+html.js-ready .content .panel-from-actions.is-open {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+/* anti scroll horizontal pendant l'anim */
+.main-container {
+    overflow-x: hidden;
+}
+
+/* === Contexte d’empilement clair pour le contenu === */
+.content {
+    position: relative;
+    isolation: isolate;
+    /* crée un stacking context propre */
+    overflow: visible;
+    z-index: 0;
+}
+
+/* === Barre d’actions : TOUJOURS au-dessus, opaque === */
+.actions-classe {
+    position: relative;
+    z-index: 1000;
+    /* > panneau */
+    background: #EDF3FA;
+    /* fond opaque pour bien voir le panneau passer dessous */
+}
+
+/* === Panneau qui descend : CONTENEUR BLANC ===
+   Cible le panneau partout (même s’il n’est pas enfant direct) */
+.panel-from-actions {
+    position: relative;
+    z-index: 1 !important;
+    /* sous .actions-classe (1000) */
+    display: block;
+    background: #fff !important;
+    /* conteneur BLANC */
+    border-radius: 12px;
+    padding: 16px 20px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .06);
+    margin-top: 16px;
+    width: 100%;
+    box-sizing: border-box;
+    will-change: transform, opacity;
+    transition: transform 520ms cubic-bezier(.22, .61, .36, 1), opacity 240ms ease-out;
+    /* fallback CSS */
+}
+
+/* (Spécificité renforcée si besoin quand le panneau suit directement la barre) */
+.actions-classe+.panel-from-actions {
+    background: #fff !important;
+}
+
+/* Évite toute barre de scroll horizontale pendant l’anim */
+.main-container {
+    overflow-x: hidden;
+}
+
+/* === OVERRIDES FINAUX : panneau sous la barre + carte blanche visible === */
+
+/* 1) La barre (devant) */
+.actions-classe {
+    position: relative;
+    z-index: 1000;
+    background: #EDF3FA;
+    /* opaque pour visualiser "derrière" */
+}
+
+/* 2) La scène (laisse déborder) */
+.content {
+    position: relative;
+    overflow: visible;
+    isolation: isolate;
+    /* contexte propre */
+    z-index: 0;
+}
+
+/* 3) Le panneau (sous les boutons) */
+.panel-from-actions {
+    position: relative;
+    z-index: 1 !important;
+    /* < 1000 : sous la barre */
+    will-change: transform, opacity;
+    transition: transform 520ms cubic-bezier(.22, .61, .36, 1), opacity 240ms ease-out;
+}
+
+/* 4) La "carte" blanche autour de TOUT le contenu
+      -> on met un sélecteur ULTRA spécifique + !important pour gagner. */
+main.content .actions-classe+.panel-from-actions.panel-card {
+    background: #fff !important;
+    /* fond blanc forcé */
+    border: 1px solid rgba(0, 0, 0, .06) !important;
+    border-radius: 12px !important;
+    padding: 20px 24px !important;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .06) !important;
+    margin-top: 16px !important;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* 5) Si un style interne au tableau force un fond, on le laisse,
+      mais on garde un "liseré" blanc autour grâce au padding ci-dessus. */
+
+/* === Empilement et carte blanche (final) === */
+.content {
+    position: relative;
+    isolation: isolate;
+    overflow: visible;
+    z-index: 0;
+}
+
+.actions-classe {
+    position: relative !important;
+    z-index: 2000 !important;
+    /* la barre reste au-dessus */
+    background: #EDF3FA !important;
+    /* opaque pour bien voir l’effet */
+}
+
+main.content .panel-from-actions {
+    position: relative !important;
+    z-index: 1 !important;
+    /* sous la barre */
+    will-change: transform, opacity;
+    transition: transform 520ms cubic-bezier(.22, .61, .36, 1), opacity 240ms ease-out;
+}
+
+/* Carte blanche autour du contenu qui descend */
+main.content .actions-classe+.panel-from-actions.panel-card,
+main.content .panel-from-actions.panel-card {
+    background: #fff !important;
+    border: 1px solid rgba(0, 0, 0, .06) !important;
+    border-radius: 12px !important;
+    padding: 20px 24px !important;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .06) !important;
+    margin-top: 16px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* anti scroll horizontal pendant l’anim */
+.main-container {
+    overflow-x: hidden !important;
+}

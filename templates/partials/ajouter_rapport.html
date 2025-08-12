@@ -1,0 +1,336 @@
+{# templates/partials/ajouter_rapport.html #}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/rapports.css') }}">
+
+<div class="rapports-wrap_r">
+    <form id="rapport-form" class="card_r" onsubmit="return false;">
+        <div class="grid_r">
+            <div class="field_r">
+                <label for="type_id" class="label_r">Type</label>
+                <select id="type_id" name="type_id" class="select_r" required>
+                    {% for t in types %}
+                    <option value="{{ t.id }}" {% if loop.first %}selected{% endif %}>{{ t.libelle }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="field_r">
+                <label for="sous_type_id" class="label_r">Sous-type</label>
+                <select id="sous_type_id" name="sous_type_id" class="select_r">
+                    {% for s in sous_types %}
+                    <option value="{{ s.id }}">{{ s.libelle }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="field_r">
+                <label class="label_r">Élève (optionnel)</label>
+                <input type="hidden" id="eleve_id" name="eleve_id" value="">
+                <div class="combo_r" id="combo-eleve_r" data-field="eleve_id">
+                    <button type="button" class="combo-toggle_r" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="combo-label_r">— Aucun élève —</span>
+                        <i class="fa-solid fa-caret-down"></i>
+                    </button>
+                    <div class="combo-panel_r" role="listbox" tabindex="-1" hidden>
+                        <input type="text" class="combo-search_r" aria-label="Rechercher un élève…"
+                            placeholder="Rechercher le prénom…" />
+                        <ul class="combo-list_r"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="field_r">
+                <label for="classe_id" class="label_r">Classe (optionnel)</label>
+                <input type="number" id="classe_id" name="classe_id" class="input_r" value="{{ classe.id }}"
+                    placeholder="ID classe">
+            </div>
+
+            <div class="field_r field--full_r">
+                <label for="titre" class="label_r">Titre (optionnel)</label>
+                <input type="text" id="titre" name="titre" class="input_r" placeholder="Ex. Réunion de rentrée">
+            </div>
+        </div>
+
+        <div class="field_r">
+            <label for="contenu" class="label_r">Contenu</label>
+            <textarea id="contenu" name="contenu" class="textarea_r" rows="18"
+                placeholder="Saisis le compte-rendu ici…"></textarea>
+        </div>
+
+        <div class="meta_r" style="gap:8px;">
+            <div>Heure de début : <strong id="heure_debut_view">—</strong></div>
+            <div>Heure de fin (auto) : <strong id="heure_fin_view">—</strong></div>
+            <div id="save_state" class="save_r">⏳ En attente…</div>
+            <button type="button" id="btn_export_docx" class="btn_r">Exporter en Word</button>
+            <button type="button" id="btn_export_pdf" class="btn_r">Exporter en PDF</button>
+        </div>
+    </form>
+</div>
+
+<!-- TinyMCE 8 local (self-hosted, sans clé) -->
+<script src="{{ url_for('static', filename='vendor/tinymce8/tinymce.min.js') }}"></script>
+
+<script>
+    (() => {
+        // ---------- Helpers ----------
+        const $ = (s, root = document) => root.querySelector(s);
+
+        // Données Flask (OK avec tojson — surtout pas JSON.parse d'une string)
+        const ELEVES_DATA = JSON.parse('{{ eleves_classe | tojson | safe }}') || [];
+
+        let rapportId = null;
+        let saveTimer = null;
+        const DEBOUNCE_MS = 800;
+
+        function isoToTime(s) {
+            if (!s) return '—';
+            const d = new Date(s);
+            return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+        }
+        function setSaveState(msg) { const el = $("#save_state"); if (el) el.textContent = msg; }
+
+        function editorHTML() {
+            const ed = (window.tinymce && tinymce.get('contenu')) ? tinymce.get('contenu') : null;
+            return ed ? ed.getContent() : ($("#contenu")?.value || "");
+        }
+
+        // ---------- Autosave ----------
+        function scheduleSave() {
+            setSaveState("… enregistrement");
+            if (saveTimer) clearTimeout(saveTimer);
+            saveTimer = setTimeout(doSave, DEBOUNCE_MS);
+        }
+
+        async function doSave() {
+            if (!rapportId) return;
+            const payload = {
+                titre: $("#titre")?.value || null,
+                contenu: editorHTML(),
+                type_id: parseInt($("#type_id")?.value ?? "0") || null,
+                sous_type_id: $("#sous_type_id")?.value ? parseInt($("#sous_type_id").value) : null,
+                classe_id: $("#classe_id")?.value ? parseInt($("#classe_id").value) : null,
+                eleve_id: $("#eleve_id")?.value ? parseInt($("#eleve_id").value) : null
+            };
+            try {
+                const res = await fetch(`/api/rapports/${rapportId}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data && data.ok) {
+                    $("#heure_fin_view").textContent = isoToTime(data.heure_fin);
+                    setSaveState("✓ Enregistré");
+                } else {
+                    setSaveState("⚠︎ Erreur d’enregistrement");
+                }
+            } catch {
+                setSaveState("⚠︎ Erreur réseau");
+            }
+        }
+
+        async function createEmptyReport() {
+            const payload = {
+                type_id: parseInt($("#type_id")?.value ?? "0") || null,
+                sous_type_id: $("#sous_type_id")?.value ? parseInt($("#sous_type_id").value) : null,
+                classe_id: $("#classe_id")?.value ? parseInt($("#classe_id").value) : null,
+                eleve_id: $("#eleve_id")?.value ? parseInt($("#eleve_id").value) : null,
+                titre: $("#titre")?.value || null
+            };
+            try {
+                const res = await fetch("/api/rapports", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!data || (!data.ok && !data.id)) { setSaveState("⚠︎ Erreur d’initialisation"); return; }
+                rapportId = data.id;
+                $("#heure_debut_view").textContent = isoToTime(data.heure_debut);
+                setSaveState("✓ Rapport initialisé");
+            } catch {
+                setSaveState("⚠︎ Erreur réseau (init)");
+            }
+        }
+
+        // ---------- Sous-types ----------
+        async function fetchSousTypes(typeId) {
+            try {
+                const res = await fetch(`/api/rapport_sous_types/${typeId}`);
+                const data = await res.json();
+                const sel = $("#sous_type_id");
+                if (!sel) return;
+                sel.innerHTML = (data && data.length)
+                    ? data.map(st => `<option value="${st.id}">${st.libelle}</option>`).join('')
+                    : "<option value=''>—</option>";
+            } catch { }
+        }
+
+        // ---------- Combo Élève ----------
+        function initComboEleve(selector) {
+            const root = $(selector);
+            if (!root) return;
+            const hidden = document.getElementById(root.dataset.field);
+            const btn = root.querySelector('.combo-toggle_r');
+            const label = root.querySelector('.combo-label_r');
+            const panel = root.querySelector('.combo-panel_r');
+            const search = root.querySelector('.combo-search_r');
+            const list = root.querySelector('.combo-list_r');
+
+            function renderList(items) {
+                list.innerHTML = '';
+                const noneLi = document.createElement('li');
+                noneLi.innerHTML = `
+        <button type="button" class="combo-item_r" data-id="">
+          <span class="prenom_r" style="font-weight:600;color:#00688B;">— Aucun élève —</span>
+        </button>`;
+                list.appendChild(noneLi);
+                for (const e of items) {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+          <button type="button" class="combo-item_r" data-id="${e.id}">
+            <span class="prenom_r" style="font-weight:600;color:#00688B;">${e.prenom}</span>
+            <span class="nom_r" style="font-weight:700;color:#000;">${e.nom}</span>
+          </button>`;
+                    list.appendChild(li);
+                }
+            }
+            renderList(ELEVES_DATA);
+
+            function openPanel() { panel.hidden = false; btn.setAttribute('aria-expanded', 'true'); root.classList.add('open_r'); search.value = ''; filter(''); setTimeout(() => search.focus(), 0); }
+            function closePanel() { panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); root.classList.remove('open_r'); btn.focus(); }
+            function setValue(id, text) { hidden.value = id; label.textContent = text || '— Aucun élève —'; scheduleSave(); }
+            function filter(q) {
+                const ql = (q || '').trim().toLowerCase();
+                const items = Array.from(list.querySelectorAll('.combo-item_r'));
+                items.forEach((b, idx) => {
+                    if (idx === 0) { b.parentElement.hidden = false; return; }
+                    const t = b.textContent.toLowerCase();
+                    b.parentElement.hidden = !t.includes(ql);
+                });
+                const first = items.find(b => !b.parentElement.hidden);
+                if (first) first.focus({ preventScroll: true });
+            }
+
+            btn.addEventListener('click', () => panel.hidden ? openPanel() : closePanel());
+            list.addEventListener('click', (e) => {
+                const target = e.target.closest('.combo-item_r'); if (!target) return;
+                const id = target.dataset.id || '';
+                const txt = id ? target.textContent.trim() : '— Aucun élève —';
+                setValue(id, txt); closePanel();
+            });
+            search.addEventListener('input', () => filter(search.value));
+            root.addEventListener('keydown', (e) => {
+                const visible = Array.from(list.querySelectorAll('.combo-item_r')).filter(b => !b.parentElement.hidden);
+                const current = document.activeElement.closest('.combo-item_r');
+                const idx = visible.indexOf(current);
+                if (e.key === 'ArrowDown') { e.preventDefault(); if (panel.hidden) openPanel(); (visible[idx + 1] || visible[0])?.focus(); }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); if (panel.hidden) openPanel(); (visible[idx - 1] || visible[visible.length - 1])?.focus(); }
+                else if (e.key === 'Enter') { if (!panel.hidden && current) current.click(); else openPanel(); }
+                else if (e.key === 'Escape') { if (!panel.hidden) closePanel(); }
+                else if (/^[a-zA-ZÀ-ÿ]$/.test(e.key) && panel.hidden) { openPanel(); search.value = e.key; filter(search.value); }
+            });
+            document.addEventListener('click', (e) => { if (!root.contains(e.target) && !panel.hidden) closePanel(); });
+
+            if (hidden.value) {
+                const f = (ELEVES_DATA || []).find(x => String(x.id) === String(hidden.value));
+                if (f) label.textContent = `${f.prenom} ${f.nom}`;
+            }
+        }
+
+        // ---------- Export ----------
+        async function exportRapport(fmt) {
+            if (!rapportId) { alert("Rapport non initialisé"); return; }
+            const contenuHtml = editorHTML();
+            try {
+                await fetch(`/api/rapports/${rapportId}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        titre: $("#titre")?.value || null,
+                        contenu: contenuHtml,
+                        type_id: parseInt($("#type_id")?.value ?? "0") || null,
+                        sous_type_id: $("#sous_type_id")?.value ? parseInt($("#sous_type_id").value) : null,
+                        classe_id: $("#classe_id")?.value ? parseInt($("#classe_id").value) : null,
+                        eleve_id: $("#eleve_id")?.value ? parseInt($("#eleve_id").value) : null
+                    })
+                });
+            } catch { }
+
+            try {
+                const res = await fetch(`/api/rapports/${rapportId}/export`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ format: fmt, html: contenuHtml })
+                });
+                const data = await res.json();
+                if (data && data.ok) alert(`✅ Export ${fmt.toUpperCase()} créé :\n${data.path}`);
+                else alert("❌ " + (data?.error || "Erreur export"));
+            } catch {
+                alert("❌ Erreur réseau pendant l’export");
+            }
+        }
+
+        // ---------- Boot ----------
+        document.addEventListener("DOMContentLoaded", async () => {
+            // Init TinyMCE 8 (local)
+            if (!window.tinymce) { console.error("TinyMCE non trouvé"); setSaveState("⚠︎ TinyMCE non chargé"); return; }
+            tinymce.init({
+                selector: '#contenu',
+                base_url: "{{ url_for('static', filename='vendor/tinymce8') }}", // résout plugins/skins localement
+                suffix: '.min',
+                license_key: 'gpl',              // plus de “evaluation mode”
+                // language: 'fr_FR',            // si tu ajoutes le pack, sinon commente
+
+                height: 460,
+                menubar: true,
+                toolbar_sticky: true,
+                toolbar_location: 'top',
+                statusbar: false,
+                branding: false,
+                promotion: false,
+
+                plugins: 'lists table link image code',
+                block_formats: 'Paragraphe=p; Titre 1=h1; Titre 2=h2; Titre 3=h3',
+                toolbar: [
+                    'undo redo | blocks fontfamily fontsize | bold italic underline | forecolor backcolor |',
+                    'alignleft aligncenter alignright alignjustify | bullist numlist outdent indent |',
+                    'table link image | removeformat | code'
+                ].join(' '),
+
+                font_family_formats:
+                    'Arial=Arial,Helvetica,sans-serif;' +
+                    'Times New Roman=Times New Roman,Times,serif;' +
+                    'Georgia=Georgia,serif;' +
+                    'Courier New=Courier New,Courier,monospace;' +
+                    'Comic Sans MS=Comic Sans MS,cursive;',
+                fontsize_formats: '8px 10px 12px 14px 16px 18px 24px 32px',
+
+                content_style: `
+        body { font-family: Arial, Helvetica, sans-serif; font-size: 12pt; line-height: 1.5; }
+        h1 { color: #c00000; font-size: 20pt; margin: 0.3em 0; }
+        h2 { color: #c00000; font-size: 16pt; margin: 0.25em 0; }
+        h3 { color: #c00000; font-size: 14pt; margin: 0.2em 0; }
+        table { border-collapse: collapse; width: 100%; }
+        table, th, td { border: 1px solid #ddd; }
+        th, td { padding: 6px 8px; vertical-align: top; }
+      `,
+
+                paste_data_images: true,
+
+                setup: (ed) => ed.on('Change Input KeyUp SetContent Undo Redo', () => scheduleSave()),
+                init_instance_callback: () => { window.tinyReady = true; }
+            });
+
+            initComboEleve('#combo-eleve_r');
+            await createEmptyReport();
+
+            $("#type_id")?.addEventListener("change", async (e) => { await fetchSousTypes(parseInt(e.target.value)); scheduleSave(); });
+            ["#sous_type_id", "#classe_id", "#titre"].forEach(sel => {
+                const el = $(sel); if (el) el.addEventListener("input", scheduleSave);
+            });
+
+            $("#btn_export_docx")?.addEventListener("click", () => exportRapport("docx"));
+            $("#btn_export_pdf")?.addEventListener("click", () => exportRapport("pdf"));
+        });
+    })();
+</script>

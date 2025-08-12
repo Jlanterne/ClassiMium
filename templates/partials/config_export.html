@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration des exports{% endblock %}
+{% block header_title %}Paramètres & configuration{% endblock %}
+
+{% block content %}
+<div class="settings-page">
+
+    {# ---------- styles locaux harmonisés avec le site ---------- #}
+    <style>
+        /* Conteneur : aligné à gauche, pas de centrage */
+        .settings-page {
+            max-width: 980px;
+            /* borne raisonnable mais pas centré */
+            margin: 0;
+            /* ✨ plus de margin auto */
+            padding-right: 8px;
+        }
+
+        /* Cartes cohérentes avec .panel-card du site */
+        .settings-page .panel-card {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, .06);
+            padding: 16px 18px;
+            margin: 14px 0;
+        }
+
+        .settings-page .section-title {
+            margin: 0 0 10px;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #1f2937;
+        }
+
+        /* Champs formulaire */
+        .settings-page .form-row,
+        .settings-page .field_r {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin: 10px 0;
+        }
+
+        .settings-page label {
+            font-weight: 600;
+            font-size: .95rem;
+            color: #111827;
+        }
+
+        .settings-page input[type="text"],
+        .settings-page input[type="number"],
+        .settings-page select {
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-size: .95rem;
+            background: #fff;
+        }
+
+        /* Barre de boutons */
+        .settings-page .btnbar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-top: 6px;
+        }
+
+        /* Boutons : look proche des autres boutons du site */
+        .settings-page .btn_r,
+        .settings-page .valider-btn {
+            background: #2563eb;
+            color: #fff;
+            border: 0;
+            border-radius: 10px;
+            padding: 9px 14px;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: transform .02s ease-in, filter .15s ease;
+        }
+
+        .settings-page .btn_r:hover,
+        .settings-page .valider-btn:hover {
+            filter: brightness(1.06);
+        }
+
+        .settings-page .btn_r:active,
+        .settings-page .valider-btn:active {
+            transform: translateY(1px);
+        }
+
+        .settings-page .btn--success {
+            background: #059669;
+        }
+
+        .settings-page .btn--muted {
+            background: #6b7280;
+        }
+
+        /* Résultat test */
+        .settings-page pre#test_result {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 10px 12px;
+            margin-top: 8px
+        }
+
+        /* Petites largeurs : les cartes restent alignées à gauche naturellement */
+        @media (min-width: 1000px) {
+            .settings-page {
+                max-width: 1000px;
+            }
+        }
+
+        /* Séparateur décoratif entre sections */
+        .settings-page .section-sep {
+            height: 2px;
+            border: 0;
+            margin: 18px 0;
+            background: linear-gradient(to right,
+                    rgba(37, 99, 235, 0),
+                    rgba(37, 99, 235, .45),
+                    rgba(37, 99, 235, 0));
+            /* bleu #2563eb, cohérent avec tes boutons */
+            border-radius: 9999px;
+            /* arrondi doux */
+        }
+    </style>
+
+
+    <!-- Carte 1 : chemins d’export -->
+    <div class="panel-card">
+        <h3 class="section-title">Chemins d’export</h3>
+
+        <form method="post" action="{{ url_for('config_export') }}">
+            <div class="field_r">
+                <label for="primary_root">Chemin principal (UNC)</label>
+                <input type="text" id="primary_root" name="primary_root" value="{{ primary_root or '' }}"
+                    placeholder="ex. \\serveur\Documents\Education Nationale">
+            </div>
+
+            <div class="field_r">
+                <label for="secondary_root">Chemin secondaire (lecteur mappé)</label>
+                <input type="text" id="secondary_root" name="secondary_root" value="{{ secondary_root or '' }}"
+                    placeholder="ex. Z:\Documents\Education Nationale">
+            </div>
+
+            <div class="field_r">
+                <label for="reunions_dirname">Nom du dossier « Réunions »</label>
+                <input type="text" id="reunions_dirname" name="reunions_dirname" value="{{ reunions_dirname or '' }}"
+                    placeholder="ex. 19 - Réunions">
+            </div>
+
+            <div class="btnbar">
+                <button type="submit" class="btn_r">Enregistrer</button>
+                <button type="button" id="btn_test" class="btn_r btn--success">Tester l’accès</button>
+                <a href="{{ url_for('index') }}" class="btn_r btn--muted">← Retour</a>
+            </div>
+        </form>
+
+        <pre id="test_result" aria-live="polite"></pre>
+        <hr class="section-sep" aria-hidden="true">
+
+        <h3 class="section-title">Animation des panneaux</h3>
+
+        <form method="post" action="{{ url_for('config_export') }}">
+            <div class="form-row">
+                <label for="anim_mode">Style</label>
+                {% set cur = current_anim_mode or (settings.ui.anim_mode if settings and settings.ui else 'slide') %}
+                <select id="anim_mode" name="anim_mode">
+                    <option value="slide" {{ 'selected' if cur=='slide' else '' }}>Slide (descend/remonte)</option>
+                    <option value="fade" {{ 'selected' if cur=='fade' else '' }}>Fondu</option>
+                    <option value="scale" {{ 'selected' if cur=='scale' else '' }}>Zoom doux</option>
+                    <option value="wipe" {{ 'selected' if cur=='wipe' else '' }}>Rideau (hauteur)</option>
+                    <option value="clip" {{ 'selected' if cur=='clip' else '' }}>Découpe (clip-path)</option>
+                </select>
+            </div>
+
+            <div class="form-row">
+                <label for="anim_duration">Durée (ms)</label>
+                {% set dur = current_anim_duration or (settings.ui.anim_duration if settings and settings.ui else 520)
+                %}
+                <input type="number" id="anim_duration" name="anim_duration" min="200" max="2000" step="20"
+                    value="{{ dur }}">
+            </div>
+
+            <button class="valider-btn" type="submit">Enregistrer</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    // Test d’accessibilité des chemins
+    document.getElementById('btn_test')?.addEventListener('click', async () => {
+        const p = document.getElementById('primary_root').value.trim();
+        const s = document.getElementById('secondary_root').value.trim();
+        const out = document.getElementById('test_result');
+        out.textContent = "Test en cours…";
+        try {
+            const r = await fetch(`/api/config/test-paths?primary=${encodeURIComponent(p)}&secondary=${encodeURIComponent(s)}`);
+            const data = await r.json();
+            if (!data.ok) throw new Error("Réponse invalide");
+
+            out.textContent =
+                `Principal : ${data.primary.path}
+  → ${data.primary.exists ? "✅ accessible" : "❌ indisponible"}
+
+Secondaire : ${data.secondary.path}
+  → ${data.secondary.exists ? "✅ accessible" : "❌ indisponible"}`;
+        } catch (e) {
+            out.textContent = "Erreur de test : " + (e.message || e);
+        }
+    });
+</script>
+{% endblock %}

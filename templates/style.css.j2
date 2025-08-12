@@ -1,0 +1,871 @@
+/* ===== BASE GLOBALE ===== */
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background-color: #EDF3FA;
+    color: #333;
+}
+
+h2, h3 {
+    margin-top: 0;
+}
+
+a {
+    text-decoration: none;
+    color: inherit;
+}
+
+/* ===== CONTENEUR PRINCIPAL ===== */
+.main-container {
+    display: flex;
+    min-height: 100vh;
+    width: 100vw; /* prendre toute la largeur de la fenêtre */
+    box-sizing: border-box;
+}
+
+
+/* ===== MENU LATÉRAL ===== */
+.sidebar {
+    width: 250px;
+    background-color: #00688B;
+    color: white;
+    padding: 20px;
+    box-shadow: 2px 0 8px rgba(0,0,0,0.1);
+    flex-shrink: 0;
+}
+
+.sidebar h2 {
+    font-size: 22px;
+    margin-bottom: 20px;
+}
+
+.sidebar form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.sidebar input,
+.sidebar button {
+    padding: 8px;
+    font-size: 14px;
+    border-radius: 4px;
+    border: none;
+}
+
+.sidebar input[type="file"] {
+    background-color: white;
+}
+
+.sidebar button {
+    background-color: #4078A0;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.sidebar button:hover {
+    background-color: #6B973F;
+}
+
+.btn-classe {
+    width: 100%;
+    background-color: #4078A0;
+    color: white;
+    padding: 10px;
+    font-size: 14px;
+    border-radius: 4px;
+    text-align: left;
+    cursor: pointer;
+    border: none;
+    transition: background-color 0.3s ease;
+}
+
+.btn-classe:hover {
+    background-color: #6B973F;
+}
+
+/* ===== CONTENU PRINCIPAL ===== */
+.content {
+    flex: 1;
+    padding: 40px 30px;
+    min-width: 1400px; /* augmenter cette valeur selon l'écran */
+    width:100%;
+    box-sizing: border-box;
+}
+
+/* ===== BANDEAU TITRE ===== */
+.bandeau-titre {
+    background-color: #4078A0;
+    color: white;
+    padding: 20px;
+    font-size: 26px;
+    font-weight: bold;
+    border-radius: 10px;
+    text-align: center;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+}
+
+/* ===== BOUTONS D'ACTION PRINCIPAUX ===== */
+.action-button {
+    background-color: #B5C800;
+    color: white;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-weight: bold;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    transition: background-color 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    text-decoration: none;
+    font-size: 16px;
+    border: none;
+    margin-bottom: 20px; /* espace sous boutons */
+}
+
+.action-button:hover {
+    background-color: #6B973F;
+}
+
+/* ===== BOUTONS ICÔNES DANS LES TABLEAUX ===== */
+.action-button.icon-btn {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    margin: 0 8px 0 0; /* petit espace à droite */
+    font-size: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 6px;
+    border: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    transition: background-color 0.3s ease;
+    vertical-align: middle;
+}
+
+.action-button.icon-btn:hover {
+    filter: brightness(0.8);
+}
+
+/* Bouton modifier (bleu) */
+.action-button.modify.icon-btn {
+    background-color: #007BFF;
+}
+
+.action-button.modify.icon-btn:hover {
+    background-color: #0056b3;
+}
+
+/* Bouton supprimer (rouge) */
+.action-button.delete.icon-btn {
+    background-color: #dc3545;
+}
+
+.action-button.delete.icon-btn:hover {
+    background-color: #a71d2a;
+}
+
+/* L’icône ne bloque pas le clic sur le bouton */
+.action-button.icon-btn i {
+    pointer-events: none;
+}
+
+/* Espacement entre boutons icônes */
+.action-button.icon-btn + .action-button.icon-btn,
+.action-button.icon-btn + form {
+    margin-left: 8px;
+}
+
+/* ===== FORMULAIRES ===== */
+form {
+    max-width: 900px;
+    margin: 0;
+    padding-left: 20px;
+    box-sizing: border-box;
+}
+
+.form-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 20px; /* espace sous les lignes formulaire, aussi pour boutons */
+}
+
+.form-row label {
+    width: 150px;
+    font-weight: bold;
+}
+
+.form-row input,
+.form-row select {
+    flex: 1;
+    padding: 10px;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    background-color: #f9f9f9;
+    box-sizing: border-box;
+}
+
+#objectifs-container {
+    margin-top: 20px;
+}
+
+/* ===== BOUTONS VALIDER / ANNULER ===== */
+.valider-btn,
+.annuler-btn {
+    padding: 10px 20px;
+    border-radius: 6px;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+    display: inline-block;
+    font-size: 16px;
+}
+
+.valider-btn {
+    background-color: #B5C800;
+    color: white;
+    margin-right: 15px;
+}
+
+.valider-btn:hover {
+    background-color: #6B973F;
+}
+
+.annuler-btn {
+    background-color: #ccc;
+    color: black;
+}
+
+.annuler-btn:hover {
+    background-color: #bbb;
+}
+
+/* ===== CONTENEUR TABLEAUX ===== */
+.table-container {
+    margin-top: 30px;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    background-color: white;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    overflow-x: auto;
+}
+
+/* ===== TABLEAUX ===== */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 16px;
+    margin-left: 0; /* assure alignement gauche */
+}
+
+thead {
+    background-color: #00688B;
+    color: white;
+}
+
+th,
+td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #ddd;
+    text-align: left;
+    vertical-align: middle;
+}
+
+tbody tr:nth-child(even) {
+    background-color: #EDF3FA;
+}
+
+/* ===== TABLEAU DE SAISIE DES RÉSULTATS ===== */
+.saisie-resultats {
+    margin-left: 0;
+    max-width: fit-content;
+}
+
+/* Pour le tableau des résultats */
+.table-resultats {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 15px;
+    margin-top: 20px;
+    box-sizing: border-box;
+}
+
+.table-resultats thead {
+    background-color: #00688B;
+    color: white;
+}
+
+/* Ligne d’en-tête plus haute pour bien loger le texte tourné */
+.table-resultats thead tr {
+    height: 140px;
+}
+
+/* Colonnes en-tête : largeur fixe uniforme */
+.table-resultats thead th {
+    padding: 8px 6px;
+    width: 80px;
+    max-width: 80px;
+    text-align: center;
+    vertical-align: center;
+}
+
+.table-resultats thead th div.rotate-90 {
+    width: 80px;
+    height: 140px;
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    font-size: 12px;
+    line-height: 1.3;
+    transform-origin: center center;
+    transform: rotate(-90deg);
+    margin: 0 auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0 6px;
+    box-sizing: border-box;
+    text-align: center;  /* centrer le texte */
+}
+
+.table-resultats th,
+.table-resultats td {
+    border: 1px solid #ccc;
+}
+
+/* Cellule prénom + nom */
+.table-resultats td.nom-prenom {
+    max-width: 220px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    text-align: left;
+}
+
+/* Prénom en gras */
+.table-resultats td.nom-prenom .prenom {
+    font-weight: bold;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Nom tronqué si trop long */
+.table-resultats td.nom-prenom .nom {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+    display: inline-block;
+    vertical-align: bottom;
+}
+
+/* Colonne Absent (checkbox) */
+.table-resultats td:nth-child(2),
+.table-resultats thead th:nth-child(2) {
+    width: 60px;
+    max-width: 60px;
+    text-align: center;
+}
+
+/* ===== CLASSES POUR LES NIVEAUX DE MAÎTRISE ===== */
+.select-niveau {
+  padding: 4px;
+  border-radius: 4px;
+  border: 1px solid #aaa;
+  font-size: 13px;
+  transition: background-color 0.3s ease;
+  color: #000;
+}
+
+/* Couleurs douces pour les niveaux */
+.select-niveau.A {
+  background-color: #c8e6c9; /* vert clair */
+  color: #256029; /* vert foncé */
+}
+
+.select-niveau.PA {
+  background-color: #fff9c4; /* jaune pâle */
+  color: #6f6000; /* jaune foncé */
+}
+
+.select-niveau.NA {
+  background-color: #ffcdd2; /* rouge clair */
+  color: #8b0000; /* rouge foncé */
+}
+
+.select-niveau.default {
+  background-color: white;
+  color: black;
+}
+
+/* ===== BULLLES NIVEAUX ===== */
+.niveau-bulle {
+    display: inline-block;
+    padding: 6px 12px;
+    margin-left: 10px;
+    background-color: #ccc;
+    color: #333;
+    font-weight: bold;
+    border-radius: 12px;
+    text-decoration: none;
+    transition: background-color 0.3s ease;
+    white-space: nowrap;
+}
+
+.niveau-bulle:hover {
+    background-color: #bbb;
+}
+
+.niveau-selectionne {
+    background-color: #4078A0;
+    color: white;
+}
+
+/* ===== BULLES MATIÈRES ===== */
+.bulle-matiere-Français {
+    background-color: #87cefa; /* bleu clair */
+    color: black;
+    padding: 3px 8px;
+    border-radius: 12px;
+    display: inline-block;
+    margin: 2px 4px;
+    font-weight: bold;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.bulle-matiere-Mathématiques {
+    background-color: #f4a460; /* sable/orangé */
+    color: black;
+    padding: 3px 8px;
+    border-radius: 12px;
+    display: inline-block;
+    margin: 2px 4px;
+    font-weight: bold;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.bulle-matiere-QLM {
+    background-color: #98fb98; /* vert pâle */
+    color: black;
+    padding: 3px 8px;
+    border-radius: 12px;
+    display: inline-block;
+    margin: 2px 4px;
+    font-weight: bold;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.bulle-matiere-EMC {
+    background-color: #a9a9a9; /* gris foncé */
+    color: white;
+    padding: 3px 8px;
+    border-radius: 12px;
+    display: inline-block;
+    margin: 2px 4px;
+    font-weight: bold;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.bulle-matiere-Artsplastiques {
+    background-color: #a0522d; /* brun */
+    color: white;
+    padding: 3px 8px;
+    border-radius: 12px;
+    display: inline-block;
+    margin: 2px 4px;
+    font-weight: bold;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.bulle-matiere-Musique {
+    background-color: #7b68ee; /* bleu violet */
+    color: white;
+    padding: 3px 8px;
+    border-radius: 12px;
+    display: inline-block;
+    margin: 2px 4px;
+    font-weight: bold;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.bulle-matiere-EPS {
+    background-color: #ffff00; /* jaune */
+    color: black;
+    padding: 3px 8px;
+    border-radius: 12px;
+    display: inline-block;
+    margin: 2px 4px;
+    font-weight: bold;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.bulle-matiere-Anglais {
+    background-color: #ff4500; /* rouge orangé */
+    color: white;
+    padding: 3px 8px;
+    border-radius: 12px;
+    display: inline-block;
+    margin: 2px 4px;
+    font-weight: bold;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.bulle-matiere-Autres {
+    background-color: #607D8B; /* bleu gris */
+    color: white;
+    padding: 3px 8px;
+    border-radius: 12px;
+    display: inline-block;
+    margin: 2px 4px;
+    font-weight: bold;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+/* ===== BULLES SOUS-MATIÈRES ===== */
+.bulle-sousmatiere-Orthographe,
+.bulle-sousmatiere-Vocabulaire,
+.bulle-sousmatiere-Grammaire,
+.bulle-sousmatiere-Conjugaison,
+.bulle-sousmatiere-Dictée,
+.bulle-sousmatiere-Lecture,
+.bulle-sousmatiere-Écriture,
+.bulle-sousmatiere-ExpressionOrale,
+.bulle-sousmatiere-Poésie,
+.bulle-sousmatiere-Numération,
+.bulle-sousmatiere-Calcul,
+.bulle-sousmatiere-Calculmental,
+.bulle-sousmatiere-Géométrie,
+.bulle-sousmatiere-Mesures,
+.bulle-sousmatiere-Problèmes,
+.bulle-sousmatiere-LeTemps,
+.bulle-sousmatiere-Lespace,
+.bulle-sousmatiere-LeVivant {
+    padding: 2px 6px;
+    border-radius: 10px;
+    display: inline-block;
+    margin: 1px 4px;
+    font-weight: 600;
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+/* Couleurs spécifiques sous-matières */
+.bulle-sousmatiere-Orthographe { background-color: #32cd32; color: white; }
+.bulle-sousmatiere-Vocabulaire { background-color: #8a2be2; color: white; }
+.bulle-sousmatiere-Grammaire { background-color: #1e90ff; color: white; }
+.bulle-sousmatiere-Conjugaison { background-color: #ff8c00; color: white; }
+.bulle-sousmatiere-Dictée { background-color: #ff6347; color: white; }
+.bulle-sousmatiere-Lecture { background-color: #20b2aa; color: white; }
+.bulle-sousmatiere-Écriture { background-color: #d2691e; color: white; }
+.bulle-sousmatiere-ExpressionOrale { background-color: #9acd32; color: black; }
+.bulle-sousmatiere-Poésie { background-color: #ff69b4; color: white; }
+.bulle-sousmatiere-Numération { background-color: #ff1493; color: white; }
+.bulle-sousmatiere-Calcul { background-color: #ff4500; color: white; }
+.bulle-sousmatiere-Calculmental { background-color: #ffa07a; color: black; }
+.bulle-sousmatiere-Géométrie { background-color: #20b2aa; color: white; }
+.bulle-sousmatiere-Mesures { background-color: #ffa500; color: black; }
+.bulle-sousmatiere-Problèmes { background-color: #ff8c00; color: white; }
+.bulle-sousmatiere-LeTemps { background-color: #c8e6c9; color: black; }
+.bulle-sousmatiere-Lespace { background-color: #aed581; color: black; }
+.bulle-sousmatiere-LeVivant { background-color: #9ccc65; color: black; }
+
+/* ===== CONTENEUR BOUTONS ACTIONS DANS TABLEAUX ===== */
+.action-button-container {
+    display: flex;
+    gap: 8px; /* espace horizontal entre les boutons */
+    align-items: center;
+    white-space: nowrap;
+}
+
+/* Le formulaire du bouton supprimer doit être inline-block pour ne pas casser la ligne */
+.action-button-container form {
+    display: inline-block;
+    margin: 0;
+}
+
+/* Boutons icônes déjà définis */
+.action-button.icon-btn {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    font-size: 18px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    transition: background-color 0.3s ease;
+}
+
+/* Si tu souhaites un peu d'espace entre les icônes tu peux ajouter */
+.action-button.icon-btn + .action-button.icon-btn,
+.action-button.icon-btn + form {
+    margin-left: 8px;
+}
+
+/* Bouton modifier (bleu) */
+.action-button.modify.icon-btn {
+    background-color: #007BFF;
+}
+
+.action-button.modify.icon-btn:hover {
+    background-color: #0056b3;
+}
+
+/* Bouton supprimer (rouge) */
+.action-button.delete.icon-btn {
+    background-color: #dc3545;
+}
+
+.action-button.delete.icon-btn:hover {
+    background-color: #a71d2a;
+}
+
+/* L’icône ne bloque pas le clic sur le bouton */
+.action-button.icon-btn i {
+    pointer-events: none;
+}
+
+
+.carte-identite {
+  border: 1px solid #4078A0;
+  border-radius: 10px;
+  background-color: #dfeefcff;
+  padding: 20px;
+  max-width: 100%; /* au lieu de 700px */
+  width: 100%; /* pour prendre toute la largeur possible */
+  box-sizing: border-box; /* pour inclure le padding dans la largeur */
+  margin: 20px auto;
+  font-family: Arial, sans-serif;
+  color: #333;
+  box-shadow: 0 2px 6px rgba(64, 120, 160, 0.4);
+}
+
+.carte-header {
+  background: linear-gradient(90deg, #4078A0, #4078A0);
+  color: white;
+  font-weight: bold;
+  font-size: 1.6em;
+  text-align: center;
+  padding: 20px 10px;
+  border-radius: 10px;
+  letter-spacing: 1.5px;
+  margin-bottom: 25px;
+  box-shadow: 0 4px 8px rgba(29, 77, 178, 0.5);
+}
+
+.carte-body {
+  display: flex;
+  gap: 25px;
+  padding: 10px 5px 5px 5px;
+}
+
+.photo-col {
+  flex: 0 0 180px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.photo-col img {
+  width: 160px;
+  height: 220px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 2px solid #1d4db2;
+  cursor: pointer;
+  box-shadow: 0 0 12px rgba(64, 120, 160, 0.8);
+  transition: transform 0.3s ease;
+}
+
+.photo-col img:hover {
+  transform: scale(1.05);
+}
+
+/* Nouvelle classe pour 2 colonnes info */
+.infos-col-two-cols {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  align-content: start;
+}
+
+/* Bulle-info modifiée pour taille plus petite */
+.bulle-info {
+  background-color: #4078A0;
+  color: white;
+  display: flex;
+  align-items: center;
+  border-radius: 18px;
+  padding: 6px 12px;
+  font-weight: bold;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(64, 120, 160, 0.4);
+  gap: 8px;
+  font-size: 1em;
+}
+
+.bulle-info i {
+  font-size: 1.2em;
+  color: #a6c9e9;
+}
+
+.retour-link {
+  display: block;
+  max-width: 700px;
+  margin: 20px auto;
+  font-size: 1em;
+  text-decoration: none;
+  color: #4078A0;
+  font-weight: 600;
+  transition: color 0.25s ease;
+}
+
+.retour-link:hover {
+  color: #1d4db2;
+  text-decoration: underline;
+}
+
+
+.carte-body {
+  display: flex;
+  gap: 25px;
+  padding: 10px 5px 5px 5px;
+}
+
+.photo-col {
+  flex: 0 0 180px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.photo-col img {
+  width: 160px;
+  height: 220px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 2px solid #1d4db2;
+  cursor: pointer;
+  box-shadow: 0 0 12px rgba(64, 120, 160, 0.8);
+  transition: transform 0.3s ease;
+}
+
+.photo-col img:hover {
+  transform: scale(1.05);
+}
+
+/* Container qui englobe les 2 colonnes */
+.infos-container {
+  display: flex;
+  flex: 1;
+  gap: 20px;
+  justify-content: space-between;
+}
+
+/* Chaque colonne d'infos */
+.infos-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Style bulles infos */
+.bulle-info {
+  background-color: #4078A0;
+  color: white;
+  display: flex;
+  align-items: center;
+  border-radius: 18px;
+  padding: 8px 16px;
+  font-weight: bold;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(64, 120, 160, 0.4);
+  gap: 8px;
+}
+
+.bulle-info i {
+  font-size: 1.3em;
+  color: #a6c9e9;
+}
+
+
+.retour-link {
+    display: block;
+    text-align: left;
+    font-size: 0.9em;
+    margin-left: 0;
+}
+
+
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bulles_notes.css') }}">
+
+
+
+
+.form-ajout-dictee {
+    max-width: 500px;
+    margin-top: 20px;
+}
+
+.form-ajout-dictee .form-group {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 15px;
+}
+
+.form-ajout-dictee label {
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.form-ajout-dictee input,
+.form-ajout-dictee select {
+    padding: 8px;
+    font-size: 14px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+}
+
+.btn-valider {
+    background-color: #00688B;
+    color: white;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.btn-valider:hover {
+    background-color: #004d6d;
+}
+
+
+
+

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Test DataTables</title>
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css" />
+</head>
+
+<body>
+
+    <table id="eleves-table" class="display" style="width:100%">
+        <thead>
+            <tr>
+                <th>Nom</th>
+                <th>Prénom</th>
+                <th>Date de naissance</th>
+                <th>Niveau</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Dupont</td>
+                <td>Jean</td>
+                <td>2005-01-01</td>
+                <td>CE2</td>
+            </tr>
+            <tr>
+                <td>Martin</td>
+                <td>Claire</td>
+                <td>2006-05-03</td>
+                <td>CM1</td>
+            </tr>
+            <tr>
+                <td>Durand</td>
+                <td>Paul</td>
+                <td>2005-07-20</td>
+                <td>CE2</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+
+    <script>
+        $(document).ready(function () {
+            $('#eleves-table').DataTable({
+                paging: false,
+                info: false,
+                searching: false,
+                order: []
+            });
+        });
+    </script>
+
+</body>
+
+</html>

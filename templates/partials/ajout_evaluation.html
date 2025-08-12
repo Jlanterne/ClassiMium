@@ -1,0 +1,138 @@
+<div class="formulaire-eval">
+    <h3>Nouvelle évaluation</h3>
+</div>
+
+<form method="POST" action="{{ url_for('ajouter_evaluation', classe_id=classe.id) }}">
+    <!-- Niveaux à cocher -->
+    <div class="form-row">
+        <label>Quel(s) niveau(x) ?</label>
+        <div class="niveaux-checkbox-inline">
+            {% for niveau in classe.niveaux %}
+            <label>
+                <input type="checkbox" name="niveaux_concernes" value="{{ niveau }}">
+                {{ niveau }}
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="form-row">
+        <label for="titre">Titre :</label>
+        <input type="text" name="titre" id="titre" required>
+    </div>
+
+    <div class="form-row">
+        <label for="date">Date :</label>
+        <input type="date" name="date" id="date" required>
+    </div>
+
+    <div class="form-row">
+        <label for="matiere">Matière :</label>
+        <select name="matiere" id="matiere" required onchange="majSousMatieres()">
+            <option value="" disabled selected>Choisir une matière</option>
+            <option value="Français">Français</option>
+            <option value="Mathématiques">Mathématiques</option>
+            <option value="QLM">QLM</option>
+            <option value="EMC">EMC</option>
+            <option value="Arts plastiques">Arts plastiques</option>
+            <option value="Musique">Musique</option>
+            <option value="EPS">EPS</option>
+            <option value="Anglais">Anglais</option>
+            <option value="Autres">Autres</option>
+        </select>
+    </div>
+
+    <div class="form-row">
+        <label for="sous_matiere">Sous-matière :</label>
+        <select name="sous_matiere" id="sous_matiere" disabled>
+            <option value="" selected>Choisir une sous-matière</option>
+            <!-- Les options seront mises à jour par JS -->
+        </select>
+    </div>
+
+    <!-- Objectifs -->
+    <div id="objectifs-container">
+        <div class="form-row objectif-row">
+            <label>Objectif 1 :</label>
+            <input type="text" name="objectifs[]" class="objectif-input" oninput="ajouterObjectifSiBesoin(this)">
+        </div>
+    </div>
+
+    <div class="form-row">
+        <button type="submit" class="valider-btn">✅ Enregistrer</button>
+        <a href="{{ url_for('page_classe', classe_id=classe.id) }}" class="annuler-btn">❌ Annuler</a>
+    </div>
+</form>
+
+<script>
+    const sousMatieres = {
+        "Français": [
+            "Orthographe", "Vocabulaire", "Grammaire", "Conjugaison", "Lecture", "Écriture", "Expression orale", "Poésie"
+        ],
+        "Mathématiques": [
+            "Numération", "Calcul", "Calcul mental", "Géométrie", "Mesures", "Problèmes"
+        ],
+        "QLM": [
+            "Le temps", "L'espace", "Le vivant"
+        ]
+    };
+
+    function majSousMatieres() {
+        const matiereSelect = document.getElementById('matiere');
+        const sousMatiereSelect = document.getElementById('sous_matiere');
+        const matiere = matiereSelect.value;
+
+        // Vide les options
+        sousMatiereSelect.innerHTML = "";
+
+        if (matiere in sousMatieres) {
+            // Active le select
+            sousMatiereSelect.disabled = false;
+
+            // Option vide
+            const optionVide = document.createElement("option");
+            optionVide.value = "";
+            optionVide.textContent = "Choisir une sous-matière";
+            optionVide.selected = true;
+            sousMatiereSelect.appendChild(optionVide);
+
+            // Ajout des sous-matières correspondantes
+            sousMatieres[matiere].forEach(sm => {
+                const option = document.createElement("option");
+                option.value = sm;
+                option.textContent = sm;
+                sousMatiereSelect.appendChild(option);
+            });
+        } else {
+            // Désactive le select si aucune sous-matière
+            const optionAucune = document.createElement("option");
+            optionAucune.value = "";
+            optionAucune.textContent = "Aucune sous-matière";
+            optionAucune.selected = true;
+            sousMatiereSelect.appendChild(optionAucune);
+            sousMatiereSelect.disabled = true;
+        }
+    }
+
+    // Fonction pour ajouter dynamiquement un nouvel objectif
+    function ajouterObjectifSiBesoin(input) {
+        const container = document.getElementById("objectifs-container");
+        const inputs = container.querySelectorAll("input.objectif-input");
+        const dernier = inputs[inputs.length - 1];
+        if (input === dernier && input.value.trim() !== "") {
+            const index = inputs.length + 1;
+            const div = document.createElement("div");
+            div.className = "form-row objectif-row";
+            const label = document.createElement("label");
+            label.textContent = "Objectif " + index + " :";
+            const newInput = document.createElement("input");
+            newInput.type = "text";
+            newInput.name = "objectifs[]";
+            newInput.className = "objectif-input";
+            newInput.oninput = function () { ajouterObjectifSiBesoin(this); };
+            div.appendChild(label);
+            div.appendChild(newInput);
+            container.appendChild(div);
+        }
+    }
+</script>

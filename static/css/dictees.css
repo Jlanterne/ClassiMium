@@ -1,0 +1,790 @@
+/* =========================================================================
+   DICTÉES — CSS consolidé (v3.9, scoped)
+   =========================================================================
+   0) Variables & reset
+   1) Conteneur & tableau
+   1bis) Bandeau NIVEAU (au-dessus d’ÉLÈVES+GROUPE)
+   2) Colonne ÉLÈVES (sticky)
+   3) Colonne GROUPE (sticky)
+   4) Corps des dictées (cellules)
+   5) Pourcentages + pastille moyenne
+   6) Entêtes dictées (date / nb mots / bilan)
+   7) Cadenas, badge n°, overlay verrouillage
+   8) Colonne “+” (nouvelle dictée)
+   9) Disquette “enregistré” (💾, collée au select)
+   10) Utilitaires / séparateurs stables
+   ========================================================================= */
+
+/* =========================
+   0) Variables & reset
+   ========================= */
+:root {
+    /* Couleurs */
+    --c-brand: #00688B;
+    --c-brand-dark: #004466;
+    --c-header: #4078A0;
+    /*--c-bg: #edf3fa;*/
+    --c-border: #ccc;
+    --c-border-soft: #ddd;
+    --c-text-on-header: #fff;
+
+    /* Largeurs */
+    --w-col-eleve: 255px;
+    /* ~5 cm */
+    --w-col-groupe: 84px;
+    /* colonne GROUPE (réduite) */
+    --w-col-dictee: 130px;
+    /* une dictée */
+    --w-col-add: 80px;
+    /* colonne “+” */
+
+    /* Tailles / espaces */
+    --h-input: 21px;
+    --fz-base: 12px;
+    --h-bandeau: 38px;
+    /* hauteur du bandeau NIVEAU */
+    --scroll-tail: min(40vw, 480px);
+
+    /* Thèmes d’entête */
+    --c-simple-bg: #888;
+    --c-simple-fg: #fff;
+    --c-bilan-bg: #c94040;
+    --c-bilan-fg: #fff;
+
+    /* Couleurs % */
+    --c-pct-0-30: #F58487;
+    --c-pct-30-45: #F9A668;
+    --c-pct-45-55: #FFE223;
+    --c-pct-55-65: #D4F5B0;
+    --c-pct-65-75: #A7E9B7;
+    --c-pct-75-85: #5CC995;
+    --c-pct-85-100: #3DBCB9;
+    --c-pct-100: #00D3F8;
+
+    /* Overlay verrouillage */
+    --lock-overlay: rgba(255, 255, 255, .25);
+
+    /* “+” */
+    --add-plus-bg: #B5C800;
+    --add-plus-fg: #fff;
+    --add-plus-border: #A6A6A6;
+    --add-plus-hover-bg: #6B973F;
+    --add-plus-hover-fg: #fff;
+    --add-plus-hover-border: #A6A6A6;
+
+    /* Z-index hiérarchie (ÉLÈVES/GROUPE au-dessus des dictées) */
+    --z-bandeau: 70;
+    --z-eleve-th: 60;
+    --z-eleve-td: 59;
+    --z-groupe-th: 66;
+    /* > élève titre */
+    --z-groupe-td: 65;
+    /* > élève cellules */
+    --z-entete-dictee: 4;
+    --z-float-avg: 12;
+    --z-float-lock: 11;
+    --z-float-badge: 10;
+    --z-lock-overlay: 9;
+
+    /* Disquette (💾) */
+    --pip-size: 18px;
+    --pip-gap: 6px;
+
+    /* Zebra + séparateurs */
+    --row-odd: #ffffff;
+    --row-even: #f5f5f5;
+    --sep-color: var(--c-border-soft);
+}
+
+.page-dictees,
+.page-dictees * {
+    box-sizing: border-box;
+}
+
+
+.page-dictees {
+    font-family: Arial, sans-serif;
+    background: var(--c-bg);
+}
+
+
+/* =========================
+   1) Conteneur & tableau
+   ========================= */
+.table-container_d {
+    position: relative;
+    /* ancre locale (bandeau, disquette, etc.) */
+    display: block;
+    overflow-x: auto;
+    /* scroll horizontal */
+    overflow-y: visible;
+    padding-top: calc(var(--h-bandeau) + 8px);
+    /* place pour le bandeau */
+    padding-right: var(--scroll-tail);
+    /* espace à droite pour “+” */
+}
+
+table.table-dictee_d {
+    border-collapse: separate;
+    border-spacing: 0;
+    table-layout: fixed;
+    width: auto;
+}
+
+.table-dictee_d thead,
+.table-dictee_d tr,
+.table-dictee_d th {
+    overflow: visible;
+}
+
+.table-dictee_d th,
+.table-dictee_d td {
+    border: 1px solid var(--c-border);
+    border-top: none;
+    border-bottom: 1px solid var(--c-border-soft);
+    text-align: center;
+    padding: 4px;
+    font-size: var(--fz-base);
+    background-clip: padding-box;
+}
+
+
+.table-dictee_d th {
+    background: var(--c-header);
+    color: var(--c-text-on-header);
+    font-weight: bold;
+    font-size: 10px;
+    /* ajusté pour matcher ÉLÈVES */
+}
+
+.row-eleve_d:nth-child(even) {
+    background: #f5f5f5;
+}
+
+.grisee_d {
+    background: #d0d0d0 !important;
+}
+
+/* =========================
+   1bis) Bandeau NIVEAU
+   ========================= */
+.table-container_d>.titre-niveau {
+    position: sticky;
+    left: 0;
+    top: 0;
+    z-index: var(--z-bandeau);
+    width: calc(var(--w-col-eleve) + var(--w-col-groupe));
+    min-width: calc(var(--w-col-eleve) + var(--w-col-groupe));
+    max-width: calc(var(--w-col-eleve) + var(--w-col-groupe));
+    height: var(--h-bandeau);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 8px;
+    margin: 0;
+    color: #fff;
+    font-weight: 800;
+    font-size: 18px;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    border-left: 1px solid var(--c-border);
+    border-right: 1px solid var(--c-border);
+    border-bottom: 1px solid var(--c-border);
+    border-radius: 15px 15px 0 0;
+    background: var(--c-header);
+}
+
+/* =========================
+   2) Colonne ÉLÈVES (sticky)
+   ========================= */
+.col-eleve-titre_d {
+    position: sticky;
+    left: 0;
+    z-index: var(--z-eleve-th);
+    text-align: left;
+    padding-left: 8px;
+    background: var(--c-header);
+    color: var(--c-text-on-header);
+    font-size: 18px;
+    /* gabarit titre */
+    width: var(--w-col-eleve);
+    min-width: var(--w-col-eleve);
+    max-width: var(--w-col-eleve);
+    overflow: hidden;
+}
+
+.col-eleve_d {
+    position: sticky;
+    left: 0;
+    z-index: var(--z-eleve-td);
+    text-align: left;
+    white-space: nowrap;
+    padding: 0 8px;
+    background: #f0f0f0;
+    /* opaque pour masquer dessous */
+    font-weight: bold;
+    font-size: 16px;
+    width: var(--w-col-eleve);
+    min-width: var(--w-col-eleve);
+    max-width: var(--w-col-eleve);
+    height: 36px;
+}
+
+/* =========================
+   3) Colonne GROUPE (sticky)
+   ========================= */
+.col-groupe-titre_d {
+    position: sticky;
+    left: var(--w-col-eleve);
+    z-index: var(--z-groupe-th);
+    width: var(--w-col-groupe);
+    min-width: var(--w-col-groupe);
+    max-width: var(--w-col-groupe);
+    background: var(--c-header);
+    color: var(--c-text-on-header);
+    font-size: 18px;
+    box-shadow: 2px 0 5px -2px rgba(0, 0, 0, .08);
+}
+
+.col-groupe_d {
+    position: sticky;
+    left: var(--w-col-eleve);
+    z-index: var(--z-groupe-td);
+    width: var(--w-col-groupe);
+    min-width: var(--w-col-groupe);
+    max-width: var(--w-col-groupe);
+    background: #f7f7f7;
+    height: 36px;
+    overflow: visible !important;
+    /* pour la 💾 qui déborde */
+    padding: 0 6px;
+}
+
+/* Le <select> tient dans la colonne réduite */
+select.select-groupe_d {
+    width: 60px;
+    min-width: 60px;
+    height: 26px;
+    font-size: 12px;
+    text-align: center;
+}
+
+/* =========================
+   4) Corps des dictées (cellules)
+   ========================= */
+.cell-dictee_d {
+    width: var(--w-col-dictee);
+    min-width: var(--w-col-dictee);
+    max-width: var(--w-col-dictee);
+    height: 30px;
+    text-align: left;
+    vertical-align: middle;
+    padding: 0 4px;
+}
+
+.cell-wrapper_d {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    width: 100%;
+}
+
+.input-erreurs_d {
+    width: 30px;
+    min-width: 30px;
+    max-width: 30px;
+    height: 20px;
+    font-size: var(--fz-base);
+    text-align: center;
+    margin: 0;
+}
+
+/* Radios visibles en mode bilan (gérées par JS) */
+.radio-groupe_d {
+    display: none;
+    flex-direction: column;
+    gap: 0 !important;
+    /* serré */
+    margin: 0;
+    padding: 0;
+    align-items: center;
+}
+
+.radio-groupe_d label {
+    display: flex;
+    align-items: center;
+    line-height: 1;
+    font-size: 10px;
+    cursor: pointer;
+    user-select: none;
+    margin: 0 !important;
+    padding: 0;
+}
+
+.radio-groupe_d label:first-child {
+    margin-top: 2px !important;
+}
+
+.radio-groupe_d label:last-child {
+    margin-bottom: 2px !important;
+}
+
+.radio-groupe_d input[type="radio"] {
+    width: 12px;
+    height: 12px;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+    appearance: none;
+    border: 1.5px solid #555;
+    border-radius: 2px;
+    position: relative;
+}
+
+.radio-groupe_d input[type="radio"]:checked {
+    background: var(--c-brand);
+    border-color: var(--c-brand-dark);
+}
+
+.radio-groupe_d input[type="radio"]:checked::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 5px;
+    height: 5px;
+    background: #fff;
+    border-radius: 1px;
+}
+
+/* =========================
+   5) Pourcentages + pastille moyenne
+   ========================= */
+.cell-pourcentage_d,
+.avg-badge_d {
+    min-width: 52px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: var(--fz-base);
+    line-height: 1;
+    border: 1px solid transparent;
+    background: #f0f0f0;
+    color: #000;
+    transition: background-color .15s, color .15s, border-color .15s;
+}
+
+/* Codes couleur % */
+.cell-pourcentage_d.pct-0-30 {
+    background: var(--c-pct-0-30);
+    color: #000;
+}
+
+.cell-pourcentage_d.pct-30-45 {
+    background: var(--c-pct-30-45);
+    color: #000;
+}
+
+.cell-pourcentage_d.pct-45-55 {
+    background: var(--c-pct-45-55);
+    color: #000;
+}
+
+.cell-pourcentage_d.pct-55-65 {
+    background: var(--c-pct-55-65);
+    color: #000;
+}
+
+.cell-pourcentage_d.pct-65-75 {
+    background: var(--c-pct-65-75);
+    color: #000;
+}
+
+.cell-pourcentage_d.pct-75-85 {
+    background: var(--c-pct-75-85);
+    color: #000;
+}
+
+.cell-pourcentage_d.pct-85-100 {
+    background: var(--c-pct-85-100);
+    color: #000;
+}
+
+.cell-pourcentage_d.pct-100 {
+    background: var(--c-pct-100);
+    color: #000;
+    border-color: #00aacc;
+}
+
+/* Typo fine % */
+.pct {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.pct__int {
+    font-weight: bold;
+}
+
+.pct__sep {
+    margin: 0;
+}
+
+.pct__dec {
+    font-size: .75em;
+}
+
+.pct__sign {
+    font-size: .85em;
+    margin-left: 1px;
+}
+
+/* Pastille moyenne (flottante) */
+.avg-badge_d {
+    width: 52px;
+    height: 24px;
+    padding: 0;
+    border-radius: 999px;
+    font-weight: bold;
+    border: 2px solid rgba(0, 0, 0, .2);
+    background: #e0e0e0;
+    color: #000;
+    background-clip: padding-box;
+    position: absolute;
+    top: 0;
+    left: calc(50% + 38px);
+    transform: translate(-120%, -60%);
+    z-index: var(--z-float-avg);
+}
+
+/* =========================
+   6) Entêtes dictées
+   ========================= */
+.entete-dictee_d {
+    position: relative;
+    z-index: var(--z-entete-dictee);
+    --th-bg: var(--c-simple-bg);
+    --th-fg: var(--c-simple-fg);
+    background: var(--th-bg);
+    color: var(--th-fg);
+    font-size: 14px;
+    padding: 6px 4px;
+    width: var(--w-col-dictee);
+    min-width: var(--w-col-dictee);
+    max-width: var(--w-col-dictee);
+}
+
+.entete-dictee_d[data-type="simple"] {
+    --th-bg: var(--c-simple-bg);
+    --th-fg: var(--c-simple-fg);
+}
+
+.entete-dictee_d[data-type="bilan"] {
+    --th-bg: var(--c-bilan-bg);
+    --th-fg: var(--c-bilan-fg);
+}
+
+.entete-dictee_d .zone-param_d {
+    margin-top: 12px;
+}
+
+.date_d input,
+.nbmots_d input {
+    height: var(--h-input);
+    font-size: var(--fz-base);
+    line-height: var(--h-input);
+    text-align: center;
+    border: 1px solid var(--c-border);
+    margin: 0;
+    padding: 0 2px;
+}
+
+.input-nbmots_d {
+    width: 50px;
+    min-width: 50px;
+    max-width: 60px;
+    text-align: center;
+}
+
+.nbmots_d {
+    display: flex;
+    justify-content: center;
+    margin-top: 4px;
+    height: var(--h-input);
+}
+
+.nbmots-label_d.bilan {
+    display: none;
+    gap: 0;
+    justify-content: center;
+    align-items: center;
+}
+
+.nbmots-label_d.bilan input {
+    width: 25px;
+    height: var(--h-input);
+    text-align: center;
+    border: 1px solid var(--c-border);
+    margin: 0;
+    padding: 0 2px;
+}
+
+.checkbox-bilan_d {
+    width: 14px;
+    height: 14px;
+    transform: translateY(1px);
+}
+
+/* =========================
+   7) Cadenas / overlay / badge n°
+   ========================= */
+.btn-verrou_d {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translate(120%, -60%);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--c-brand);
+    color: var(--c-brand);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, .2);
+    z-index: var(--z-float-lock);
+    transition: background-color .2s, color .2s, border-color .2s;
+}
+
+.btn-verrou_d.verrouille_d {
+    background: var(--c-brand);
+    color: #fff;
+    border-color: var(--c-brand-dark);
+}
+
+.entete-dictee_d.verrouille_d {
+    position: relative;
+    filter: grayscale(.15);
+}
+
+.entete-dictee_d.verrouille_d::after {
+    content: "";
+    position: absolute;
+    left: -1px;
+    right: -1px;
+    top: -26px;
+    bottom: 0;
+    background: var(--lock-overlay);
+    pointer-events: none;
+    z-index: var(--z-lock-overlay);
+    border-radius: 10px 10px 0 0;
+}
+
+.entete-dictee_d.verrouille_d .dictee-num_badge,
+.entete-dictee_d.verrouille_d .btn-verrou_d,
+.entete-dictee_d.verrouille_d .avg-badge_d {
+    z-index: 8;
+    filter: none;
+    opacity: 1;
+}
+
+.dictee-num_badge {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: translateY(-65%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 18px;
+    padding: 0;
+    background: var(--th-bg);
+    color: #fff;
+    border: none;
+    border-radius: 10px 10px 0 0;
+    font-weight: 700;
+    font-size: 11px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    z-index: var(--z-float-badge);
+    pointer-events: none;
+    box-sizing: border-box;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* =========================
+   8) Colonne “+”
+   ========================= */
+th.col-add_d {
+    width: var(--w-col-add);
+    min-width: var(--w-col-add);
+    max-width: var(--w-col-add);
+    text-align: center;
+    border-radius: 0 15px 15px 0;
+    cursor: pointer;
+    position: relative;
+    background: #A6A6A6;
+}
+
+.add-plus_d {
+    width: 36px;
+    height: 36px;
+    margin: 0 auto;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    border: 2px solid var(--add-plus-border);
+    font-weight: 700;
+    font-size: 30px;
+    line-height: 1;
+    user-select: none;
+    color: var(--add-plus-fg);
+    background: var(--add-plus-bg);
+    transition: transform .12s ease, background-color .12s ease, color .12s ease, border-color .12s ease;
+}
+
+.add-plus_d:hover,
+th.col-add_d:hover .add-plus_d {
+    background: var(--add-plus-hover-bg);
+    color: var(--add-plus-hover-fg);
+    border-color: var(--add-plus-hover-border);
+}
+
+.add-plus_d:active {
+    transform: scale(.96);
+}
+
+th.col-add_d:focus-within .add-plus_d {
+    outline: 2px solid var(--c-brand);
+    outline-offset: 2px;
+}
+
+/* =========================
+   9) Disquette “enregistré”
+   ========================= */
+.groupe-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.groupe-wrap>.save-pip_d {
+    position: absolute;
+    left: calc(-1 * (var(--pip-gap) + var(--pip-size)));
+    /* à gauche du select */
+    top: 50%;
+    transform: translateY(-50%) scale(.85);
+    width: var(--pip-size);
+    height: var(--pip-size);
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    background: #2bb673;
+    color: #fff;
+    font-size: 12px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .18);
+    pointer-events: none;
+    z-index: 10000 !important;
+    opacity: 0;
+    transition: opacity .18s ease, transform .18s ease;
+}
+
+@keyframes pipPulseSel {
+
+    0%,
+    100% {
+        transform: translateY(-50%) scale(1);
+    }
+
+    50% {
+        transform: translateY(-50%) scale(1.18);
+    }
+}
+
+.groupe-wrap>.save-pip_d.is-on {
+    opacity: 1;
+    animation: pipPulseSel .6s ease-in-out 0s 5 both;
+    /* ~3s */
+}
+
+/* =========================
+   10) Utilitaires & séparateurs stables
+   ========================= */
+/* Masque les flèches des <input type=number> */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Séparateurs 1px stables dans le corps du tableau (anti “double trait”) */
+.table-dictee_d tbody td {
+    border-top: none !important;
+    border-bottom: none !important;
+    box-shadow: none !important;
+    background-image: linear-gradient(var(--sep-color), var(--sep-color));
+    background-size: 100% 1px;
+    background-repeat: no-repeat;
+    background-position: left bottom;
+    /* un seul trait : bas */
+    background-clip: padding-box;
+}
+
+/* Première ligne : trait HAUT net sous les en-têtes */
+.table-dictee_d tbody tr:first-child td {
+    background-image:
+        linear-gradient(var(--c-border), var(--c-border)),
+        /* haut renforcé */
+        linear-gradient(var(--sep-color), var(--sep-color));
+    /* bas standard */
+    background-size: 100% 1px, 100% 1px;
+    background-position: left top, left bottom;
+    background-repeat: no-repeat;
+}
+
+/* Dernière ligne : bas renforcé */
+.table-dictee_d tbody tr:last-child td {
+    background-image: linear-gradient(var(--c-border), var(--c-border));
+    background-size: 100% 1px;
+    background-position: left bottom;
+    background-repeat: no-repeat;
+}
+
+/* Rayures visibles aussi dans ÉLÈVES & GROUPE (collent à la ligne) */
+.row-eleve_d:nth-child(odd) .col-eleve_d,
+.row-eleve_d:nth-child(odd) .col-groupe_d {
+    background-color: var(--row-odd) !important;
+}
+
+.row-eleve_d:nth-child(even) .col-eleve_d,
+.row-eleve_d:nth-child(even) .col-groupe_d {
+    background-color: var(--row-even) !important;
+}
+
+/* Titre ÉLÈVES/GROUPE : trait bas net (border visuelle, pas deux) */
+.col-eleve-titre_d,
+.col-groupe-titre_d {
+    border-bottom: none !important;
+    box-shadow: none !important;
+    background-image: linear-gradient(var(--c-border), var(--c-border));
+    background-size: 100% 1px;
+    background-repeat: no-repeat;
+    background-position: left bottom;
+}
+
+/* Dernière ligne : on garde uniquement le trait BAS sur les sticky */
+.row-eleve_d:last-child .col-eleve_d,
+.row-eleve_d:last-child .col-groupe_d {
+    box-shadow: inset 0 -1px var(--c-border) !important;
+}

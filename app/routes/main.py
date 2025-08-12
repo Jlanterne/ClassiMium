@@ -1391,9 +1391,22 @@ def config_export():
       - Chemins d’export (en mémoire process, surchargés par ENV)
       - Réglages UI (anim_mode, anim_duration) stockés en DB (app_settings)
     """
+    ALIAS   = {"slide": "slide-down", "wipe": "wipe-down", "clip": "clip-circle", "scale": "zoom-in"}
+    CHOICES = {
+        "fade",
+        "slide-up","slide-down","slide-left","slide-right",
+        "wipe-up","wipe-down","wipe-left","wipe-right",
+        "curtain-h","curtain-v",
+        "clip-circle","clip-ellipse",
+        "zoom-in","zoom-out","scale-pop",
+        "flip-x","flip-y","hinge-top",
+        "skew-in","rotate-in","newspaper",
+        "blur-in","blur-zoom",
+    }
+
     global PRIMARY_ROOT, SECONDARY_ROOT, REUNIONS_DIRNAME, _ACTIVE_ROOT, _LAST_CHECK
 
-    # Menu latéral (classes)
+    # --- classes pour le menu latéral ---
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     cur.execute("SELECT * FROM classes ORDER BY annee DESC")
@@ -1401,58 +1414,81 @@ def config_export():
     for cl in toutes_les_classes:
         cur.execute("SELECT niveau FROM classes_niveaux WHERE classe_id = %s", (cl["id"],))
         cl["niveaux"] = [row["niveau"] for row in cur.fetchall()]
-    classe = toutes_les_classes[0] if toutes_les_classes else None
     cur.close()
-    # ⚠️ on garde 'conn' ouvert pour lire/écrire les réglages UI juste après
 
-    # Valeurs courantes (ENV > globals)
+    # --- valeurs courantes (ENV > globals) ---
     current_primary   = os.getenv("DOCS_ROOT_PRIMARY")   or PRIMARY_ROOT
     current_secondary = os.getenv("DOCS_ROOT_SECONDARY") or SECONDARY_ROOT
     current_reunions  = REUNIONS_DIRNAME
 
-    # UI depuis DB
-    ui_settings = get_ui_settings_from_db(conn)
-    current_anim_mode     = ui_settings["anim_mode"]
-    current_anim_duration = ui_settings["anim_duration"]
+    # --- UI depuis DB ---
+    ui_settings = get_ui_settings_from_db(conn) or {}
+    current_anim_mode     = ui_settings.get("anim_mode") or "slide"
+    current_anim_duration = ui_settings.get("anim_duration") or 520
+
+    # normalise ce qu'on affichera au premier rendu
+    cur_mode_normalized = ALIAS.get(current_anim_mode, current_anim_mode)
+    if cur_mode_normalized not in CHOICES:
+        cur_mode_normalized = "fade"
 
     if request.method == "POST":
-        # — chemins existants —
-        new_primary   = (request.form.get("primary_root") or "").strip() or current_primary
-        new_secondary = (request.form.get("secondary_root") or "").strip() or current_secondary
-        new_reunions  = (request.form.get("reunions_dirname") or "").strip() or current_reunions
+        # différencier autosave (fetch) d'un vrai submit
+        is_fetch  = (request.headers.get("X-Requested-With", "").lower() in ("xmlhttprequest", "fetch"))
+        wants_json = "application/json" in (request.headers.get("Accept", "") or "")
 
-        PRIMARY_ROOT     = new_primary
-        SECONDARY_ROOT   = new_secondary
-        REUNIONS_DIRNAME = new_reunions
+        # --- chemins ---
+        new_primary   = (request.form.get("primary_root") or "").strip()
+        new_secondary = (request.form.get("secondary_root") or "").strip()
+        new_reunions  = (request.form.get("reunions_dirname") or "").strip()
 
-        # Force re-détection de la racine dispo
+        if new_primary:   PRIMARY_ROOT = new_primary
+        if new_secondary: SECONDARY_ROOT = new_secondary
+        if new_reunions:  REUNIONS_DIRNAME = new_reunions
         _ACTIVE_ROOT = None; _LAST_CHECK = 0
 
-        # — UI (animation) —
-        mode = (request.form.get("anim_mode") or current_anim_mode).strip()
+        # --- UI ---
+        mode = (request.form.get("anim_mode") or cur_mode_normalized).strip()
+        duration_raw = request.form.get("anim_duration", current_anim_duration)
         try:
-            duration = int(request.form.get("anim_duration", current_anim_duration))
-        except ValueError:
+            duration = int(duration_raw)
+        except Exception:
             duration = current_anim_duration
 
+        # normalisation & garde-fous
+        mode = ALIAS.get(mode, mode)
+        if mode not in CHOICES:
+            mode = "fade"
+        duration = max(50, min(5000, duration))
+
+        # persist
         set_ui_settings_in_db(conn, {"anim_mode": mode, "anim_duration": duration})
+        try:
+            conn.commit()
+        except Exception:
+            # set_ui_settings_in_db peut déjà committer; on ignore si inutile
+            pass
+
+        if is_fetch or wants_json:
+            # 🔁 autosave: pas de redirect, renvoie un JSON 200
+            return jsonify(ok=True, ui={"anim_mode": mode, "anim_duration": duration}), 200
 
         flash("Paramètres enregistrés.", "success")
         conn.close()
         return redirect(url_for(".config_export"))
 
-    # GET
+    # --- GET ---
     conn.close()
     return render_template(
         "partials/config_export.html",
         primary_root=current_primary,
         secondary_root=current_secondary,
         reunions_dirname=current_reunions,
-        current_anim_mode=current_anim_mode,
+        current_anim_mode=cur_mode_normalized,          # ⬅️ valeur normalisée
         current_anim_duration=current_anim_duration,
         toutes_les_classes=toutes_les_classes,
-        classe=classe
+        classe=toutes_les_classes[0] if toutes_les_classes else None
     )
+
 
 @bp.get("/api/config/test-paths")
 def api_test_paths():

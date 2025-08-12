@@ -5,9 +5,11 @@
     transition-timing-function: ease;
 }
 
+/* masqué avant le JS pour un vrai fade-in */
 #mode-panel[data-enter="pending"] {
     opacity: 0;
 }
+
 
 /* FADE (identique, juste opacité) */
 .in-fade {

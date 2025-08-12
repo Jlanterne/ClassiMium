@@ -101,3 +101,15 @@ html.js-ready .panel-card {
         animation: none !important;
     }
 }
+
+/* Le panel doit masquer ce qui déborde et autoriser 3D */
+#mode-panel {
+    overflow: hidden;
+    backface-visibility: hidden;
+    transform-style: preserve-3d;
+}
+
+/* Donne de la profondeur pour flip/hinge */
+.panel-card {
+    perspective: 1000px;
+}

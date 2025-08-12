@@ -6,102 +6,97 @@
 {% block content %}
 <div class="settings-page">
 
-    {# ---------- styles locaux harmonisés avec le site ---------- #}
+    <!-- ================== Styles locaux ================== -->
     <style>
-        /* Conteneur : aligné à gauche, pas de centrage */
         .settings-page {
             max-width: 980px;
-            /* borne raisonnable mais pas centré */
             margin: 0;
-            /* ✨ plus de margin auto */
-            padding-right: 8px;
+            padding-right: 8px
         }
 
-        /* Cartes cohérentes avec .panel-card du site */
         .settings-page .panel-card {
             background: #fff;
             border: 1px solid #e5e7eb;
             border-radius: 12px;
             box-shadow: 0 6px 18px rgba(0, 0, 0, .06);
             padding: 16px 18px;
-            margin: 14px 0;
+            margin: 14px 0
         }
 
         .settings-page .section-title {
             margin: 0 0 10px;
             font-size: 1.05rem;
             font-weight: 700;
-            color: #1f2937;
+            color: #1f2937
         }
 
-        /* Champs formulaire */
         .settings-page .form-row,
         .settings-page .field_r {
             display: flex;
             flex-direction: column;
             gap: 6px;
-            margin: 10px 0;
+            margin: 10px 0
         }
 
         .settings-page label {
             font-weight: 600;
             font-size: .95rem;
-            color: #111827;
+            color: #111827
         }
 
         .settings-page input[type="text"],
-        .settings-page input[type="number"],
-        .settings-page select {
+        .settings-page input[type="number"] {
             border: 1px solid #d1d5db;
             border-radius: 10px;
             padding: 10px 12px;
             font-size: .95rem;
-            background: #fff;
+            background: #fff
         }
 
-        /* Barre de boutons */
+        /* Barre d’actions : pas de full-width */
         .settings-page .btnbar {
             display: flex;
-            gap: 8px;
+            gap: 10px;
             flex-wrap: wrap;
             align-items: center;
-            margin-top: 6px;
+            margin-top: 12px;
+            justify-content: flex-start
         }
 
-        /* Boutons : look proche des autres boutons du site */
-        .settings-page .btn_r,
-        .settings-page .valider-btn {
-            background: #2563eb;
-            color: #fff;
+        .settings-page .btn-classe {
+            width: auto !important;
+            min-width: unset !important;
+            display: inline-flex !important;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
             border: 0;
-            border-radius: 10px;
-            padding: 9px 14px;
-            font-weight: 700;
-            cursor: pointer;
+            border-radius: 12px;
+            font-weight: 800;
             text-decoration: none;
-            display: inline-block;
-            transition: transform .02s ease-in, filter .15s ease;
+            background: #B5C800;
+            color: #fff;
+            box-shadow: 0 6px 16px rgba(0, 0, 0, .12), inset 0 1px 0 rgba(255, 255, 255, .18);
+            transition: background .15s ease, transform .04s ease
         }
 
-        .settings-page .btn_r:hover,
-        .settings-page .valider-btn:hover {
-            filter: brightness(1.06);
+        .settings-page .btn-classe:hover {
+            background: #6B973F
         }
 
-        .settings-page .btn_r:active,
-        .settings-page .valider-btn:active {
-            transform: translateY(1px);
-        }
-
-        .settings-page .btn--success {
-            background: #059669;
+        .settings-page .btn-classe:active {
+            transform: translateY(1px)
         }
 
         .settings-page .btn--muted {
-            background: #6b7280;
+            background: #BBBBBB !important;
+            color: #111 !important
         }
 
-        /* Résultat test */
+        .settings-page .btn--muted:hover {
+            background: #AFAFAF !important
+        }
+
         .settings-page pre#test_result {
             background: #f9fafb;
             border: 1px solid #e5e7eb;
@@ -110,34 +105,125 @@
             margin-top: 8px
         }
 
-        /* Petites largeurs : les cartes restent alignées à gauche naturellement */
-        @media (min-width: 1000px) {
-            .settings-page {
-                max-width: 1000px;
-            }
-        }
-
-        /* Séparateur décoratif entre sections */
         .settings-page .section-sep {
             height: 2px;
             border: 0;
             margin: 18px 0;
-            background: linear-gradient(to right,
-                    rgba(37, 99, 235, 0),
-                    rgba(37, 99, 235, .45),
-                    rgba(37, 99, 235, 0));
-            /* bleu #2563eb, cohérent avec tes boutons */
+            background: linear-gradient(to right, rgba(37, 99, 235, 0), rgba(37, 99, 235, .45), rgba(37, 99, 235, 0));
+            border-radius: 9999px
+        }
+
+        /* === Aperçu d’animation : double-buffer === */
+        .settings-page .anim-stage {
+            position: relative;
+            height: 190px;
+            border: 1px dashed #d1d5db;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #f9fafb;
+            perspective: 1000px;
+            display: grid;
+            place-items: center
+        }
+
+        .anim-layer {
+            grid-area: 1 / 1
+        }
+
+        .anim-preview-box {
+            width: 80%;
+            max-width: 560px;
+            text-align: center;
+            padding: 14px 14px 18px;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            overflow: hidden;
+            backface-visibility: hidden;
+            transform-style: preserve-3d;
+            will-change: transform, opacity, clip-path, filter
+        }
+
+        /* Flèches */
+        .settings-page .anim-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 40px;
+            height: 40px;
             border-radius: 9999px;
-            /* arrondi doux */
+            border: 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #B5C800;
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, .15);
+            font-weight: 800
+        }
+
+        .settings-page .anim-nav:hover {
+            background: #6B973F
+        }
+
+        .settings-page .anim-nav.left {
+            left: 10px
+        }
+
+        .settings-page .anim-nav.right {
+            right: 10px
+        }
+
+        /* Lecteur */
+        .player-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px
+        }
+
+        .player-bar .btn-classe {
+            background: #B5C800
+        }
+
+        .player-bar .btn-classe:hover {
+            background: #6B973F
+        }
+
+        /* Feedback save */
+        #anim_name.just-saved {
+            position: relative
+        }
+
+        #anim_name.just-saved::after {
+            content: " • sauvegardé";
+            font-weight: 600;
+            color: #6B973F;
+            margin-left: .35rem
+        }
+
+        @media (min-width:1000px) {
+            .settings-page {
+                max-width: 1000px
+            }
         }
     </style>
 
-
-    <!-- Carte 1 : chemins d’export -->
     <div class="panel-card">
-        <h3 class="section-title">Chemins d’export</h3>
+        <h3 class="section-title">Paramètres</h3>
 
-        <form method="post" action="{{ url_for('main.config_export') }}">
+        <!-- ===== Un seul formulaire ===== -->
+        <form id="config_form" method="post" action="{{ url_for('main.config_export') }}">
+            {# CSRF Flask-WTF (si dispo) #}
+            {% if csrf_token %}
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% endif %}
+
+            <!-- Chemins d’export -->
+            <h4 class="section-title" style="margin-top:0">Chemins d’export</h4>
+
             <div class="field_r">
                 <label for="primary_root">Chemin principal (UNC)</label>
                 <input type="text" id="primary_root" name="primary_root" value="{{ primary_root or '' }}"
@@ -157,45 +243,60 @@
             </div>
 
             <div class="btnbar">
-                <button type="submit" class="btn_r">Enregistrer</button>
-                <button type="button" id="btn_test" class="btn_r btn--success">Tester l’accès</button>
-                <a href="{{ url_for('main.index') }}" class="btn_r btn--muted">← Retour</a>
+                <button type="button" id="btn_test" class="btn-classe">Tester l’accès</button>
             </div>
-        </form>
+            <pre id="test_result" aria-live="polite"></pre>
 
-        <pre id="test_result" aria-live="polite"></pre>
-        <hr class="section-sep" aria-hidden="true">
+            <hr class="section-sep" aria-hidden="true">
 
-        <h3 class="section-title">Animation des panneaux</h3>
+            <!-- Animation des panneaux -->
+            {% set cur = current_anim_mode or (settings.ui.anim_mode if settings and settings.ui else 'slide-down') %}
+            <input type="hidden" id="anim_mode" name="anim_mode" value="{{ cur }}">
 
-        <form method="post" action="{{ url_for('main.config_export') }}">
-            <div class="form-row">
-                <label for="anim_mode">Style</label>
-                {% set cur = current_anim_mode or (settings.ui.anim_mode if settings and settings.ui else 'slide') %}
-                <select id="anim_mode" name="anim_mode">
-                    <option value="slide" {{ 'selected' if cur=='slide' else '' }}>Slide (descend/remonte)</option>
-                    <option value="fade" {{ 'selected' if cur=='fade' else '' }}>Fondu</option>
-                    <option value="scale" {{ 'selected' if cur=='scale' else '' }}>Zoom doux</option>
-                    <option value="wipe" {{ 'selected' if cur=='wipe' else '' }}>Rideau (hauteur)</option>
-                    <option value="clip" {{ 'selected' if cur=='clip' else '' }}>Découpe (clip-path)</option>
-                </select>
+            <h4 class="section-title">Animation des panneaux</h4>
+            <div class="form-row" style="gap:6px;align-items:flex-start;">
+                <strong id="anim_name"></strong>
             </div>
 
-            <div class="form-row">
+            <div class="anim-stage" id="anim_stage">
+                <button type="button" id="anim_prev_btn" class="anim-nav left"
+                    aria-label="Animation précédente">◀</button>
+                <button type="button" id="anim_next_btn" class="anim-nav right"
+                    aria-label="Animation suivante">▶</button>
+
+                <!-- Calque A -->
+                <div id="anim_layer_a" class="anim-preview-box anim-layer" data-enter="pending">
+                    <div style="font-weight:700;margin-bottom:6px;">Exemple de panneau</div>
+                    <div style="font-size:.95rem;color:#4b5563">L’aperçu rejoue en boucle l’animation sélectionnée.
+                    </div>
+                </div>
+                <!-- Calque B injecté en JS -->
+            </div>
+
+            <div class="player-bar">
+                <button type="button" id="anim_toggle_btn" class="btn-classe">
+                    <span class="icon" aria-hidden="true">⏸</span> <span class="txt">Pause</span>
+                </button>
+            </div>
+
+            <div class="form-row" style="margin-top:12px;">
                 <label for="anim_duration">Durée (ms)</label>
                 {% set dur = current_anim_duration or (settings.ui.anim_duration if settings and settings.ui else 520)
                 %}
-                <input type="number" id="anim_duration" name="anim_duration" min="200" max="2000" step="20"
+                <input type="number" id="anim_duration" name="anim_duration" min="200" max="5000" step="20"
                     value="{{ dur }}">
             </div>
 
-            <button class="valider-btn" type="submit">Enregistrer</button>
+            <div class="btnbar">
+                <button type="submit" class="btn-classe">Enregistrer</button>
+                <a href="{{ url_for('main.index') }}" class="btn-classe btn--muted">← Retour</a>
+            </div>
         </form>
     </div>
 </div>
 
+<!-- ===== Test d’accès (AJAX, sans submit) ===== -->
 <script>
-    // Test d’accessibilité des chemins
     document.getElementById('btn_test')?.addEventListener('click', async () => {
         const p = document.getElementById('primary_root').value.trim();
         const s = document.getElementById('secondary_root').value.trim();
@@ -205,7 +306,6 @@
             const r = await fetch(`/api/config/test-paths?primary=${encodeURIComponent(p)}&secondary=${encodeURIComponent(s)}`);
             const data = await r.json();
             if (!data.ok) throw new Error("Réponse invalide");
-
             out.textContent =
                 `Principal : ${data.primary.path}
   → ${data.primary.exists ? "✅ accessible" : "❌ indisponible"}
@@ -217,4 +317,323 @@ Secondaire : ${data.secondary.path}
         }
     });
 </script>
+
+<!-- ===== Aperçu d’animation + Autosave (double-buffer + verrou) ===== -->
+<script>
+    window.addEventListener('DOMContentLoaded', () => {
+        if (window.__configExportPreviewInstalled) return;
+        window.__configExportPreviewInstalled = true;
+
+        const $ = s => document.querySelector(s);
+
+        const form = $('#config_form');
+        const hidden = $('#anim_mode');
+        const inputDur = $('#anim_duration');
+        const nameEl = $('#anim_name');
+        const stage = document.querySelector('.anim-stage');
+        const prevBtn = $('#anim_prev_btn');
+        const nextBtn = $('#anim_next_btn');
+        const togBtn = $('#anim_toggle_btn');
+        const togIcon = togBtn?.querySelector('.icon');
+        const togTxt = togBtn?.querySelector('.txt');
+
+        if (!form || !hidden || !inputDur || !nameEl || !stage) {
+            console.warn('[preview] éléments requis manquants');
+            return;
+        }
+
+        // ---- CSRF (Flask-WTF) ----
+        const CSRF = form.querySelector('input[name="csrf_token"]')?.value
+            || document.querySelector('meta[name="csrf-token"]')?.content
+            || null;
+
+        const CAN = !!(Element.prototype && Element.prototype.animate);
+
+        // Garantit la présence du layer A
+        let layerA = document.getElementById('anim_preview_panel');
+        if (!layerA) {
+            layerA = document.createElement('div');
+            layerA.id = 'anim_preview_panel';
+            layerA.className = 'anim-preview-box anim-layer';
+            layerA.innerHTML = `
+      <div style="font-weight:700;margin-bottom:6px;">Exemple de panneau</div>
+      <div style="font-size:.95rem;color:#4b5563">
+        L’aperçu rejoue en boucle l’animation sélectionnée.
+      </div>`;
+            stage.appendChild(layerA);
+        }
+
+        // ---- Catalogue ----
+        const CHOICES = [
+            'fade',
+            'slide-up', 'slide-down', 'slide-left', 'slide-right',
+            'wipe-up', 'wipe-down', 'wipe-left', 'wipe-right',
+            'curtain-h', 'curtain-v',
+            'clip-circle', 'clip-ellipse',
+            'zoom-in', 'zoom-out', 'scale-pop',
+            'flip-x', 'flip-y', 'hinge-top',
+            'skew-in', 'rotate-in', 'newspaper',
+            'blur-in', 'blur-zoom'
+        ];
+        const TOTAL = CHOICES.length;
+        const ALIAS = { slide: 'slide-down', wipe: 'wipe-down', clip: 'clip-circle', scale: 'zoom-in' };
+        const LABELS = {
+            'fade': 'Fondu',
+            'slide-up': 'Slide vers le haut', 'slide-down': 'Slide vers le bas', 'slide-left': 'Slide vers la gauche', 'slide-right': 'Slide vers la droite',
+            'wipe-up': 'Rideau bas → haut', 'wipe-down': 'Rideau haut → bas', 'wipe-left': 'Rideau droite → gauche', 'wipe-right': 'Rideau gauche → droite',
+            'curtain-h': 'Rideau horizontal (centre)', 'curtain-v': 'Rideau vertical (centre)',
+            'clip-circle': 'Découpe circulaire', 'clip-ellipse': 'Découpe elliptique',
+            'zoom-in': 'Zoom entrant', 'zoom-out': 'Zoom sortant', 'scale-pop': 'Pop',
+            'flip-x': 'Flip X', 'flip-y': 'Flip Y', 'hinge-top': 'Charnière (haut)',
+            'skew-in': 'Skew', 'rotate-in': 'Rotation douce', 'newspaper': 'Journal',
+            'blur-in': 'Flou → net', 'blur-zoom': 'Flou + zoom'
+        };
+        const labelFor = m => LABELS[m] || m;
+        const clamp = (n, min, max) => Math.max(min, Math.min(n, max));
+
+        function getDur() {
+            const base = Number(inputDur.value || 520);
+            const IN = clamp(Math.round(base), 50, 5000);
+            const OUT = clamp(Math.round(IN * 0.25), 80, Math.max(80, IN - 40));
+            return { IN, OUT };
+        }
+        const GAP_MS = 3000;
+
+        function frames(kind, dir) {
+            const show = (a, b) => dir === 'in' ? [a, b] : [b, a];
+            switch (kind) {
+                case 'fade': return show({ opacity: 0 }, { opacity: 1 });
+                case 'slide-up': return show({ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'translateY(0)' });
+                case 'slide-down': return show({ opacity: 0, transform: 'translateY(-12px)' }, { opacity: 1, transform: 'translateY(0)' });
+                case 'slide-left': return show({ opacity: 0, transform: 'translateX(16px)' }, { opacity: 1, transform: 'translateX(0)' });
+                case 'slide-right': return show({ opacity: 0, transform: 'translateX(-16px)' }, { opacity: 1, transform: 'translateX(0)' });
+
+                case 'wipe-down': return show({ clipPath: 'inset(0 0 100% 0)', opacity: 1 }, { clipPath: 'inset(0 0 0 0)', opacity: 1 });
+                case 'wipe-up': return show({ clipPath: 'inset(100% 0 0 0)', opacity: 1 }, { clipPath: 'inset(0 0 0 0)', opacity: 1 });
+                case 'wipe-right': return show({ clipPath: 'inset(0 100% 0 0)', opacity: 1 }, { clipPath: 'inset(0 0 0 0)', opacity: 1 });
+                case 'wipe-left': return show({ clipPath: 'inset(0 0 0 100%)', opacity: 1 }, { clipPath: 'inset(0 0 0 0)', opacity: 1 });
+
+                case 'curtain-h': return show({ clipPath: 'inset(0 50% 0 50%)', opacity: 1 }, { clipPath: 'inset(0 0 0 0)', opacity: 1 });
+                case 'curtain-v': return show({ clipPath: 'inset(50% 0 50% 0)', opacity: 1 }, { clipPath: 'inset(0 0 0 0)', opacity: 1 });
+
+                case 'clip-circle': return show({ opacity: 0, clipPath: 'circle(0% at 50% 40%)' }, { opacity: 1, clipPath: 'circle(140% at 50% 40%)' });
+                case 'clip-ellipse': return show({ opacity: 0, clipPath: 'ellipse(20% 8% at 50% 35%)' }, { opacity: 1, clipPath: 'ellipse(120% 75% at 50% 35%)' });
+
+                case 'zoom-in': return show({ opacity: 0, transform: 'scale(.92)' }, { opacity: 1, transform: 'scale(1)' });
+                case 'zoom-out': return show({ opacity: 0, transform: 'scale(1.08)' }, { opacity: 1, transform: 'scale(1)' });
+                case 'scale-pop': return show({ opacity: 0, transform: 'scale(.85)' }, { opacity: 1, transform: 'scale(1)' });
+
+                case 'flip-x': return show({ opacity: 0, transform: 'rotateX(-90deg)' }, { opacity: 1, transform: 'rotateX(0)' });
+                case 'flip-y': return show({ opacity: 0, transform: 'rotateY(90deg)' }, { opacity: 1, transform: 'rotateY(0)' });
+                case 'hinge-top': return show({ opacity: 0, transformOrigin: 'top', transform: 'rotateX(-35deg)' }, { opacity: 1, transformOrigin: 'top', transform: 'rotateX(0)' });
+
+                case 'skew-in': return show({ opacity: 0, transform: 'skewY(6deg) translateY(-8px)' }, { opacity: 1, transform: 'skewY(0) translateY(0)' });
+                case 'rotate-in': return show({ opacity: 0, transform: 'rotate(-8deg) scale(.98)' }, { opacity: 1, transform: 'rotate(0) scale(1)' });
+                case 'newspaper': return show({ opacity: 0, transform: 'rotate(-540deg) scale(.2)' }, { opacity: 1, transform: 'rotate(0) scale(1)' });
+
+                case 'blur-in': return show({ opacity: 0, filter: 'blur(10px)' }, { opacity: 1, filter: 'blur(0)' });
+                case 'blur-zoom': return show({ opacity: 0, transform: 'scale(.96)', filter: 'blur(12px)' }, { opacity: 1, transform: 'scale(1)', filter: 'blur(0)' });
+
+                default: return show({ opacity: 0 }, { opacity: 1 });
+            }
+        }
+
+        // ---- Double buffer ----
+        const layerB = layerA.cloneNode(true);
+        layerB.id = 'anim_preview_panel_b';
+        layerB.setAttribute('aria-hidden', 'true');
+        layerB.style.opacity = '0';
+        layerB.classList.add('anim-layer');
+        stage.appendChild(layerB);
+
+        let active = layerA; // visible
+        let idle = layerB; // prêt
+        let playing = true;
+        let isBusy = false;
+        let loopT = null;
+
+        const cancelAll = el => { try { el.getAnimations?.forEach(a => a.cancel()); } catch (_) { } };
+        const clearInline = el => {
+            el.style.opacity = ''; el.style.transform = ''; el.style.filter = '';
+            el.style.clipPath = ''; el.style.transformOrigin = '';
+        };
+        const applyFrame = (el, frame) => { for (const k in frame) el.style[k] = frame[k]; };
+
+        // ---- Autosave (POST sur la même route) ----
+        async function autosave(immediate = false) {
+            const doSave = async () => {
+                try {
+                    const params = new URLSearchParams();
+                    params.set('anim_mode', hidden.value);
+                    params.set('anim_duration', inputDur.value);
+                    if (CSRF) params.set('csrf_token', CSRF);
+
+                    const res = await fetch(form.action, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: params.toString(),
+                        credentials: 'same-origin' // ⚠ cookies / session
+                    });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    console.info('[autosave] ok', hidden.value, inputDur.value);
+                    // Optionnel: si la route renvoie JSON {ui:{anim_mode,anim_duration}}
+                    // const j = await res.json();
+                } catch (e) {
+                    console.warn('[autosave] fail', e);
+                }
+            };
+            clearTimeout(autosave._t);
+            if (immediate) doSave(); else autosave._t = setTimeout(doSave, 250);
+        }
+
+        // ---- Index initial depuis la BDD (ne PAS réécrire hidden ici) ----
+        const startMode = ALIAS[hidden.value] || hidden.value;   // ex: "slide" -> "slide-down"
+        let idx = CHOICES.indexOf(startMode);
+        if (idx < 0) idx = 0; // fallback propre
+        // important: on garde hidden.value = valeur BDD normalisée
+        hidden.value = CHOICES[idx];
+
+        function setTitle() {
+            nameEl.textContent = `${idx + 1} / ${TOTAL} — ${labelFor(hidden.value)}`;
+        }
+
+        function stopLoop() {
+            clearTimeout(loopT);
+            loopT = null;
+            playing = false;
+            cancelAll(active); cancelAll(idle);
+        }
+
+        function scheduleNext() {
+            if (!playing) return;
+            clearTimeout(loopT);
+            requestAnimationFrame(() => {
+                loopT = setTimeout(() => { if (playing) loopOnce(); }, GAP_MS);
+            });
+        }
+
+        function loopOnce() {
+            if (!playing || isBusy) return;
+            const { IN, OUT } = getDur();
+            const mode = hidden.value;
+
+            cancelAll(active); cancelAll(idle);
+            clearInline(idle);
+            applyFrame(idle, frames(mode, 'in')[0]);
+            idle.style.opacity = '1';
+
+            if (!CAN) { [active, idle] = [idle, active]; scheduleNext(); return; }
+
+            const outAnim = active.animate(frames(mode, 'out'), {
+                duration: Math.max(80, OUT),
+                easing: 'cubic-bezier(.4,0,.2,1)',
+                fill: 'forwards'
+            });
+
+            Promise.resolve(outAnim?.finished).catch(() => { }).then(() => {
+                const inAnim = idle.animate(frames(mode, 'in'), {
+                    duration: IN,
+                    easing: 'cubic-bezier(.22,.61,.36,1)',
+                    fill: 'both'
+                });
+                return Promise.resolve(inAnim?.finished).catch(() => { });
+            }).finally(() => {
+                [active, idle] = [idle, active];
+                scheduleNext();
+            });
+        }
+
+        function playImmediate() {
+            if (isBusy) return;
+            const { IN } = getDur();
+            const mode = hidden.value;
+
+            setTitle();
+            stopLoop(); playing = true;
+
+            cancelAll(idle); cancelAll(active);
+            clearInline(idle); clearInline(active);
+
+            applyFrame(idle, frames(mode, 'in')[0]);
+            idle.style.opacity = '1';
+            active.style.opacity = '0';
+
+            requestAnimationFrame(() => {
+                if (!CAN) { [active, idle] = [idle, active]; scheduleNext(); return; }
+                const inAnim = idle.animate(frames(mode, 'in'), {
+                    duration: IN, easing: 'cubic-bezier(.22,.61,.36,1)', fill: 'both'
+                });
+                Promise.resolve(inAnim?.finished).catch(() => { }).finally(() => {
+                    [active, idle] = [idle, active];
+                    scheduleNext();
+                });
+            });
+        }
+
+        async function changeMode(delta) {
+            if (isBusy) return;
+            isBusy = true;
+            stopLoop();
+
+            const oldMode = hidden.value;
+            const { OUT } = getDur();
+
+            // Outro du panneau actuel
+            if (CAN) {
+                cancelAll(active);
+                try {
+                    await Promise.resolve(
+                        active.animate(frames(oldMode, 'out'), {
+                            duration: Math.max(80, OUT),
+                            easing: 'cubic-bezier(.4,0,.2,1)',
+                            fill: 'forwards'
+                        }).finished
+                    );
+                } catch (_) { }
+            }
+
+            // Nouveau mode
+            idx = (idx + delta + TOTAL) % TOTAL;
+            hidden.value = CHOICES[idx];
+            setTitle();
+            autosave(true); // 💾
+
+            // Redémarre proprement la boucle sur le nouveau mode
+            playImmediate();
+            isBusy = false;
+        }
+
+        inputDur.addEventListener('change', () => { autosave(); playImmediate(); });
+        prevBtn?.addEventListener('click', () => changeMode(-1));
+        nextBtn?.addEventListener('click', () => changeMode(+1));
+
+        togBtn?.addEventListener('click', function () {
+            if (isBusy) return;
+            if (playing) {
+                stopLoop();
+                if (togIcon) togIcon.textContent = '▶';
+                if (togTxt) togTxt.textContent = 'Reprendre';
+            } else {
+                playing = true;
+                if (togIcon) togIcon.textContent = '⏸';
+                if (togTxt) togTxt.textContent = 'Pause';
+                playImmediate();
+            }
+        });
+
+        window.addEventListener('keydown', e => {
+            if (e.key === 'ArrowLeft') { e.preventDefault(); changeMode(-1); }
+            if (e.key === 'ArrowRight') { e.preventDefault(); changeMode(+1); }
+        });
+
+        // Init
+        console.info('[server cur]', hidden.value, 'index', idx);
+        setTitle();
+        playImmediate();
+    });
+</script>
+
+
+
+
 {% endblock %}

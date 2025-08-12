@@ -47,3 +47,9 @@ imports.dot
 
 !imports_app.svg
 !imports_db.svg
+
+imports_all_tmp.py
+imports.dot
+imports_*.svg
+exports_local/
+*_DEBUG.html

@@ -5,9 +5,21 @@ cd /d "%~dp0"
 if not exist ".git" goto NOGIT
 where git >nul 2>nul || goto NOGITBIN
 
+REM --- message & branche avant confirmation ---
 set "MSG=%*"
 if "%MSG%"=="" set "MSG=chore: quick sync"
 
+for /f "delims=" %%b in ('git rev-parse --abbrev-ref HEAD') do set "BRANCH=%%b"
+if "%BRANCH%"=="" set "BRANCH=main"
+
+echo.
+echo About to push:
+echo   branch : %BRANCH%
+echo   message: %MSG%
+choice /C YN /M "Continue?"
+if errorlevel 2 goto ABORT
+
+echo.
 echo [1/4] add
 git add -A
 
@@ -15,15 +27,13 @@ echo [2/4] commit
 git commit -m "%MSG%"
 if errorlevel 1 echo (no changes to commit, continue)
 
-for /f "delims=" %%b in ('git rev-parse --abbrev-ref HEAD') do set "BRANCH=%%b"
-if "%BRANCH%"=="" set "BRANCH=main"
-
 echo [3/4] pull --rebase origin %BRANCH%
 git pull --rebase origin %BRANCH% || goto REBASEERR
 
 echo [4/4] push
 git push || goto PUSHERR
 
+echo.
 echo OK pushed to %BRANCH%
 pause
 exit /b 0
@@ -49,3 +59,8 @@ exit /b 1
 echo Push failed.
 pause
 exit /b 1
+
+:ABORT
+echo Aborted by user.
+pause
+exit /b 0

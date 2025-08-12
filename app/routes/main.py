@@ -1,5 +1,15 @@
 # app/routes/main.py — généré automatiquement (extract_routes.py v2)
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app, abort, g
+from app.utils import (
+    get_db_connection,
+    export_docx_best_effort,
+    export_pdf_faithful,
+    ensure_export_dir_for_rapport,
+    get_ui_settings_from_db,
+    set_ui_settings_in_db,
+    DEFAULT_UI,
+)
+
 bp = Blueprint("main", __name__)
 
 # On importe l'ancien module pour conserver ses utilitaires

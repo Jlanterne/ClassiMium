@@ -1,0 +1,28 @@
+# Normaliser les fins de ligne
+* text=auto
+
+# Scripts Windows
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+
+# Scripts Unix
+*.sh  text eol=lf
+
+# Code (on garde LF dans le repo)
+*.py   text eol=lf
+*.html text eol=lf
+*.jinja* text eol=lf
+*.j2   text eol=lf
+*.css  text eol=lf
+*.js   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Binaires
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.docx binary
+*.pdf  binary
+*.db   binary

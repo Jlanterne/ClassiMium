@@ -22,7 +22,9 @@
 
 <!-- 👇 Contenu qui DESCEND depuis derrière les boutons.
      Le style inline empêche tout flash avant l'anim. -->
-<div class="panel-from-actions panel-card" style="opacity:0; transform:translateY(-64px)">
+<!-- garde tes boutons/onglets/filtres AU-DESSUS, hors de ce bloc -->
+
+<div id="view" class="panel-from-actions panel-card">
     {% if mode == 'ajouter_dictee' %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dictees.css') }}">
     {% include 'partials/ajouter_dictee.html' %}
@@ -39,4 +41,5 @@
     {% include 'partials/ajout_eleve.html' %}
     {% endif %}
 </div>
+
 {% endblock %}

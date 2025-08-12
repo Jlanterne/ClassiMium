@@ -31,6 +31,7 @@
     <!-- 1) JSON venant du context_processor -->
     <script id="ui-settings" type="application/json">
   {{ ui | tojson }}
+
 </script>
 
     <!-- 2) Expose window.UI + data-attributes (UNE SEULE FOIS) -->
@@ -127,9 +128,16 @@
             }
         }
     </style>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/anim.css') }}">
+    <script defer src="{{ url_for('static', filename='js/anim.js') }}"></script>
+
+
 </head>
 
-<body>
+<body class="anim-{{ ui.anim_mode|default('slide') }}" data-anim-mode="{{ ui.anim_mode|default('slide') }}"
+    data-anim-duration="{{ ui.anim_duration|default(520) }}">
+
     <!-- ===== Layout principal (sidebar + contenu) ===== -->
     <div class="main-container">
 
@@ -207,7 +215,10 @@
             #}
 
             <!-- Contenu spécifique à chaque page -->
-            {% block content %}{% endblock %}
+            <div id="page">
+                {% block content %}{% endblock %}
+            </div>
+
         </main>
         <!-- /content -->
     </div>

@@ -8,7 +8,7 @@
 <body>
     <h1>Importer une liste d'élèves</h1>
 
-    <form action="{{ url_for('main.import_eleves', classe_id=classe_id) }}" method="POST" enctype="multipart/form-data">
+    <form action="{{ url_for('main.import_eleves',) classe_id=classe_id) }}" method="POST" enctype="multipart/form-data">
         <label for="fichier_csv">Fichier CSV (encodé en ANSI ou Latin-1, séparateur : ;)</label><br>
         <input type="file" name="fichier_csv" id="fichier_csv" required><br><br>
 

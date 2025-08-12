@@ -2,7 +2,7 @@
     <h3>Nouvelle évaluation</h3>
 </div>
 
-<form method="POST" action="{{ url_for('main.ajouter_evaluation', classe_id=classe.id) }}">
+<form method="POST" action="{{ url_for('main.ajouter_evaluation',) classe_id=classe.id) }}">
     <!-- Niveaux à cocher -->
     <div class="form-row">
         <label>Quel(s) niveau(x) ?</label>
@@ -60,7 +60,7 @@
 
     <div class="form-row">
         <button type="submit" class="valider-btn">✅ Enregistrer</button>
-        <a href="{{ url_for('main.page_classe', classe_id=classe.id) }}" class="annuler-btn">❌ Annuler</a>
+        <a href="{{ url_for('main.page_classe',) classe_id=classe.id) }}" class="annuler-btn">❌ Annuler</a>
     </div>
 </form>
 

@@ -137,7 +137,7 @@
     <div class="panel-card">
         <h3 class="section-title">Chemins d’export</h3>
 
-        <form method="post" action="{{ url_for('config_export') }}">
+        <form method="post" action="{{ url_for('main.config_export') }}">
             <div class="field_r">
                 <label for="primary_root">Chemin principal (UNC)</label>
                 <input type="text" id="primary_root" name="primary_root" value="{{ primary_root or '' }}"
@@ -159,7 +159,7 @@
             <div class="btnbar">
                 <button type="submit" class="btn_r">Enregistrer</button>
                 <button type="button" id="btn_test" class="btn_r btn--success">Tester l’accès</button>
-                <a href="{{ url_for('index') }}" class="btn_r btn--muted">← Retour</a>
+                <a href="{{ url_for('main.index') }}" class="btn_r btn--muted">← Retour</a>
             </div>
         </form>
 
@@ -168,7 +168,7 @@
 
         <h3 class="section-title">Animation des panneaux</h3>
 
-        <form method="post" action="{{ url_for('config_export') }}">
+        <form method="post" action="{{ url_for('main.config_export') }}">
             <div class="form-row">
                 <label for="anim_mode">Style</label>
                 {% set cur = current_anim_mode or (settings.ui.anim_mode if settings and settings.ui else 'slide') %}

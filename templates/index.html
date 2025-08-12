@@ -70,7 +70,8 @@
                 <ul class="class-list">
                     {% for c in classes %}
                     <li class="class-item">
-                        <a class="class-link" href="{{ url_for('page_classe', classe_id=c.id) }}">
+                        <a class="class-link" href="{{ url_for('main.page_classe', classe_id=c.id) }}">
+
                             <span class="class-name">{{ c.niveaux | join(", ") }}</span>
                             <span class="class-year">— {{ c.annee }}</span>
                             <i class="fa-solid fa-chevron-right"></i>

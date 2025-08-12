@@ -18,7 +18,7 @@
 
         <!-- Bulles des niveaux concernés -->
         {% for niv in niveaux_concernes %}
-        <a href="{{ url_for('main.saisir_resultats', classe_id=classe.id, evaluation_id=evaluation.id) }}?niveau={{ niv }}"
+        <a href="{{ url_for('main.saisir_resultats',) classe_id=classe.id, evaluation_id=evaluation.id) }}?niveau={{ niv }}"
             class="niveau-bulle {% if niveau_selectionne == niv %}niveau-selectionne{% endif %}">
             {{ niv }}
         </a>
@@ -26,10 +26,10 @@
     </h3>
 
     <form method="POST"
-        action="{{ url_for('main.saisir_resultats', classe_id=classe.id, evaluation_id=evaluation.id, niveau=niveau_selectionne) }}">
+        action="{{ url_for('main.saisir_resultats',) classe_id=classe.id, evaluation_id=evaluation.id, niveau=niveau_selectionne) }}">
         <div class="form-row">
             <button type="submit" class="valider-btn">✅ Enregistrer</button>
-            <a href="{{ url_for('main.page_classe', classe_id=classe.id, mode='liste_evaluations') }}" class="annuler-btn">❌
+            <a href="{{ url_for('main.page_classe',) classe_id=classe.id, mode='liste_evaluations') }}" class="annuler-btn">❌
                 Retour</a>
         </div>
 
@@ -80,7 +80,7 @@
 
         <div class="form-row" style="margin-top: 15px;">
             <button type="submit" class="valider-btn">✅ Enregistrer</button>
-            <a href="{{ url_for('main.page_classe', classe_id=classe.id, mode='liste_evaluations') }}" class="annuler-btn">❌
+            <a href="{{ url_for('main.page_classe',) classe_id=classe.id, mode='liste_evaluations') }}" class="annuler-btn">❌
                 Retour</a>
         </div>
     </form>

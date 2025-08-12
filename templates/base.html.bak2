@@ -149,7 +149,7 @@
 
             <!-- Bouton “Créer une nouvelle classe” (optionnel) -->
             {% if classe %}
-            <form method="get" action="{{ url_for('main.page_classe', classe_id=classe.id) }}">
+            <form method="get" action="{{ url_for('main.page_classe',) classe_id=classe.id) }}">
                 <input type="hidden" name="mode" value="creation_classe">
                 <button type="submit" class="btn-nouvelle-classe">➕ Créer une nouvelle classe</button>
             </form>
@@ -159,7 +159,7 @@
 
             <!-- Liste des classes -->
             {% for cl in toutes_les_classes %}
-            <form action="{{ url_for('main.page_classe', classe_id=cl.id) }}" method="get">
+            <form action="{{ url_for('main.page_classe',) classe_id=cl.id) }}" method="get">
                 <button type="submit" class="btn-classe">{{ cl.niveaux | join(' / ') }} {{ cl.annee }}</button>
             </form>
             {% endfor %}
@@ -167,7 +167,7 @@
             <hr style="margin:20px 0">
 
             <!-- Lien Paramètres -->
-            <form action="{{ url_for('main.config_export') }}" method="get">
+            <form action="{{ url_for('main.config_export')) }}" method="get">
                 <button type="submit" class="btn-classe btn-parametres">
                     <i class="fa-solid fa-gear" style="margin-right:6px;"></i> Paramètres
                 </button>

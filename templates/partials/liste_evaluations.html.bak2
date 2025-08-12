@@ -1,6 +1,6 @@
 <h3>Évaluations de la classe</h3>
 
-<form method="get" action="{{ url_for('main.page_classe', classe_id=classe.id) }}">
+<form method="get" action="{{ url_for('main.page_classe',) classe_id=classe.id) }}">
     <input type="hidden" name="mode" value="liste_evaluations">
 
     <table>
@@ -103,13 +103,13 @@
                         {% set niveau_par_defaut = eval.niveaux[0] if eval.niveaux else None %}
                         {% if niveau_par_defaut %}
                         <a class="action-button icon-btn"
-                            href="{{ url_for('main.saisir_resultats', classe_id=classe.id, evaluation_id=eval.id, niveau=eval.niveaux[0]) }}"
+                            href="{{ url_for('main.saisir_resultats',) classe_id=classe.id, evaluation_id=eval.id, niveau=eval.niveaux[0]) }}"
                             title="Continuer">
                             <i class="fas fa-play"></i>
                         </a>
                         {% else %}
                         <a class="action-button icon-btn"
-                            href="{{ url_for('main.saisir_resultats', classe_id=classe.id, evaluation_id=eval.id, niveau=eval.niveaux[0]) }}"
+                            href="{{ url_for('main.saisir_resultats',) classe_id=classe.id, evaluation_id=eval.id, niveau=eval.niveaux[0]) }}"
                             title="Commencer">
                             <i class="fas fa-play"></i>
                         </a>
@@ -117,12 +117,12 @@
 
                         <!-- Bouton Modifier -->
                         <a class="action-button modify icon-btn"
-                            href="{{ url_for('main.modifier_evaluation', evaluation_id=eval.id) }}" title="Modifier">
+                            href="{{ url_for('main.modifier_evaluation',) evaluation_id=eval.id) }}" title="Modifier">
                             <i class="fas fa-pen"></i>
                         </a>
 
                         <!-- Bouton Supprimer avec confirmation -->
-                        <form method="POST" action="{{ url_for('main.supprimer_evaluation', evaluation_id=eval.id) }}"
+                        <form method="POST" action="{{ url_for('main.supprimer_evaluation',) evaluation_id=eval.id) }}"
                             onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette évaluation et tous ses résultats associés ?');"
                             style="display:inline-block; margin: 0;">
                             <input type="hidden" name="classe_id" value="{{ classe.id }}">

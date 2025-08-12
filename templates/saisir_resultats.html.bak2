@@ -35,7 +35,7 @@
         </table>
         <div style="margin-top: 20px;">
             <button type="submit" class="valider-btn">Enregistrer</button>
-            <a href="{{ url_for('main.page_classe', classe_id=classe.id) }}" class="annuler-btn">Retour</a>
+            <a href="{{ url_for('main.page_classe',) classe_id=classe.id) }}" class="annuler-btn">Retour</a>
         </div>
     </form>
 </div>

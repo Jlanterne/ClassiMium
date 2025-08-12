@@ -10,7 +10,7 @@
 <body>
     <div class="main-container">
         <h1>Ajouter une évaluation pour la classe {{ classe_id }}</h1>
-        <form method="post" action="{{ url_for('main.ajouter_evaluation', classe_id=classe_id) }}">
+        <form method="post" action="{{ url_for('main.ajouter_evaluation',) classe_id=classe_id) }}">
             <label>Titre :</label>
             <input type="text" name="titre" required><br>
 

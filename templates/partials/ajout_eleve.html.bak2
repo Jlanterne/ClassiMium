@@ -1,10 +1,10 @@
 <div class="ajout-eleve-container">
     <h3>Ajouter un élève</h3>
-    <form method="POST" enctype="multipart/form-data" action="{{ url_for('main.importer_eleve_csv', classe_id=classe.id) }}">
+    <form method="POST" enctype="multipart/form-data" action="{{ url_for('main.importer_eleve_csv',) classe_id=classe.id) }}">
         <input type="file" name="csv_file" accept=".csv">
         <button type="submit">📂 Importer élèves (CSV)</button>
     </form>
-    <form action="{{ url_for('main.ajouter_eleve', classe_id=classe.id) }}" method="post" class="ajout-eleve-form">
+    <form action="{{ url_for('main.ajouter_eleve',) classe_id=classe.id) }}" method="post" class="ajout-eleve-form">
         <input type="text" name="nom" placeholder="Nom" required>
         <input type="text" name="prenom" placeholder="Prénom" required>
         <input type="date" name="date_naissance" required>
@@ -27,7 +27,7 @@
             <tbody>
                 {% for eleve in eleves %}
                 <tr style="cursor: pointer;"
-                    onclick="window.location.href='{{ url_for('main.detail_eleve', eleve_id=eleve.id, classe_id=classe.id) }}';">
+                    onclick="window.location.href='{{ url_for('main.detail_eleve',) eleve_id=eleve.id, classe_id=classe.id) }}';">
                     <td>{{ eleve.nom }}</td>
                     <td>{{ eleve.prenom }}</td>
                     <td>{{ eleve.date_naissance }}</td>

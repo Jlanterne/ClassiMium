@@ -3,15 +3,20 @@
 
 {% block content %}
 <div class="actions-classe">
-    <a href="{{ url_for('page_classe', classe_id=classe.id, mode='creation_classe') }}" class="action-button">Liste des
+    <a href="{{ url_for('main.page_classe', classe_id=classe.id, mode='creation_classe') }}" class="action-button">
+        Liste des
         élèves</a>
-    <a href="{{ url_for('page_classe', classe_id=classe.id, mode='ajout_evaluation') }}" class="action-button">Ajouter
+    <a href="{{ url_for('main.page_classe', classe_id=classe.id, mode='ajout_evaluation') }}"
+        class="action-button">Ajouter
         une évaluation</a>
-    <a href="{{ url_for('page_classe', classe_id=classe.id, mode='liste_evaluations') }}" class="action-button">Saisir
+    <a href="{{ url_for('main.page_classe', classe_id=classe.id, mode='liste_evaluations') }}"
+        class="action-button">Saisir
         les évaluations</a>
-    <a href="{{ url_for('page_classe', classe_id=classe.id, mode='ajouter_dictee') }}" class="action-button">Ajouter une
+    <a href="{{ url_for('main.page_classe', classe_id=classe.id, mode='ajouter_dictee') }}"
+        class="action-button">Ajouter une
         dictée</a>
-    <a href="{{ url_for('page_classe', classe_id=classe.id, mode='ajouter_rapport') }}" class="action-button">Écrire un
+    <a href="{{ url_for('main.page_classe', classe_id=classe.id, mode='ajouter_rapport') }}"
+        class="action-button">Écrire un
         rapport</a>
 </div>
 

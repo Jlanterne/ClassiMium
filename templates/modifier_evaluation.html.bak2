@@ -5,7 +5,7 @@
 {% block content %}
 <h2>Modifier l'évaluation</h2>
 
-<form method="POST" action="{{ url_for('main.modifier_evaluation', evaluation_id=evaluation.id) }}">
+<form method="POST" action="{{ url_for('main.modifier_evaluation',) evaluation_id=evaluation.id) }}">
 
     <div class="form-row">
         <label for="titre">Titre :</label>
@@ -70,7 +70,7 @@
 
     <div class="form-row">
         <button type="submit" class="valider-btn">✅ Enregistrer</button>
-        <a href="{{ url_for('main.page_classe', classe_id=classe.id) }}" class="annuler-btn">❌ Annuler</a>
+        <a href="{{ url_for('main.page_classe',) classe_id=classe.id) }}" class="annuler-btn">❌ Annuler</a>
     </div>
 </form>
 

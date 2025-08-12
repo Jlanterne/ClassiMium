@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-<a href="{{ url_for('main.page_classe', classe_id=classe.id) }}" class="retour-link"
+<a href="{{ url_for('main.page_classe',) classe_id=classe.id) }}" class="retour-link"
     style="display: block; text-align: left; font-size: 0.9em; margin-left: 0;">
     ← Retour à la liste des élèves
 </a>
@@ -17,7 +17,7 @@
         <!-- Photo à gauche -->
         <div class="photo-col">
             <form id="photoForm" method="POST"
-                action="{{ url_for('main.changer_photo', eleve_id=eleve.id, classe_id=classe.id) }}"
+                action="{{ url_for('main.changer_photo',) eleve_id=eleve.id, classe_id=classe.id) }}"
                 enctype="multipart/form-data" style="margin:0;">
                 <label for="photoInput" title="Cliquez pour changer la photo" style="cursor:pointer;">
                     <img id="photoPreview"

@@ -18,6 +18,42 @@ try:
 except Exception:
     pass
 
+# --- UI settings helpers ---
+def get_ui_settings_from_db(conn):
+    with conn.cursor() as cur:
+        cur.execute("SELECT value FROM app_settings WHERE key='ui'")
+        row = cur.fetchone()
+    if not row or not row[0]:
+        return {"anim_mode": "slide-down", "anim_duration": 520}
+    data = row[0]
+    return {
+        "anim_mode": str(data.get("anim_mode") or "slide-down"),
+        "anim_duration": int(data.get("anim_duration") or 520),
+    }
+
+def set_ui_settings_in_db(conn, ui_dict):
+    payload = {
+        k: ui_dict[k]
+        for k in ("anim_mode", "anim_duration")
+        if k in ui_dict and ui_dict[k] is not None
+    }
+    with conn.cursor() as cur:
+        cur.execute("""
+            INSERT INTO app_settings (key, value)
+            VALUES ('ui', %s::jsonb)
+            ON CONFLICT (key) DO UPDATE
+            SET value = app_settings.value || %s::jsonb,
+                updated_at = now()
+        """, (json.dumps(payload), json.dumps(payload)))
+    conn.commit()
+
+
+
+
+
+
+
+
 @bp.route('/static/style.css')
 def style_css():
     """Permet d'utiliser un template Jinja pour générer du CSS."""
@@ -1384,6 +1420,7 @@ def api_export_rapport(rapport_id):
         size = None
     return jsonify(ok=True, path=out_path, size=size)
 
+ALIAS = {"slide":"slide-down","wipe":"wipe-down","clip":"clip-circle","scale":"zoom-in"}
 @bp.route("/config/export", methods=["GET", "POST"])
 def config_export():
     """

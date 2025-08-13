@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Connexion{% endblock %}
+{% block content %}
+<div style="max-width:420px;margin:48px auto;padding:24px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;">
+    <h2 style="margin-top:0">Connexion</h2>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <ul style="padding-left:18px;">
+        {% for cat, msg in messages %}
+        <li style="color:#b91c1c">{{ msg }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    {% endwith %}
+    <form method="post" action="{{ url_for('auth.login_submit', next=request.args.get('next')) }}">
+        <label>Identifiant</label>
+        <input name="username" autocomplete="username" required class="input">
+        <label>Mot de passe</label>
+        <input type="password" name="password" autocomplete="current-password" required class="input">
+        <button class="btn btn-primary" style="margin-top:12px;">Se connecter</button>
+    </form>
+</div>
+{% endblock %}

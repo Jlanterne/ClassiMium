@@ -59,3 +59,59 @@ def create_app():
 
 
     return app
+
+from flask_login import LoginManager, current_user, UserMixin
+from flask import redirect, url_for, request
+
+login_manager = LoginManager()
+login_manager.login_view = "auth.login_form"
+login_manager.login_message = None  # pas d'alerte par défaut
+login_manager.init_app(app)
+
+# Connexion DB locale (évite import croisé seating)
+def _conn():
+    import os, psycopg2
+    dsn = (app.config.get("SQLALCHEMY_DATABASE_URI")
+           or app.config.get("DATABASE_URL")
+           or os.getenv("SQLALCHEMY_DATABASE_URI")
+           or os.getenv("DATABASE_URL"))
+    if dsn:
+        if dsn.startswith("postgres://"): dsn = dsn.replace("postgres://", "postgresql://", 1)
+        return psycopg2.connect(dsn)
+    return psycopg2.connect(
+        host=app.config.get("PGHOST", "localhost"),
+        dbname=app.config.get("PGDATABASE", "postgres"),
+        user=app.config.get("PGUSER", "postgres"),
+        password=app.config.get("PGPASSWORD", ""),
+        port=app.config.get("PGPORT", "5432")
+    )
+
+class User(UserMixin): pass
+
+@login_manager.user_loader
+def load_user(user_id: str):
+    try:
+        conn = _conn(); cur = conn.cursor()
+        cur.execute("SELECT id, username, role FROM users WHERE id=%s", (user_id,))
+        row = cur.fetchone()
+    except Exception:
+        row = None
+    finally:
+        try: cur.close(); conn.close()
+        except Exception: pass
+    if not row: return None
+    u = User(); u.id = str(row[0]); u.username = row[1]; u.role = row[2] if len(row)>2 else None
+    return u
+
+# Mur d'auth pour tout le site (sauf static + auth)
+EXEMPT = {"auth.login_form", "auth.login_submit", "auth.logout", "static"}
+@app.before_request
+def require_login_everywhere():
+    ep = request.endpoint or ""
+    if ep in EXEMPT or ep.startswith("auth."):
+        return
+    # autorise aussi les assets blueprint static éventuels
+    if ep.endswith(".static"):
+        return
+    if not current_user.is_authenticated:
+        return redirect(url_for("auth.login_form", next=request.url))

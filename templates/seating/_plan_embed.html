@@ -1,5 +1,13 @@
 {% set cid = (classe.id if classe is defined else classe_id) %}
 
+<div class="pc_layout">
+  <aside class="pc_side"> … </aside>
+  <main class="pc_stage_wrap">
+    <div id="pc_stage" class="pc_stage" data-classe-id="{{ cid }}" data-grid="32"></div>
+  </main>
+</div>
+
+
 
 <link rel="stylesheet" href="{{ url_for('static', filename='seating/plan_classe.css') }}">
 
@@ -29,12 +37,6 @@
   </main>
 </div>
 
-<script>
-  window.SEATING_CONF = {
-    classeId: {{ cid }},
-  apiBase: "/seating",  // base fixe du blueprint (plus simple et sûr)
-    photosBase: "{{ url_for('static', filename='photos/') }}"
-  };
-</script>
+
 
 <script src="{{ url_for('static', filename='seating/plan_classe.js') }}"></script>

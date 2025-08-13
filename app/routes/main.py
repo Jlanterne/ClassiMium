@@ -340,13 +340,13 @@ def page_classe(classe_id):
         resultats=resultats,
         avancements=avancements,
         annee_scolaire=annee_scolaire,
-        mode=mode,
         niveaux_filtres=niveaux_filtres,
         eleves_par_niveau=eleves_par_niveau,
         groupes_dict=groupes_dict,
         types=types,
         sous_types=sous_types,
-        eleves_classe=eleves_classe
+        eleves_classe=eleves_classe,
+        mode=request.args.get("mode"),
     )
 
 @bp.post("/api/dictees")
@@ -952,12 +952,12 @@ def changer_photo(classe_id, eleve_id):
     """Upload/sauvegarde la photo de l’élève (static/photos)."""
     if 'photo' not in request.files:
         flash("Aucun fichier sélectionné.")
-        return redirect(url_for('detail_eleve', eleve_id=eleve_id, classe_id=classe_id))
+        return redirect(url_for('main.detail_eleve', eleve_id=eleve_id, classe_id=classe_id))
 
     file = request.files['photo']
     if file.filename == '':
         flash("Aucun fichier sélectionné.")
-        return redirect(url_for('detail_eleve', eleve_id=eleve_id, classe_id=classe_id))
+        return redirect(url_for('main.detail_eleve', eleve_id=eleve_id, classe_id=classe_id))
 
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
@@ -975,7 +975,7 @@ def changer_photo(classe_id, eleve_id):
     else:
         flash("Type de fichier non autorisé. Seules les images sont acceptées.")
 
-    return redirect(url_for('detail_eleve', eleve_id=eleve_id, classe_id=classe_id))
+    return redirect(url_for('main.detail_eleve', eleve_id=eleve_id, classe_id=classe_id))
 
 @bp.route("/debug/evaluations")
 def debug_evaluations():

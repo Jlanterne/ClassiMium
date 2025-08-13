@@ -1,0 +1,44 @@
+﻿{% extends "base.html" %}
+{% block title %}Plan de classe{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='seating/plan_classe.css') }}">
+
+<div class="pc_toolbar">
+  <div class="pc_left">
+    <a class="btn" href="{{ url_for('page_classe', classe_id=classe_id) }}">← Retour classe</a>
+    <select id="pc_plan_select"></select>
+    <button id="pc_new_plan">Nouveau plan</button>
+    <button id="pc_duplicate">Dupliquer</button>
+    <button id="pc_activate">Activer</button>
+    <button id="pc_export_pdf">Exporter PDF</button>
+  </div>
+  <div class="pc_right">
+    <button id="pc_add_furniture">+ Meuble / Bureau</button>
+    <label>Zoom <input id="pc_zoom" type="range" min="50" max="200" value="100"></label>
+    <button id="pc_fullscreen">Plein écran</button>
+  </div>
+</div>
+
+<div class="pc_layout">
+  <aside class="pc_side">
+    <h4>Élèves (non placés)</h4>
+    <div id="pc_eleve_list" class="pc_eleve_list"></div>
+  </aside>
+  <main class="pc_stage_wrap">
+    <div id="pc_stage"
+         class="pc_stage"
+         data-classe-id="{{ classe_id }}"
+         data-grid="32"></div>
+  </main>
+</div>
+
+<script>
+  window.SEATING_CONF = {
+    classeId: {{ classe_id }},
+    apiBase: "{{ url_for('seating.api_get_plans', classe_id=classe_id) | replace('/api/plans/' ~ classe_id, '') }}",
+    photosBase: "{{ url_for('static', filename='photos/') }}"
+  };
+</script>
+<script src="{{ url_for('static', filename='seating/plan_classe.js') }}"></script>
+{% endblock %}

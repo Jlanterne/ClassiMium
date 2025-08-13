@@ -52,6 +52,10 @@ def create_app():
     def _inject_url_for_compat():
         # injecte url_for compat dans tous les templates
         return dict(url_for=_url_for_compat)
+    
+    from app.seating import seating_bp
+    if 'seating' not in app.blueprints:           # évite double enregistrement
+        app.register_blueprint(seating_bp, url_prefix='/seating')
 
 
     return app

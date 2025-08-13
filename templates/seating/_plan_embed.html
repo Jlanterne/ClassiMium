@@ -1,0 +1,40 @@
+{% set cid = (classe.id if classe is defined else classe_id) %}
+
+
+<link rel="stylesheet" href="{{ url_for('static', filename='seating/plan_classe.css') }}">
+
+<div class="pc_toolbar">
+  <div class="pc_left">
+    <select id="pc_plan_select"></select>
+    <button id="pc_new_plan">Nouveau plan</button>
+    <button id="pc_duplicate">Dupliquer</button>
+    <button id="pc_activate">Activer</button>
+    <button id="pc_export_pdf">Exporter PDF</button>
+  </div>
+  <div class="pc_right">
+    <button id="pc_add_furniture">+ Meuble / Bureau</button>
+    <label>Zoom <input id="pc_zoom" type="range" min="50" max="200" value="100"></label>
+    <button id="pc_fullscreen">Plein écran</button>
+  </div>
+</div>
+
+<div class="pc_layout">
+  <aside class="pc_side">
+    <h4>Élèves (non placés)</h4>
+    <div id="pc_eleve_list" class="pc_eleve_list"></div>
+  </aside>
+  <main class="pc_stage_wrap">
+    <div id="pc_stage" class="pc_stage" data-classe-id="{{ cid }}" data-grid="32"></div>
+
+  </main>
+</div>
+
+<script>
+  window.SEATING_CONF = {
+    classeId: {{ cid }},
+  apiBase: "/seating",  // base fixe du blueprint (plus simple et sûr)
+    photosBase: "{{ url_for('static', filename='photos/') }}"
+  };
+</script>
+
+<script src="{{ url_for('static', filename='seating/plan_classe.js') }}"></script>

@@ -86,12 +86,12 @@ def create_app():
         if path in open_exact or any(path.startswith(p) for p in open_prefixes):
             return
         if not session.get("auth"):
-            return redirect(url_for("auth.login_form", next=request.url))
+            return redirect(url_for("auth.login", next=request.url))
 
     # Alias pratiques
     @app.get("/auth/login")
     def _alias_login():
-        return redirect(url_for("auth.login_form", next=request.args.get("next")))
+        return redirect(url_for("auth.login", next=request.args.get("next")))
 
     @app.get("/auth/logout")
     def _alias_logout():

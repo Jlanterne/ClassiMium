@@ -4,28 +4,8 @@ from werkzeug.security import check_password_hash
 from psycopg2.extras import RealDictCursor
 from . import auth_bp
 
-# Réutilise le connecteur robuste déjà utilisé (seating)
-try:
-    from app.seating.routes import db_conn  # fonctionne si présent
-except Exception:
-    # fallback minimal si on bouge seating: lit config/env
-    import os, psycopg2
-    from flask import current_app
-    def db_conn():
-        dsn = (current_app.config.get("SQLALCHEMY_DATABASE_URI")
-               or current_app.config.get("DATABASE_URL")
-               or os.getenv("SQLALCHEMY_DATABASE_URI")
-               or os.getenv("DATABASE_URL"))
-        if dsn:
-            if dsn.startswith("postgres://"): dsn = dsn.replace("postgres://", "postgresql://", 1)
-            return psycopg2.connect(dsn)
-        return psycopg2.connect(
-            host=current_app.config.get("PGHOST", "localhost"),
-            dbname=current_app.config.get("PGDATABASE", "postgres"),
-            user=current_app.config.get("PGUSER", "postgres"),
-            password=current_app.config.get("PGPASSWORD", ""),
-            port=current_app.config.get("PGPORT", "5432")
-        )
+# On réutilise le connecteur déjà présent côté seating
+from app.seating.routes import db_conn
 
 class U(UserMixin): pass
 
@@ -40,7 +20,8 @@ def login_submit():
     username = (request.form.get("username") or "").strip()
     password = request.form.get("password") or ""
     if not username or not password:
-        flash("Identifiants requis", "error"); return redirect(url_for("auth.login_form"))
+        flash("Identifiants requis", "error")
+        return redirect(url_for("auth.login_form"))
 
     conn = db_conn(); cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
@@ -50,7 +31,8 @@ def login_submit():
         cur.close(); conn.close()
 
     if not row or not check_password_hash(row["password_hash"], password):
-        flash("Identifiants invalides", "error"); return redirect(url_for("auth.login_form"))
+        flash("Identifiants invalides", "error")
+        return redirect(url_for("auth.login_form"))
 
     u = U(); u.id = str(row["id"]); u.username = row["username"]; u.role = row.get("role")
     login_user(u, remember=True)

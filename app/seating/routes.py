@@ -7,33 +7,65 @@ from .mview import refresh_moyennes_if_needed
 
 # ==== Connexion DB simple (adapte si tu as déjà un util partagé) ====
 # ==== Connexion DB (reprend la config de l'app) ====
+# ==== Connexion DB (lit d'abord SQLALCHEMY_DATABASE_URI / DATABASE_URL, sinon PG*) ====
+# ==== Connexion DB robuste (lit .env, URI ou variables PG*, sans forcer de password) ====
 def db_conn():
     import os
     import psycopg2
+    from flask import current_app
+    from dotenv import load_dotenv, find_dotenv
 
-    # 1) Essaye via URI (même que le reste de l'app si SQLAlchemy est utilisé)
-    cfg = current_app.config
+    # Assure que .env est chargé (au cas où)
+    try:
+        load_dotenv(find_dotenv(), override=False)
+    except Exception:
+        pass
+
+    # 1) Chaîne de connexion complète (préférée)
     dsn = (
-        cfg.get("SQLALCHEMY_DATABASE_URI")
-        or cfg.get("DATABASE_URL")
+        current_app.config.get("SQLALCHEMY_DATABASE_URI")
+        or current_app.config.get("DATABASE_URL")
         or os.getenv("SQLALCHEMY_DATABASE_URI")
         or os.getenv("DATABASE_URL")
     )
     if dsn:
-        # compat heroku-style
+        # Remplace l’URI par des paramètres séparés (évite les soucis d’encodage)
         if dsn.startswith("postgres://"):
             dsn = dsn.replace("postgres://", "postgresql://", 1)
-        return psycopg2.connect(dsn)
 
-    # 2) Sinon, variables d'env / config unitaires
-    host = cfg.get("PGHOST") or os.getenv("PGHOST", "localhost")
-    db   = cfg.get("PGDATABASE") or os.getenv("PGDATABASE", "postgres")
-    usr  = cfg.get("PGUSER") or os.getenv("PGUSER", "postgres")
-    pwd  = cfg.get("PGPASSWORD") or os.getenv("PGPASSWORD")  # peut être None
-    port = cfg.get("PGPORT") or os.getenv("PGPORT", "5432")
+        from urllib.parse import urlparse, unquote
+        u = urlparse(dsn)
 
-    # 3) Connexion
-    return psycopg2.connect(host=host, dbname=db, user=usr, password=(pwd or ""), port=port)
+        params = {
+            "host": u.hostname or "localhost",
+            "port": u.port or 5432,
+            "dbname": (u.path[1:] if u.path else None) or os.getenv("PGDATABASE", "postgres"),
+        }
+        if u.username:
+            params["user"] = unquote(u.username)
+        if u.password:
+            params["password"] = unquote(u.password)
+            
+        params["options"] = "-c lc_messages=C -c client_encoding=UTF8"
+
+
+        return psycopg2.connect(**params)
+
+
+    # 2) Variables séparées (fallback) — ne PAS passer 'password' si absent (pgpass)
+    host = current_app.config.get("PGHOST") or os.getenv("PGHOST", "localhost")
+    db   = current_app.config.get("PGDATABASE") or os.getenv("PGDATABASE", "postgres")
+    usr  = current_app.config.get("PGUSER") or os.getenv("PGUSER", "postgres")
+    pwd  = current_app.config.get("PGPASSWORD") or os.getenv("PGPASSWORD")  # peut être None
+    port = current_app.config.get("PGPORT") or os.getenv("PGPORT", "5432")
+
+    params = dict(host=host, dbname=db, user=usr, port=port)
+    if pwd:  # seulement si réellement défini → sinon libpq utilisera pgpass.conf
+        params["password"] = pwd
+    params["options"] = "-c lc_messages=C -c client_encoding=UTF8"
+
+    return psycopg2.connect(**params)
+
 
 
 # ==== UI ====

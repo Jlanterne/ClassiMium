@@ -6,9 +6,7 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
     <ul style="padding-left:18px;">
-        {% for cat, msg in messages %}
-        <li style="color:#b91c1c">{{ msg }}</li>
-        {% endfor %}
+        {% for cat, msg in messages %}<li style="color:#b91c1c">{{ msg }}</li>{% endfor %}
     </ul>
     {% endif %}
     {% endwith %}

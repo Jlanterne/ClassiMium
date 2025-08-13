@@ -1,29 +1,46 @@
-﻿import os
-from flask import Flask, redirect, url_for, request
+﻿# app/__init__.py
+import os
+from datetime import timedelta
+from flask import Flask, redirect, url_for, request, session
 from dotenv import load_dotenv
 
-load_dotenv()  # charge .env AVANT de créer l'app
+from flask_login import LoginManager, UserMixin
+from app.seating.routes import db_conn  # OK: pas d'import de app ici
 
+load_dotenv()
 
 def create_app():
-    app = Flask(
-        __name__,
-        template_folder="../templates",
-        static_folder="../static",
-    )
-
-    # --- Config de base ---
+    app = Flask(__name__, template_folder="../templates", static_folder="../static")
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev")
+    app.config["LOGIN_DISABLED"] = os.environ.get("LOGIN_DISABLED", "false").lower() in ("1","true","yes")
+    app.permanent_session_lifetime = timedelta(days=7)
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE","false").lower() in ("1","true","yes")
 
-    # 🔕 Auth désactivée globalement (ignore les @login_required & co)
-    app.config["LOGIN_DISABLED"] = True
+    # Flask-Login
+    login_manager = LoginManager()
+    login_manager.login_view = "auth.login"
+    login_manager.init_app(app)
 
-    # (facultatif / legacy)
-    app.config["SQLALCHEMY_DATABASE_URI"] = (
-        os.environ.get("SQLALCHEMY_DATABASE_URI") or os.environ.get("DATABASE_URL")
-    )
+    class U(UserMixin): pass
 
-    # --- Hooks venant de l'ancien app.py (si présents) ---
+    @login_manager.user_loader
+    def load_user(user_id: str):
+        try:
+            conn = db_conn(); cur = conn.cursor()
+            cur.execute("SELECT id, username, role FROM users WHERE id=%s", (int(user_id),))
+            row = cur.fetchone()
+        finally:
+            try:
+                cur.close(); conn.close()
+            except Exception:
+                pass
+        if not row:
+            return None
+        u = U(); u.id = str(row[0]); u.username = row[1]
+        return u
+
+    # Hooks legacy si présents
     try:
         from app_legacy import load_ui_settings, add_header, inject_ui
         app.before_request(load_ui_settings)
@@ -32,7 +49,7 @@ def create_app():
     except Exception as e:
         print("WARN hooks:", e)
 
-    # --- Blueprints ---
+    # Blueprints (⚠️ imports ICI, pas en top-level)
     try:
         from .routes.health import bp as health_bp
         app.register_blueprint(health_bp)
@@ -52,40 +69,37 @@ def create_app():
     except Exception as e:
         print("WARN seating:", e)
 
-    # Tu peux laisser le blueprint auth enregistré ou l’enlever.
-    # Le laisser ne gêne pas puisque l’auth est désactivée.
     try:
-        from .auth import auth_bp
-        app.register_blueprint(auth_bp, url_prefix="/auth")
+        from .auth import auth_bp              # ✅ bon import (depuis app/auth/__init__.py)
+        app.register_blueprint(auth_bp)        # expose /login et /logout
     except Exception as e:
         print("WARN auth:", e)
 
-    # --- Compatibilité url_for pour anciens templates (sans "main.") ---
-    from flask import url_for as _url_for
-    from werkzeug.routing import BuildError
-
-    def _url_for_compat(endpoint, *args, **kwargs):
-        try:
-            return _url_for(endpoint, *args, **kwargs)
-        except BuildError:
-            if "." not in endpoint:
-                return _url_for(f"main.{endpoint}", *args, **kwargs)
-            raise
-
-    @app.context_processor
-    def _inject_url_for_compat():
-        return dict(url_for=_url_for_compat)
-
-    # --- (Auth OFF) Neutralise tout mur d'auth global ---
+    # Garde-barrière simple basé sur la session (si tu veux garder ce comportement)
     @app.before_request
-    def require_login_everywhere():
-        # Auth désactivée : on ne bloque rien.
-        return
+    def _require_login():
+        if app.config.get("LOGIN_DISABLED"):
+            return
+        open_prefixes = ("/static/",)
+        open_exact = {"/login","/logout","/favicon.ico","/health","/healthz","/status","/auth/login","/auth/logout"}
+        path = (request.path or "/").rstrip("/") or "/"
+        if path in open_exact or any(path.startswith(p) for p in open_prefixes):
+            return
+        if not session.get("auth"):
+            return redirect(url_for("auth.login_form", next=request.url))
 
-    # --- Accueil sans authentification ---
+    # Alias pratiques
+    @app.get("/auth/login")
+    def _alias_login():
+        return redirect(url_for("auth.login_form", next=request.args.get("next")))
+
+    @app.get("/auth/logout")
+    def _alias_logout():
+        return redirect(url_for("auth.logout"))
+
+    # Accueil → index
     @app.get("/")
     def root():
-        # Ajuste la cible si ton accueil est ailleurs
-        return redirect("/classes")
+        return redirect(url_for("main.index"))
 
     return app

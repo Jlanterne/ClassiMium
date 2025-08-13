@@ -1,88 +1,58 @@
-<!DOCTYPE html>
-<html lang="fr">
+{# templates/index.html #}
+{% extends "base.html" %}
 
-<head>
-    <meta charset="UTF-8" />
-    <title>Accueil</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
-        crossorigin="anonymous" referrerpolicy="no-referrer" />
-</head>
+{% block title %}Accueil - Gestion de classe{% endblock %}
 
-<body class="home">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-    <ul class="flashes">
-        {% for category, message in messages %}
-        <li class="flash {{ category }}">{{ message }}</li>
-        {% endfor %}
-    </ul>
-    {% endif %}
-    {% endwith %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}">
+{% endblock %}
 
-    <div class="page">
+{% block header_title %}Gestion de classe{% endblock %}
 
-        <!-- Carte logo -->
-        <section class="card card-logo">
-            <img src="{{ url_for('static', filename='photos/logo_taille_normale.svg') }}" alt="Logo" class="logo-img" />
-        </section>
+{% block content %}
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<ul class="flashes">
+    {% for category, message in messages %}
+    <li class="flash {{ category }}">{{ message }}</li>
+    {% endfor %}
+</ul>
+{% endif %}
+{% endwith %}
 
-        <!-- Grille : création + liste -->
-        <div class="grid">
-            <!-- Création de classe -->
-            <section class="card">
-                <h2 class="card-title"><i class="fa-solid fa-plus"></i> Créer une classe</h2>
+<div class="page">
 
-                <form method="POST" action="/ajouter_classe" class="form">
-                    <fieldset class="fieldset">
-                        <legend>Niveaux concernés</legend>
-                        <div class="checks">
-                            <label><input type="checkbox" name="niveau" value="CP"> CP</label>
-                            <label><input type="checkbox" name="niveau" value="CE1"> CE1</label>
-                            <label><input type="checkbox" name="niveau" value="CE2"> CE2</label>
-                            <label><input type="checkbox" name="niveau" value="CM1"> CM1</label>
-                            <label><input type="checkbox" name="niveau" value="CM2"> CM2</label>
-                        </div>
-                    </fieldset>
 
-                    <div class="form-row">
-                        <label for="annee_debut">Année scolaire</label>
-                        <div class="inline">
-                            <input type="number" name="annee_debut" id="annee_debut" min="2000" max="2100" required>
-                            <small class="hint">ex : 2025 → année scolaire 2025-2026</small>
-                        </div>
+    <!-- Création de classe -->
+    <div class="grid">
+        <section class="card">
+            <h2 class="card-title"><i class="fa-solid fa-plus"></i> Créer une classe</h2>
+
+            <form method="POST" action="{{ url_for('main.ajouter_classe') }}" class="form">
+                <fieldset class="fieldset">
+                    <legend>Niveaux concernés</legend>
+                    <div class="checks">
+                        <label><input type="checkbox" name="niveau" value="CP"> CP</label>
+                        <label><input type="checkbox" name="niveau" value="CE1"> CE1</label>
+                        <label><input type="checkbox" name="niveau" value="CE2"> CE2</label>
+                        <label><input type="checkbox" name="niveau" value="CM1"> CM1</label>
+                        <label><input type="checkbox" name="niveau" value="CM2"> CM2</label>
                     </div>
+                </fieldset>
 
-                    <button type="submit" class="btn btn-primary">
-                        Créer la classe
-                    </button>
-                </form>
-            </section>
+                <div class="form-row">
+                    <label for="annee_debut">Année scolaire</label>
+                    <div class="inline">
+                        <input type="number" name="annee_debut" id="annee_debut" min="2000" max="2100" required>
+                        <small class="hint">ex : 2025 → année scolaire 2025-2026</small>
+                    </div>
+                </div>
 
-            <!-- Liste des classes -->
-            <section class="card">
-                <h2 class="card-title"><i class="fa-solid fa-layer-group"></i> Classes existantes</h2>
-
-                {% if classes|length == 0 %}
-                <p class="muted">Aucune classe pour l’instant.</p>
-                {% else %}
-                <ul class="class-list">
-                    {% for c in classes %}
-                    <li class="class-item">
-                        <a class="class-link" href="{{ url_for('main.page_classe', classe_id=c.id) }}">
-
-                            <span class="class-name">{{ c.niveaux | join(", ") }}</span>
-                            <span class="class-year">— {{ c.annee }}</span>
-                            <i class="fa-solid fa-chevron-right"></i>
-                        </a>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% endif %}
-            </section>
-        </div>
+                <button type="submit" class="btn btn-primary">
+                    Créer la classe
+                </button>
+            </form>
+        </section>
     </div>
-</body>
-
-</html>
+</div>
+{% endblock %}

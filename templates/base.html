@@ -102,11 +102,149 @@
             margin: 14px 0;
         }
 
+        /* Quand non authentifié : le contenu prend toute la largeur */
+        .content--fullwidth {
+            margin-left: 0 !important;
+        }
+
         @media (prefers-reduced-motion: reduce) {
             .panel-from-actions {
                 transition: none !important;
                 animation: none !important;
             }
+        }
+
+        /* ===== Auth panel & carte utilisateur ===== */
+        .auth-panel {
+            padding: 0;
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+
+        .user-block {
+            background: #EDF3FA;
+            border: 1px solid #dbe7ff;
+            border-radius: 12px;
+            padding: 10px 8px;
+            margin: 0 0 10px 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .user-card {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #374151;
+        }
+
+        .user-avatar {
+            width: 56px;
+            height: 56px;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f3f4f6;
+            border: 1px solid #e5e7eb;
+            overflow: hidden;
+        }
+
+        .user-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            border-radius: inherit;
+        }
+
+        .user-name {
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.2;
+        }
+
+        /* ===== Harmonisation des largeurs/hauteurs dans la sidebar ===== */
+        .sidebar {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 0 16px;
+        }
+
+        .sidebar-inner {
+            width: 260px;
+            margin: 0 auto;
+            padding: 0;
+        }
+
+        .sb-item {
+            margin: 0 0 16px 0;
+        }
+
+        .sb-item:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Boutons : pleine largeur + centrés, sans marges parasites héritées */
+        .sidebar .sb-btn,
+        .sidebar button.sb-btn,
+        .sidebar .btn-nouvelle-classe.sb-btn,
+        .sidebar .btn-classe.sb-btn,
+        .sidebar .btn-parametres.sb-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            box-sizing: border-box;
+            margin: 0 !important;
+            text-align: center;
+        }
+
+        /* Assure aussi que les formulaires n'imposent pas de décalage */
+        .sidebar form.sb-item {
+            margin: 0 0 16px 0;
+            padding: 0;
+        }
+
+        .sidebar .sb-hr {
+            width: 100%;
+            margin: 16px 0;
+            border: 0;
+            height: 1px;
+            background: #e5e7eb;
+        }
+
+        .sidebar-inner {
+            width: 260px;
+            margin: 0 auto;
+            padding: 0;
+        }
+
+        .sb-item {
+            margin-bottom: 16px;
+        }
+
+        .sb-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .sidebar .sb-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .sb-hr {
+            width: 100%;
+            margin: 16px 0;
+            border: 0;
+            height: 1px;
+            background: #e5e7eb;
         }
     </style>
 </head>
@@ -114,74 +252,92 @@
 <body class="anim-{{ ui.anim_mode|default('slide') }}" data-anim-mode="{{ ui.anim_mode|default('slide') }}"
     data-anim-duration="{{ ui.anim_duration|default(520) }}">
 
+    {% set is_auth = session.get('auth') %}
+
     <div class="main-container">
         <!-- ===== Sidebar ===== -->
         <aside class="sidebar">
-            <table style="
-    border-collapse:separate;
-    border-spacing:8px;
-    border:none;
-    outline:none;
-">
-                <tr style="border:none;outline:none;">
-                    <td style="
-            padding:10px;
-            vertical-align:top;
-            overflow:visible;      /* permet le débordement */
-            position:relative;
-            height:120px;          /* hauteur fixe */
-            line-height:0;         /* supprime l'espace fantôme */
-            border:none;
-            outline:none;
-            background:none;
-        ">
-                        <img src="{{ url_for('static', filename='photos/logo_CLassiMium.svg') }}" alt="Logo" style="
-                display:block;
-                position:absolute;
-                top:-15px;          /* remonte l'image */
-                left:-12px;         /* décale à gauche */
-                height:80%;
-                z-index:9999;
-                border:none;
-                outline:none;
-                background:none;
-            ">
-                    </td>
-                </tr>
-            </table>
+            <div class="sidebar-inner">
+                <table style="border-collapse:separate;border-spacing:0;border:none;outline:none;">
+                    <tr style="border:none;outline:none;">
+                        <td
+                            style="padding:10px;vertical-align:top;overflow:visible;position:relative;height:120px;line-height:0;border:none;outline:none;background:none;">
+                            <img src="{{ url_for('static', filename='photos/logo_CLassiMium.svg') }}" alt="Logo"
+                                style="display:block;position:absolute;top:14px;left:0;height:80%;z-index:9999;border:none;outline:none;background:none;">
+                        </td>
+                    </tr>
+                </table>
 
-            <br>
+                <br>
 
-            {% if classe %}
-            <form method="get" action="{{ url_for('main.page_classe', classe_id=classe.id) }}">
-                <input type="hidden" name="mode" value="creation_classe">
-                <button type="submit" class="btn-nouvelle-classe">➕ Créer une nouvelle classe</button>
-            </form>
-            {% endif %}
+                <!-- ===== Auth panel : AU-DESSUS de “Créer une nouvelle classe” ===== -->
+                <div class="auth-panel">
+                    {% if is_auth %}
+                    {% set user_photo = session.get('user_photo_url') %}
+                    <div class="user-block sb-item">
+                        <div class="user-card">
+                            <div class="user-avatar">
+                                {% if user_photo %}
+                                <img src="{{ user_photo }}" alt="Photo utilisateur">
+                                {% else %}
+                                <i class="fa-regular fa-user"></i>
+                                {% endif %}
+                            </div>
+                            <div class="user-name">{{ session.get('username') or 'Connecté' }}</div>
+                        </div>
+                    </div>
+                    <form action="{{ url_for('auth.logout') }}" method="get" class="sb-item">
+                        <button type="submit" class="btn-nouvelle-classe sb-btn btn-auth">
+                            <i class="fa-solid fa-right-from-bracket"></i> Se déconnecter
+                        </button>
+                    </form>
+                    {% else %}
+                    <div class="user-block sb-item">
+                        <div class="user-card">
+                            <div class="user-avatar"><i class="fa-regular fa-user"></i></div>
+                            <div class="user-name">Non connecté</div>
+                        </div>
+                    </div>
+                    <form action="{{ url_for('auth.login_form') }}" method="get" class="sb-item">
+                        <button type="submit" class="btn-nouvelle-classe sb-btn btn-auth">
+                            <i class="fa-solid fa-right-to-bracket"></i> Se connecter
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
 
-            <hr style="margin:20px 0">
+                {% if is_auth %}
+                <form method="get" action="{{ url_for('main.index') }}" class="sb-item">
+                    <button type="submit" class="btn-nouvelle-classe sb-btn">➕ Créer une nouvelle classe</button>
+                </form>
+                {% endif %}
 
-            {% for cl in toutes_les_classes %}
-            <form action="{{ url_for('main.page_classe', classe_id=cl.id) }}" method="get">
-                <button type="submit" class="btn-classe">{{ cl.niveaux | join(' / ') }} {{ cl.annee }}</button>
-            </form>
-            {% endfor %}
+                {% if is_auth %}
+                <hr class="sb-hr">
 
-            <hr style="margin:20px 0">
+                {% for cl in toutes_les_classes %}
+                <form action="{{ url_for('main.page_classe', classe_id=cl.id) }}" method="get" class="sb-item">
+                    <button type="submit" class="btn-classe sb-btn">{{ cl.niveaux | join(' / ') }} {{
+                        cl.annee|replace('-', ' / ') }}</button>
+                </form>
+                {% endfor %}
 
-            <form action="{{ url_for('main.config_export') }}" method="get">
-                <button type="submit" class="btn-classe btn-parametres">
-                    <i class="fa-solid fa-gear" style="margin-right:6px;"></i> Paramètres
-                </button>
-            </form>
+                <hr class="sb-hr">
+                <form action="{{ url_for('main.config_export') }}" method="get" class="sb-item">
+                    <button type="submit" class="btn-nouvelle-classe sb-btn">
+                        <i class="fa-solid fa-gear" style="margin-right:6px;"></i> Paramètres
+                    </button>
+                </form>
+                {% endif %}
+            </div>
         </aside>
 
         <!-- ===== Contenu ===== -->
-        <main class="content">
+        <main class="content{% if not is_auth %} content--fullwidth{% endif %}">
             <div class="bandeau-titre">
                 {% block header_title %}
                 {% if classe %}
-                Classe {{ classe.niveaux | join(' / ') }} {{ classe.annee }}
+                Classe {{ classe.niveaux | join(' / ') }} {{ classe.annee|replace('-', ' / ') }}
                 {% elif evaluation %}
                 Classe {{ evaluation.classe_id }}
                 {% else %}

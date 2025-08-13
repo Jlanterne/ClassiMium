@@ -1,6 +1,11 @@
-# app/routes/main.py — généré automatiquement (extract_routes.py v2)
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app, abort, g
-import json
+# app/routes/main.py — clean & harmonisé
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app, abort, session
+import os, io, csv, json
+from datetime import datetime, date
+
+import psycopg2
+import psycopg2.extras
+from werkzeug.utils import secure_filename
 
 from app.utils import (
     get_db_connection,
@@ -9,79 +14,78 @@ from app.utils import (
     ensure_export_dir_for_rapport,
     get_ui_settings_from_db,
     set_ui_settings_in_db,
-    DEFAULT_UI,
 )
 
 bp = Blueprint("main", __name__)
 
-# On importe l'ancien module pour conserver ses utilitaires
+# On importe l'ancien module pour conserver ses utilitaires (si présents)
 try:
     from app_legacy import *  # noqa
 except Exception:
     pass
 
-# --- UI settings helpers ---
-import json
+# Fallback pour allowed_file si non présent
+if "allowed_file" not in globals():
+    def allowed_file(filename):
+        return "." in filename and filename.rsplit(".", 1)[1].lower() in {"png", "jpg", "jpeg", "gif", "webp"}
 
-def get_ui_settings_from_db(conn):
-    with conn.cursor() as cur:
-        cur.execute("SELECT value FROM app_settings WHERE key='ui'")
-        row = cur.fetchone()
-    if not row or not row[0]:
-        return {"anim_mode": "slide-down", "anim_duration": 520}
-    data = row[0]
-    return {
-        "anim_mode": str(data.get("anim_mode") or "slide-down"),
-        "anim_duration": int(data.get("anim_duration") or 520),
-    }
+# ---------- Ordre canonique des niveaux ----------
+def NIVEAU_ORDER_COL(col="niveau") -> str:
+    """
+    Retourne un CASE SQL qui ordonne CP, CE1, CE2, CM1, CM2.
+    Usage: "ORDER BY " + NIVEAU_ORDER_COL('niveau')
+    """
+    return (
+        f"CASE {col} "
+        "WHEN 'CP' THEN 1 "
+        "WHEN 'CE1' THEN 2 "
+        "WHEN 'CE2' THEN 3 "
+        "WHEN 'CM1' THEN 4 "
+        "WHEN 'CM2' THEN 5 "
+        "ELSE 99 END"
+    )
 
-def set_ui_settings_in_db(conn, ui_dict):
-    payload = {k: ui_dict[k] for k in ("anim_mode","anim_duration") if k in ui_dict and ui_dict[k] is not None}
-    with conn.cursor() as cur:
-        cur.execute("""
-            INSERT INTO app_settings (key, value)
-            VALUES ('ui', %s::jsonb)
-            ON CONFLICT (key) DO UPDATE
-            SET value = app_settings.value || %s::jsonb,
-                updated_at = now()
-        """, (json.dumps(payload), json.dumps(payload)))
-    conn.commit()
-
-
-
-
-
-
-
-
-
+# ---------- CSS généré ----------
 @bp.route('/static/style.css')
 def style_css():
     """Permet d'utiliser un template Jinja pour générer du CSS."""
     return render_template('style.css.j2'), 200, {'Content-Type': 'text/css'}
 
+# ---------- Accueil ----------
 @bp.route("/")
 def index():
-    """Accueil : liste des classes."""
+    """
+    Accueil minimal (création de classe). La sidebar lit 'toutes_les_classes'.
+    Si authentifié et qu'il existe au moins une classe, on redirige vers la plus récente.
+    """
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cur.execute("SELECT * FROM classes ORDER BY annee DESC")
     classes = cur.fetchall()
 
-    # Ajoute liste des niveaux pour chaque classe
+    # Si connecté → aller direct à la plus récente
+    if session.get("auth") and classes:
+        cls_id = classes[0]["id"]
+        cur.close(); conn.close()
+        return redirect(url_for("main.page_classe", classe_id=cls_id))
+
+    # Ajoute niveaux triés pour chaque classe (pour la sidebar)
     for c in classes:
-        cur.execute("SELECT niveau FROM classes_niveaux WHERE classe_id = %s ORDER BY niveau", (c["id"],))
+        cur.execute(
+            "SELECT niveau FROM classes_niveaux WHERE classe_id = %s ORDER BY " + NIVEAU_ORDER_COL('niveau'),
+            (c["id"],)
+        )
         c["niveaux"] = [row["niveau"] for row in cur.fetchall()]
 
-    cur.close()
-    conn.close()
-    return render_template("index.html", classes=classes)
+    cur.close(); conn.close()
+    return render_template("index.html", classes=classes, toutes_les_classes=classes)
 
+# ---------- Page classe ----------
 @bp.route("/classe/<int:classe_id>")
 def page_classe(classe_id):
     """
-    Détail classe — plusieurs modes :
+    Détail classe — modes :
       - ?mode=eleves (par défaut)
       - ?mode=liste_evaluations (+ filtres)
       - ?mode=saisie_resultats&evaluation_id=...
@@ -105,15 +109,21 @@ def page_classe(classe_id):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Niveaux de la classe
-    cur.execute("SELECT niveau FROM classes_niveaux WHERE classe_id = %s", (classe_id,))
+    # Niveaux de la classe (tri canonique)
+    cur.execute(
+        "SELECT niveau FROM classes_niveaux WHERE classe_id = %s ORDER BY " + NIVEAU_ORDER_COL('niveau'),
+        (classe_id,)
+    )
     niveaux_classe = [row["niveau"] for row in cur.fetchall()]
 
-    # Toutes les classes (menu gauche)
+    # Toutes les classes (menu gauche) + niveaux triés
     cur.execute("SELECT * FROM classes ORDER BY annee DESC")
     toutes_les_classes = cur.fetchall()
     for cl in toutes_les_classes:
-        cur.execute("SELECT niveau FROM classes_niveaux WHERE classe_id = %s", (cl["id"],))
+        cur.execute(
+            "SELECT niveau FROM classes_niveaux WHERE classe_id = %s ORDER BY " + NIVEAU_ORDER_COL('niveau'),
+            (cl["id"],)
+        )
         cl["niveaux"] = [row["niveau"] for row in cur.fetchall()]
 
     # Classe courante
@@ -122,7 +132,7 @@ def page_classe(classe_id):
     if not classe:
         cur.close(); conn.close()
         flash("Classe introuvable.")
-        return redirect(url_for("index"))
+        return redirect(url_for("main.index"))
     classe["niveaux"] = niveaux_classe
 
     eleves = []
@@ -171,20 +181,36 @@ def page_classe(classe_id):
         cur.execute(requete, params)
         evaluations = cur.fetchall()
 
-        # Niveaux concernés par éval
+        # Niveaux concernés par éval (tri canonique)
         for ev in evaluations:
-            cur.execute("SELECT niveau FROM evaluations_niveaux WHERE evaluation_id = %s", (ev["id"],))
+            cur.execute(
+                "SELECT niveau FROM evaluations_niveaux WHERE evaluation_id = %s ORDER BY " + NIVEAU_ORDER_COL('niveau'),
+                (ev["id"],)
+            )
             ev["niveaux"] = [row["niveau"] for row in cur.fetchall()]
 
-        # Filtres dynamiques (niveaux présents dans les évals listées)
+        # Filtres dynamiques (niveaux présents dans les évals listées) — tri CP → CM2
         evaluation_ids = [e["id"] for e in evaluations]
         if evaluation_ids:
             cur.execute("""
-                SELECT DISTINCT niveau FROM evaluations_niveaux
-                WHERE evaluation_id = ANY(%s)
-                ORDER BY niveau
+                SELECT niveau
+                FROM (
+                    SELECT DISTINCT niveau
+                    FROM evaluations_niveaux
+                    WHERE evaluation_id = ANY(%s)
+                ) x
+                ORDER BY CASE x.niveau
+                    WHEN 'CP'  THEN 1
+                    WHEN 'CE1' THEN 2
+                    WHEN 'CE2' THEN 3
+                    WHEN 'CM1' THEN 4
+                    WHEN 'CM2' THEN 5
+                    ELSE 999
+                END
             """, (evaluation_ids,))
             niveaux_filtres = [row["niveau"] for row in cur.fetchall()]
+        else:
+            niveaux_filtres = []
 
         # Avancement des saisies (les absents '---' comptent comme complets)
         for ev in evaluations:
@@ -212,12 +238,12 @@ def page_classe(classe_id):
             progression = int((nb_complets / len(eleves)) * 100) if eleves else 0
             avancements[ev["id"]] = progression
 
-    # Mode : saisie des résultats
+    # Mode : saisie des résultats (chargement des datas pour le template)
     if mode == "saisie_resultats" and evaluation_id:
         cur.execute("SELECT * FROM evaluations WHERE id = %s", (evaluation_id,))
         evaluation = cur.fetchone()
 
-        cur.execute("SELECT * FROM objectifs WHERE evaluation_id = %s", (evaluation_id,))
+        cur.execute("SELECT * FROM objectifs WHERE evaluation_id = %s ORDER BY id", (evaluation_id,))
         objectifs = cur.fetchall()
 
         cur.execute("SELECT * FROM resultats WHERE evaluation_id = %s", (evaluation_id,))
@@ -228,6 +254,7 @@ def page_classe(classe_id):
             resultats[ligne["eleve_id"]][ligne["objectif_id"]] = ligne["niveau"]
 
     # Mode : ajouter rapport (précharge types / sous-types / élèves)
+    types = []; sous_types = []; eleves_classe = []
     if mode == "ajouter_rapport":
         cur.execute("SELECT id, code, libelle FROM rapport_types ORDER BY libelle;")
         types = cur.fetchall()
@@ -239,7 +266,6 @@ def page_classe(classe_id):
         if default_type_id is None and types:
             default_type_id = types[0]["id"]
 
-        sous_types = []
         if default_type_id:
             cur.execute("""
                 SELECT id, code, libelle
@@ -256,8 +282,6 @@ def page_classe(classe_id):
             ORDER BY prenom, nom
         """, (classe_id,))
         eleves_classe = cur.fetchall()
-    else:
-        types = []; sous_types = []; eleves_classe = []
 
     # Mode : ajouter dictée (prépare structures)
     if mode == "ajouter_dictee":
@@ -324,8 +348,7 @@ def page_classe(classe_id):
                         break
                 groupes_dict[eleve_id][date_dictee.isoformat()] = groupe
 
-    cur.close()
-    conn.close()
+    cur.close(); conn.close()
 
     return render_template(
         "classe.html",
@@ -349,6 +372,7 @@ def page_classe(classe_id):
         mode=request.args.get("mode"),
     )
 
+# ---------- API dictées ----------
 @bp.post("/api/dictees")
 def api_save_dictee():
     """
@@ -604,34 +628,56 @@ def api_list_dictees():
     cur.close(); conn.close()
     return jsonify(ok=True, dictees=dictees, resultats=resultats_map)
 
+# ---------- Création de classe ----------
 @bp.route("/ajouter_classe", methods=["POST"])
 def ajouter_classe():
-    """Crée une classe + ses niveaux (évite doublons si déjà existants)."""
+    """Crée une classe + ses niveaux, puis redirige DIRECTEMENT vers la page de la classe."""
     niveaux = request.form.getlist("niveau")
     annee_debut = request.form.get("annee_debut")
 
     if not niveaux or not annee_debut:
         flash("Merci de remplir tous les champs.", "warning")
-        return redirect(request.referrer)
+        return redirect(request.referrer or url_for("main.index"))
 
     annee = f"{annee_debut}-{int(annee_debut) + 1}"
 
+    conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # Si classe même année existe déjà ?
+        # Classe même année déjà existante ?
         cur.execute("SELECT id FROM classes WHERE annee = %s", (annee,))
         classe_existante = cur.fetchone()
 
         if classe_existante:
             classe_id = classe_existante[0]
             # Niveaux déjà tous présents ?
-            cur.execute("SELECT niveau FROM classes_niveaux WHERE classe_id = %s", (classe_id,))
+            cur.execute("""
+                SELECT niveau
+                FROM classes_niveaux
+                WHERE classe_id = %s
+                ORDER BY """ + NIVEAU_ORDER_COL('niveau'),
+                (classe_id,)
+            )
             niveaux_existants = [row[0] for row in cur.fetchall()]
+
+            # Si déjà identique → message + go direct dans la classe
             if set(niveaux_existants) == set(niveaux):
-                flash(f"La classe {', '.join(niveaux)} {annee} existe déjà.", "danger")
-                return redirect(request.referrer)
+                flash(f"La classe {', '.join(niveaux)} {annee} existe déjà.", "info")
+                conn.commit()
+                cur.close(); conn.close()
+                return redirect(url_for("main.page_classe", classe_id=classe_id))
+
+            # Sinon, on complète les niveaux manquants puis on redirige
+            manquants = [n for n in niveaux if n not in niveaux_existants]
+            for n in manquants:
+                cur.execute("INSERT INTO classes_niveaux (classe_id, niveau) VALUES (%s, %s)", (classe_id, n))
+
+            conn.commit()
+            flash("Classe mise à jour avec succès.", "success")
+            cur.close(); conn.close()
+            return redirect(url_for("main.page_classe", classe_id=classe_id))
 
         # Nouvelle classe
         cur.execute("INSERT INTO classes (annee) VALUES (%s) RETURNING id", (annee,))
@@ -643,14 +689,20 @@ def ajouter_classe():
 
         conn.commit()
         flash("Classe créée avec succès.", "success")
+        cur.close(); conn.close()
+        # ✅ Arriver directement dans la classe nouvellement créée
+        return redirect(url_for("main.page_classe", classe_id=classe_id))
+
     except Exception as e:
-        conn.rollback()
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         flash(f"Erreur : {e}", "danger")
-    finally:
-        conn.close()
+        return redirect(request.referrer or url_for("main.index"))
 
-    return redirect(request.referrer)
-
+# ---------- Ajout / modif / suppression évaluations ----------
 @bp.route("/ajouter_eleve/<int:classe_id>", methods=["POST"])
 def ajouter_eleve(classe_id):
     """Ajoute un élève à la classe."""
@@ -666,7 +718,7 @@ def ajouter_eleve(classe_id):
     """, (nom, prenom, niveau, date_naissance, classe_id))
     conn.commit()
     cur.close(); conn.close()
-    return redirect(url_for("page_classe", classe_id=classe_id))
+    return redirect(url_for("main.page_classe", classe_id=classe_id))
 
 @bp.route("/classe/<int:classe_id>/ajouter_evaluation", methods=["POST"])
 def ajouter_evaluation(classe_id):
@@ -680,7 +732,7 @@ def ajouter_evaluation(classe_id):
 
     if not titre or not date_str or not matiere_nom or not objectifs or not niveaux_concernes:
         flash("⚠️ Tous les champs obligatoires doivent être remplis.")
-        return redirect(url_for("page_classe", classe_id=classe_id, mode="ajout_evaluation"))
+        return redirect(url_for("main.page_classe", classe_id=classe_id, mode="ajout_evaluation"))
 
     conn = get_db_connection(); cur = conn.cursor()
     try:
@@ -731,7 +783,7 @@ def ajouter_evaluation(classe_id):
     finally:
         cur.close(); conn.close()
 
-    return redirect(url_for("page_classe", classe_id=classe_id, mode="liste_evaluations"))
+    return redirect(url_for("main.page_classe", classe_id=classe_id, mode="liste_evaluations"))
 
 @bp.route("/evaluation/<int:evaluation_id>/modifier", methods=["GET", "POST"])
 def modifier_evaluation(evaluation_id):
@@ -757,8 +809,11 @@ def modifier_evaluation(evaluation_id):
     cur.execute("SELECT * FROM objectifs WHERE evaluation_id = %s ORDER BY id", (evaluation_id,))
     objectifs = cur.fetchall()
 
-    # Niveaux de la classe
-    cur.execute("SELECT niveau FROM classes_niveaux WHERE classe_id = %s", (evaluation["classe_id"],))
+    # Niveaux de la classe (tri canonique)
+    cur.execute(
+        "SELECT niveau FROM classes_niveaux WHERE classe_id = %s ORDER BY " + NIVEAU_ORDER_COL('niveau'),
+        (evaluation["classe_id"],)
+    )
     niveaux = [row["niveau"] for row in cur.fetchall()]
 
     # Niveaux concernés
@@ -775,13 +830,19 @@ def modifier_evaluation(evaluation_id):
     cur.execute("SELECT * FROM classes ORDER BY annee DESC")
     toutes_les_classes = cur.fetchall()
     for cl in toutes_les_classes:
-        cur.execute("SELECT niveau FROM classes_niveaux WHERE classe_id = %s", (cl["id"],))
+        cur.execute(
+            "SELECT niveau FROM classes_niveaux WHERE classe_id = %s ORDER BY " + NIVEAU_ORDER_COL('niveau'),
+            (cl["id"],)
+        )
         cl["niveaux"] = [row["niveau"] for row in cur.fetchall()]
 
     # Classe liée (bandeau titre)
     cur.execute("SELECT * FROM classes WHERE id = %s", (evaluation["classe_id"],))
     classe = cur.fetchone()
-    cur.execute("SELECT niveau FROM classes_niveaux WHERE classe_id = %s", (classe["id"],))
+    cur.execute(
+        "SELECT niveau FROM classes_niveaux WHERE classe_id = %s ORDER BY " + NIVEAU_ORDER_COL('niveau'),
+        (classe["id"],)
+    )
     classe["niveaux"] = [row["niveau"] for row in cur.fetchall()]
 
     if request.method == "POST":
@@ -832,7 +893,7 @@ def modifier_evaluation(evaluation_id):
 
             conn.commit()
             flash("✅ Évaluation modifiée avec succès !")
-            return redirect(url_for("page_classe", classe_id=evaluation["classe_id"], mode="liste_evaluations"))
+            return redirect(url_for("main.page_classe", classe_id=evaluation["classe_id"], mode="liste_evaluations"))
 
         except Exception as e:
             conn.rollback()
@@ -870,15 +931,16 @@ def supprimer_evaluation(evaluation_id):
 
     classe_id = request.form.get('classe_id')
     if classe_id:
-        return redirect(url_for('page_classe', classe_id=classe_id, mode='liste_evaluations'))
-    return redirect(url_for('index'))
+        return redirect(url_for('main.page_classe', classe_id=classe_id, mode='liste_evaluations'))
+    return redirect(url_for('main.index'))
 
+# ---------- Import CSV élèves ----------
 @bp.route("/importer_eleve_csv/<int:classe_id>", methods=["POST"])
 def importer_eleve_csv(classe_id):
     """Import CSV élèves (Windows-1252 ; séparateur ';'). Initialise groupe G3."""
     if "csv_file" not in request.files or request.files["csv_file"].filename == "":
         flash("Aucun fichier sélectionné.")
-        return redirect(url_for("page_classe", classe_id=classe_id))
+        return redirect(url_for("main.page_classe", classe_id=classe_id))
 
     try:
         stream = io.StringIO(request.files["csv_file"].stream.read().decode("windows-1252"), newline=None)
@@ -945,9 +1007,10 @@ def importer_eleve_csv(classe_id):
         except Exception:
             pass
 
-    return redirect(url_for("page_classe", classe_id=classe_id))
+    return redirect(url_for("main.page_classe", classe_id=classe_id))
 
-@bp.route('/classe/<int:classe_id>/eleve/<int:eleve_id>/changer_photo', methods=['POST'])
+# ---------- Divers ----------
+@bp.route("/classe/<int:classe_id>/eleve/<int:eleve_id>/changer_photo", methods=['POST'])
 def changer_photo(classe_id, eleve_id):
     """Upload/sauvegarde la photo de l’élève (static/photos)."""
     if 'photo' not in request.files:
@@ -987,150 +1050,6 @@ def debug_evaluations():
     cur.close(); conn.close()
     return "<pre>" + "\n".join([f"{r['id']} | Classe {r['classe_id']} | {r['titre']} ({r['date']})" for r in rows]) + "</pre>"
 
-@bp.route("/classe/<int:classe_id>/evaluation/<int:evaluation_id>/resultats", methods=["GET", "POST"])
-def saisir_resultats(classe_id, evaluation_id):
-    """Saisie des résultats d’une évaluation + calcul moyennes/appreciations."""
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-
-    points_map = {'NA': 0, 'PA': 2, 'A': 4, '---': 0}
-
-    def convertir_note(moyenne_points):
-        note_sur_20 = (moyenne_points / 4) * 20
-        if note_sur_20 == 20:           appreciation = 'D'
-        elif 16 < note_sur_20 < 20:     appreciation = 'A+'
-        elif 13 < note_sur_20 <= 16:    appreciation = 'A'
-        elif 12 <= note_sur_20 <= 13:   appreciation = 'PA+'
-        elif 8 <= note_sur_20 < 12:     appreciation = 'PA'
-        elif 6 <= note_sur_20 < 8:      appreciation = 'PA-'
-        else:                            appreciation = 'NA'
-        return note_sur_20, appreciation
-
-    # Classe & Evaluation
-    cur.execute("SELECT * FROM classes WHERE id = %s", (classe_id,))
-    classe = cur.fetchone()
-    cur.execute("SELECT * FROM evaluations WHERE id = %s", (evaluation_id,))
-    evaluation = cur.fetchone()
-
-    # Niveaux concernés
-    cur.execute("SELECT niveau FROM evaluations_niveaux WHERE evaluation_id = %s", (evaluation_id,))
-    niveaux_concernes = [row['niveau'] for row in cur.fetchall()]
-
-    # Filtre niveau
-    niveau_selectionne = request.args.get('niveau')
-
-    # Élèves (filtrés si niveau sélectionné)
-    if niveau_selectionne and niveau_selectionne in niveaux_concernes:
-        cur.execute("SELECT * FROM eleves WHERE classe_id = %s AND niveau = %s ORDER BY nom, prenom", (classe_id, niveau_selectionne))
-    else:
-        if niveaux_concernes:
-            cur.execute("SELECT * FROM eleves WHERE classe_id = %s AND niveau = ANY(%s) ORDER BY niveau, nom, prenom", (classe_id, niveaux_concernes))
-        else:
-            cur.execute("SELECT * FROM eleves WHERE classe_id = %s ORDER BY nom, prenom", (classe_id,))
-    eleves = cur.fetchall()
-
-    # Objectifs
-    cur.execute("SELECT * FROM objectifs WHERE evaluation_id = %s ORDER BY id", (evaluation_id,))
-    objectifs = cur.fetchall()
-
-    # Résultats existants -> dict
-    resultats = {}
-    cur.execute("SELECT * FROM resultats WHERE evaluation_id = %s", (evaluation_id,))
-    for r in cur.fetchall():
-        eid, oid = r["eleve_id"], r["objectif_id"]
-        resultats.setdefault(eid, {})[oid] = r["niveau"]
-
-    # Moyennes
-    moyennes = {}
-    for eleve in eleves:
-        total_points = 0; nb_obj = 0
-        for obj in objectifs:
-            valeur = resultats.get(eleve["id"], {}).get(obj["id"], "---")
-            if valeur in points_map:
-                total_points += points_map[valeur]; nb_obj += 1
-        moyenne_points = total_points / nb_obj if nb_obj > 0 else 0
-        moyennes[eleve["id"]] = convertir_note(moyenne_points)
-
-    absents = []
-
-    if request.method == "POST":
-        try:
-            # Absents
-            absents = [eleve["id"] for eleve in eleves if f"absent_{eleve['id']}" in request.form]
-
-            for eleve in eleves:
-                for objectif in objectifs:
-                    champ = f"resultat_{eleve['id']}_{objectif['id']}"
-                    if eleve["id"] in absents:
-                        niveau = '---'  # absent => complet '---'
-                    else:
-                        niveau = request.form.get(champ)
-                        if niveau not in ["NA", "PA", "A"]:
-                            niveau = None  # pas de saisie -> ne rien écrire
-
-                    cur.execute("SELECT id FROM resultats WHERE eleve_id = %s AND objectif_id = %s",
-                                (eleve["id"], objectif["id"]))
-                    existant = cur.fetchone()
-
-                    if niveau in ["NA", "PA", "A", "---"]:
-                        if existant:
-                            cur.execute("UPDATE resultats SET niveau = %s WHERE id = %s", (niveau, existant["id"]))
-                        else:
-                            cur.execute(
-                                "INSERT INTO resultats (eleve_id, objectif_id, evaluation_id, niveau) VALUES (%s, %s, %s, %s)",
-                                (eleve["id"], objectif["id"], evaluation_id, niveau)
-                            )
-                    else:
-                        if existant:
-                            cur.execute("DELETE FROM resultats WHERE id = %s", (existant["id"],))
-
-            conn.commit()
-            flash("Résultats enregistrés.", "success")
-
-            # rechargement résultats & moyennes
-            resultats = {}
-            cur.execute("SELECT * FROM resultats WHERE evaluation_id = %s", (evaluation_id,))
-            for r in cur.fetchall():
-                eid, oid = r["eleve_id"], r["objectif_id"]
-                resultats.setdefault(eid, {})[oid] = r["niveau"]
-
-            moyennes = {}
-            for eleve in eleves:
-                total_points = 0; nb_obj = 0
-                for obj in objectifs:
-                    valeur = resultats.get(eleve["id"], {}).get(obj["id"], "---")
-                    if valeur in points_map:
-                        total_points += points_map[valeur]; nb_obj += 1
-                moyenne_points = total_points / nb_obj if nb_obj > 0 else 0
-                moyennes[eleve["id"]] = convertir_note(moyenne_points)
-
-        except Exception as e:
-            conn.rollback()
-            flash(f"Erreur : {e}", "danger")
-
-    # Menu latéral
-    cur.execute("SELECT * FROM classes ORDER BY annee DESC")
-    toutes_les_classes = cur.fetchall()
-    for cl in toutes_les_classes:
-        cur.execute("SELECT niveau FROM classes_niveaux WHERE classe_id = %s", (cl["id"],))
-        cl["niveaux"] = [row["niveau"] for row in cur.fetchall()]
-
-    cur.close(); conn.close()
-    return render_template(
-        "classe.html",
-        mode="saisie_resultats",
-        classe=classe,
-        evaluation=evaluation,
-        eleves=eleves,
-        objectifs=objectifs,
-        resultats=resultats,
-        absents=absents,
-        toutes_les_classes=toutes_les_classes,
-        niveaux_concernes=niveaux_concernes,
-        niveau_selectionne=niveau_selectionne,
-        moyennes=moyennes
-    )
-
 @bp.route('/classe/<int:classe_id>/eleve/<int:eleve_id>')
 def detail_eleve(classe_id, eleve_id):
     """Petite fiche élève (avec calcul d’âge)."""
@@ -1158,11 +1077,14 @@ def detail_eleve(classe_id, eleve_id):
     cur.execute("SELECT * FROM classes WHERE id = %s", (classe_id,))
     classe = cur.fetchone()
 
-    # Menu latéral
+    # Menu latéral (classes + niveaux triés)
     cur.execute("SELECT * FROM classes ORDER BY annee DESC")
     toutes_les_classes = cur.fetchall()
     for cl in toutes_les_classes:
-        cur.execute("SELECT niveau FROM classes_niveaux WHERE classe_id = %s", (cl["id"],))
+        cur.execute(
+            "SELECT niveau FROM classes_niveaux WHERE classe_id = %s ORDER BY " + NIVEAU_ORDER_COL('niveau'),
+            (cl["id"],)
+        )
         cl["niveaux"] = [row["niveau"] for row in cur.fetchall()]
 
     cur.close(); conn.close()
@@ -1175,23 +1097,7 @@ def detail_eleve(classe_id, eleve_id):
         age=age,
     )
 
-@bp.route('/changer_groupe', methods=['POST'])
-def changer_groupe():
-    """Insère un changement de groupe daté pour un élève."""
-    data = request.get_json()
-    eleve_id = data.get('eleve_id')
-    groupe = data.get('groupe')
-    date_changement = data.get('date_changement')
-
-    conn = get_db_connection(); cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO groupes_eleves (eleve_id, groupe, date_changement)
-        VALUES (%s, %s, %s)
-    """, (eleve_id, groupe, date_changement))
-    conn.commit()
-    cur.close(); conn.close()
-    return jsonify({'status': 'ok'})
-
+# ---------- Ajout dictée (préparation) ----------
 @bp.route("/classe/<int:classe_id>/ajouter_dictee", methods=["GET", "POST"])
 def ajouter_dictee(classe_id):
     """Page d’ajout de dictée (prépare datas côté template)."""
@@ -1202,8 +1108,11 @@ def ajouter_dictee(classe_id):
     cur.execute("SELECT * FROM classes WHERE id = %s", (classe_id,))
     classe = cur.fetchone()
 
-    # Niveaux
-    cur.execute("SELECT niveau FROM classes_niveaux WHERE classe_id = %s", (classe_id,))
+    # Niveaux (tri canonique)
+    cur.execute(
+        "SELECT niveau FROM classes_niveaux WHERE classe_id = %s ORDER BY " + NIVEAU_ORDER_COL('niveau'),
+        (classe_id,)
+    )
     niveaux = [row["niveau"] for row in cur.fetchall()]
     classe["niveaux"] = niveaux
 
@@ -1221,11 +1130,14 @@ def ajouter_dictee(classe_id):
         ids_eleves.extend([e["id"] for e in eleves])
 
     # Menu latéral
-    cur.execute("SELECT id, annee FROM classes")
+    cur.execute("SELECT id, annee FROM classes ORDER BY annee DESC")
     classes = cur.fetchall()
     toutes_les_classes = []
     for cl in classes:
-        cur.execute("SELECT niveau FROM classes_niveaux WHERE classe_id = %s", (cl["id"],))
+        cur.execute(
+            "SELECT niveau FROM classes_niveaux WHERE classe_id = %s ORDER BY " + NIVEAU_ORDER_COL('niveau'),
+            (cl["id"],)
+        )
         cl["niveaux"] = [row["niveau"] for row in cur.fetchall()]
         toutes_les_classes.append(cl)
 
@@ -1265,164 +1177,9 @@ def ajouter_dictee(classe_id):
         groupes_dict=groupes_dict
     )
 
-@bp.route("/rapports/nouveau", methods=["GET"])
-def nouveau_rapport():
-    """UI de création d’un rapport (pré-remplit types/sous-types)."""
-    classe_id = request.args.get("classe_id", type=int)
-    eleve_id  = request.args.get("eleve_id",  type=int)
+# ---------- Config export ----------
+ALIAS = {"slide": "slide-down", "wipe": "wipe-down", "clip": "clip-circle", "scale": "zoom-in"}
 
-    conn = get_db_connection()
-    try:
-        types_ = fetch_rapport_types(conn)
-        default_type_id = None
-        for t in types_:
-            if t["code"] == "entretien_parents":
-                default_type_id = t["id"]; break
-        if default_type_id is None and types_:
-            default_type_id = types_[0]["id"]
-        sous_types = fetch_rapport_sous_types(conn, default_type_id) if default_type_id else []
-    finally:
-        conn.close()
-
-    return render_template("ajouter_rapport.html",
-                           types=types_, sous_types=sous_types,
-                           classe_id=classe_id, eleve_id=eleve_id)
-
-@bp.route("/api/rapports", methods=["POST"])
-def api_create_rapport():
-    """Crée un rapport vide, retourne son id + heure_debut."""
-    data = request.get_json(force=True) or {}
-    classe_id = data.get("classe_id")
-    eleve_id  = data.get("eleve_id")
-    type_id   = data.get("type_id")
-    sous_type_id = data.get("sous_type_id")
-    titre     = data.get("titre")
-
-    if not type_id:
-        return jsonify(ok=False, error="type_id manquant"), 400
-
-    conn = get_db_connection(); cur = conn.cursor()
-    try:
-        cur.execute("""
-            INSERT INTO rapports (classe_id, eleve_id, type_id, sous_type_id, titre, contenu, heure_debut)
-            VALUES (%s,%s,%s,%s,%s,'', NOW())
-            RETURNING id, heure_debut;
-        """, (classe_id, eleve_id, type_id, sous_type_id, titre))
-        rid, hdeb = cur.fetchone()
-        conn.commit()
-        return jsonify(ok=True, id=rid, heure_debut=hdeb.isoformat()), 201
-    except Exception as e:
-        conn.rollback()
-        return jsonify(ok=False, error=str(e)), 500
-    finally:
-        cur.close(); conn.close()
-
-@bp.route("/api/rapports/<int:rapport_id>", methods=["PATCH"])
-def api_update_rapport(rapport_id):
-    """Patch partiel d’un rapport ; met à jour heure_fin à chaque écriture."""
-    data = request.get_json(force=True) or {}
-    champs, vals = [], []
-
-    for cle in ("titre", "contenu", "type_id", "sous_type_id", "classe_id", "eleve_id"):
-        if cle in data:
-            champs.append(f"{cle}=%s")
-            vals.append(data[cle])
-
-    champs.append("heure_fin=NOW()")
-
-    if not champs:
-        return jsonify(ok=True)
-
-    sql = f"UPDATE rapports SET {', '.join(champs)} WHERE id=%s RETURNING heure_fin, updated_at;"
-    vals.append(rapport_id)
-
-    conn = get_db_connection(); cur = conn.cursor()
-    try:
-        cur.execute(sql, tuple(vals))
-        row = cur.fetchone()
-        if not row:
-            conn.rollback()
-            return jsonify(ok=False, error="rapport introuvable"), 404
-        conn.commit()
-        heure_fin, updated_at = row
-        return jsonify(ok=True, heure_fin=heure_fin.isoformat(), updated_at=updated_at.isoformat())
-    except Exception as e:
-        conn.rollback()
-        return jsonify(ok=False, error=str(e)), 500
-    finally:
-        cur.close(); conn.close()
-
-@bp.route("/api/rapport_sous_types/<int:type_id>", methods=["GET"])
-def api_get_sous_types(type_id):
-    """Liste les sous-types pour un type donné."""
-    conn = get_db_connection()
-    try:
-        sts = fetch_rapport_sous_types(conn, type_id)
-        return jsonify(sts)
-    finally:
-        conn.close()
-
-@bp.post("/api/rapports/<int:rapport_id>/export")
-def api_export_rapport(rapport_id):
-    """
-    Export d’un rapport en DOCX ou PDF.
-    Body JSON :
-      { "format": "docx"|"pdf", "html": "<override optionnel>" }
-    """
-    data = request.get_json(silent=True) or {}
-    fmt = (data.get("format") or "docx").lower()
-    html_override = (data.get("html") or "").strip()
-
-    # Charger rapport
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("""
-        SELECT r.titre, r.contenu, r.classe_id,
-               rt.libelle AS type_lib, rst.libelle AS sous_lib, c.annee AS classe_annee
-        FROM rapports r
-        JOIN rapport_types rt ON r.type_id = rt.id
-        LEFT JOIN rapport_sous_types rst ON r.sous_type_id = rst.id
-        LEFT JOIN classes c ON r.classe_id = c.id
-        WHERE r.id = %s
-    """, (rapport_id,))
-    r = cur.fetchone()
-    cur.close(); conn.close()
-    if not r:
-        return jsonify(ok=False, error="Rapport introuvable"), 404
-
-    titre = r["titre"] or (r["sous_lib"] or r["type_lib"] or "Rapport")
-    contenu_html = html_override if html_override else (r["contenu"] or "")
-
-    # Dossier de sortie (selon structure)
-    conn = get_db_connection()
-    try:
-        export_dir = ensure_export_dir_for_rapport(conn, rapport_id, allow_create_year=False)
-    finally:
-        conn.close()
-
-    # Export
-    safe_titre = "".join(ch if ch.isalnum() or ch in " -_." else "_" for ch in titre).strip()[:80] or "rapport"
-    if fmt == "docx":
-        out_path = os.path.join(export_dir, f"{safe_titre}.docx")
-        reference_docx = os.path.join(current_app.root_path, "static", "export", "reference.docx")
-        if not os.path.exists(reference_docx):
-            reference_docx = None
-        export_docx_best_effort(contenu_html, out_path, reference_docx=reference_docx)
-
-    elif fmt == "pdf":
-        out_path = os.path.join(export_dir, f"{safe_titre}.pdf")
-        export_pdf_faithful(contenu_html, out_path, title=titre)
-    else:
-        return jsonify(ok=False, error="Format inconnu"), 400
-
-    try:
-        size = os.path.getsize(out_path)
-    except Exception:
-        size = None
-    return jsonify(ok=True, path=out_path, size=size)
-
-ALIAS = {"slide":"slide-down","wipe":"wipe-down","clip":"clip-circle","scale":"zoom-in"}
-@bp.route("/config/export", methods=["GET", "POST"])
 @bp.route("/config/export", methods=["GET", "POST"])
 def config_export():
     # Menu latéral (classes)
@@ -1431,7 +1188,10 @@ def config_export():
     cur.execute("SELECT * FROM classes ORDER BY annee DESC")
     toutes_les_classes = cur.fetchall()
     for cl in toutes_les_classes:
-        cur.execute("SELECT niveau FROM classes_niveaux WHERE classe_id = %s", (cl["id"],))
+        cur.execute(
+            "SELECT niveau FROM classes_niveaux WHERE classe_id = %s ORDER BY " + NIVEAU_ORDER_COL('niveau'),
+            (cl["id"],)
+        )
         cl["niveaux"] = [row["niveau"] for row in cur.fetchall()]
     cur.close()
 
@@ -1480,15 +1240,13 @@ def config_export():
         primary_root=current_primary,
         secondary_root=current_secondary,
         reunions_dirname=current_reunions,
-        current_anim_mode=current_anim_mode,           # normalisé si tu normalises dans inject_ui
+        current_anim_mode=current_anim_mode,
         current_anim_duration=current_anim_duration,
         toutes_les_classes=toutes_les_classes,
         classe=classe
     )
 
-# routes/main.py (ou le fichier de ton blueprint)
-from flask import current_app
-
+# ---------- Injection UI ----------
 @bp.app_context_processor
 def inject_ui_settings():
     """Rend 'ui' dispo dans TOUS les templates héritant de base.html."""
@@ -1506,8 +1264,7 @@ def inject_ui_settings():
         except Exception:
             pass
 
-
-
+# ---------- Test chemins ----------
 @bp.get("/api/config/test-paths")
 def api_test_paths():
     """Test simple d’existence des chemins configurés."""

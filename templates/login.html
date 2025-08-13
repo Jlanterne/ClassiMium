@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Connexion{% endblock %}
+
+{% block content %}
+<div class="panel" style="max-width:420px;margin:48px auto">
+    <h2>Connexion</h2>
+
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% if msgs %}
+    <ul style="padding:0;list-style:none;margin:0 0 12px 0">
+        {% for cat, msg in msgs %}
+        <li class="flash {{cat}}">{{ msg }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    {% endwith %}
+
+    <form method="post" action="{{ url_for('auth.login', next=request.args.get('next')) }}">
+        {# CSRF facultatif si tu utilises Flask-WTF #}
+        {% if csrf_token is defined %}
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% endif %}
+
+        <div class="field">
+            <label for="username">Identifiant</label>
+            <input id="username" name="username" type="text" autocomplete="username" required>
+        </div>
+
+        <div class="field">
+            <label for="password">Mot de passe</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+
+        <button type="submit" class="btn">Se connecter</button>
+    </form>
+</div>
+{% endblock %}

@@ -1,139 +1,94 @@
+{# templates/partials/saisie_resultats.html #}
 <div class="saisie-resultats">
     <h3>
         Saisie des résultats : {{ evaluation.titre }} ({{ evaluation.date }})
 
         {% if evaluation.matiere %}
         <span class="bulle-matiere-{{ evaluation.matiere | replace(' ', '') | replace('.', '') }}"
-            style="margin-left: 10px;">
+            style="margin-left:10px;">
             {{ evaluation.matiere }}
         </span>
         {% endif %}
 
         {% if evaluation.sous_matiere %}
         <span class="bulle-sousmatiere-{{ evaluation.sous_matiere | replace(' ', '') | replace('.', '') }}"
-            style="margin-left: 5px;">
+            style="margin-left:5px;">
             {{ evaluation.sous_matiere }}
         </span>
         {% endif %}
 
-        <!-- Bulles des niveaux concernés -->
         {% for niv in niveaux_concernes %}
-        <a href="{{ url_for('main.saisir_resultats', classe_id=classe.id, evaluation_id=evaluation.id) }}?niveau={{ niv }}"
-            class="niveau-bulle {% if niveau_selectionne == niv %}niveau-selectionne{% endif %}">
+        <a href="{{ url_for('main.saisir_resultats', classe_id=classe.id, evaluation_id=evaluation.id, niveau=niv) }}"
+            class="niveau-bulle {% if niveau == niv %}niveau-selectionne{% endif %}">
             {{ niv }}
         </a>
         {% endfor %}
     </h3>
 
-    <form method="POST"
-        action="{{ url_for('main.saisir_resultats', classe_id=classe.id, evaluation_id=evaluation.id, niveau=niveau_selectionne) }}">
-        <div class="form-row">
-            <button type="submit" class="valider-btn">✅ Enregistrer</button>
-            <a href="{{ url_for('main.page_classe', classe_id=classe.id, mode='liste_evaluations') }}" class="annuler-btn">❌
-                Retour</a>
-        </div>
+    <form id="form-resultats" method="POST"
+        action="{{ url_for('main.saisir_resultats', classe_id=classe.id, evaluation_id=evaluation.id, niveau=niveau) }}"
+        data-autosave="true">
 
         <table class="table-resultats">
             <thead>
                 <tr>
-                    <th>Élève</th>
+                    <th class="col-eleve">Élève</th>
                     <th>Absent</th>
                     {% for obj in objectifs %}
-                    <th>
+                    <th class="col-objectif">
                         <div class="rotate-90" title="{{ obj.texte }}">{{ obj.texte }}</div>
                     </th>
                     {% endfor %}
                     <th>Moyenne</th>
                 </tr>
             </thead>
+
             <tbody>
                 {% for eleve in eleves %}
-                {% if not niveau_selectionne or eleve.niveau == niveau_selectionne %}
-                {% set est_absent = absents and eleve.id in absents %}
-                <tr class="{% if est_absent %}absent{% endif %}">
-                    <td>{{ eleve.prenom }} {{ eleve.nom }}</td>
+                {% set est_absent = (eleve.id in absents) %}
+                <tr class="ligne-eleve {% if est_absent %}absent{% endif %}" data-eleve-id="{{ eleve.id }}">
+                    <input type="hidden" name="eleve[]" value="{{ eleve.id }}">
+
+                    <td class="eleve-identite">{{ eleve.prenom }} {{ eleve.nom }}</td>
+
                     <td>
-                        <input type="checkbox" name="absent_{{ eleve.id }}" id="absent_{{ eleve.id }}" {% if est_absent
-                            %}checked{% endif %}>
+                        <input type="checkbox" name="absent_{{ eleve.id }}" class="absent-checkbox"
+                            data-eleve-id="{{ eleve.id }}" {% if est_absent %}checked{% endif %}>
                     </td>
+
                     {% for obj in objectifs %}
-                    <td>
-                        {% set valeur = resultats.get(eleve.id, {}).get(obj.id, "---") %}
-                        <select name="resultat_{{ eleve.id }}_{{ obj.id }}" data-eleve-id="{{ eleve.id }}"
-                            data-objectif-id="{{ obj.id }}" {% if est_absent %}disabled{% endif %}
-                            aria-label="Résultat pour {{ eleve.prenom }} {{ eleve.nom }}, objectif {{ obj.texte }}">
-                            <option value="---" {% if valeur=="---" %}selected{% endif %}>---</option>
-                            <option value="NA" {% if valeur=="NA" %}selected{% endif %}>NA</option>
-                            <option value="PA" {% if valeur=="PA" %}selected{% endif %}>PA</option>
-                            <option value="A" {% if valeur=="A" %}selected{% endif %}>A</option>
-                        </select>
+                    {% set valeur = resultats.get(eleve.id, {}).get(obj.id, '') %}
+                    <td class="note-cell" data-eleve-id="{{ eleve.id }}" data-objectif-id="{{ obj.id }}">
+                        <div class="note-pills{% if est_absent %} disabled{% endif %}">
+                            <button type="button" class="pill pill-na  {% if valeur=='NA' %}selected{% endif %}"
+                                data-val="NA">NA</button>
+                            <button type="button" class="pill pill-pa  {% if valeur=='PA' %}selected{% endif %}"
+                                data-val="PA">PA</button>
+                            <button type="button" class="pill pill-a   {% if valeur=='A'  %}selected{% endif %}"
+                                data-val="A">A</button>
+                        </div>
+                        <input type="hidden" name="resultat_{{ eleve.id }}_{{ obj.id }}" value="{{ valeur }}">
+                        <span class="save-icon" aria-hidden="true" title="Enregistré"></span>
                     </td>
                     {% endfor %}
-                    <td style="width: 150px; text-align: center; vertical-align: middle;">
-                        {{ moyennes[eleve.id][0] | round(1) }} / 20 - <strong>{{ moyennes[eleve.id][1] }}</strong>
+
+                    <td class="cell-moyenne">
+                        <span class="moyenne-wrap">
+                            <span class="moyenne-note"></span>
+                            <span class="moyenne-badge"></span>
+                            <span class="save-icon save-icon-moy" aria-hidden="true" title="Enregistré"></span>
+                        </span>
                     </td>
                 </tr>
-                {% endif %}
                 {% endfor %}
             </tbody>
         </table>
-
-        <div class="form-row" style="margin-top: 15px;">
-            <button type="submit" class="valider-btn">✅ Enregistrer</button>
-            <a href="{{ url_for('main.page_classe', classe_id=classe.id, mode='liste_evaluations') }}" class="annuler-btn">❌
-                Retour</a>
-        </div>
     </form>
 </div>
 
-<script>
-    document.addEventListener("DOMContentLoaded", function () {
-        const pointsMap = { 'NA': 0, 'PA': 2, 'A': 4, '---': 0 };
-
-        function getAppreciation(note) {
-            if (note === 20) return 'D';
-            if (note > 16 && note < 20) return 'A+';
-            if (note > 13 && note <= 16) return 'A';
-            if (note >= 12 && note <= 13) return 'PA+';
-            if (note >= 8 && note < 12) return 'PA';
-            if (note >= 6 && note < 8) return 'PA-';
-            return 'NA';
-        }
-
-        function updateMoyenne(eleveId) {
-            const selects = document.querySelectorAll(`select[data-eleve-id='${eleveId}']`);
-            let total = 0, count = 0;
-
-            selects.forEach(select => {
-                const val = select.value;
-                if (val in pointsMap) {
-                    total += pointsMap[val];
-                    count++;
-                }
-            });
-
-            const moyennePoints = count > 0 ? total / count : 0;
-            const noteSur20 = (moyennePoints / 4) * 20;
-            const appreciation = getAppreciation(noteSur20);
-
-            const td = document.getElementById(`moyenne-${eleveId}`);
-            if (td) {
-                td.innerHTML = `${noteSur20.toFixed(1)} / 20<br><strong>${appreciation}</strong>`;
-            }
-        }
-
-        // Initialisation : calculer toutes les moyennes au chargement
-        const elevesIds = new Set();
-        document.querySelectorAll('select[data-eleve-id]').forEach(select => {
-            elevesIds.add(select.dataset.eleveId);
-        });
-        elevesIds.forEach(id => updateMoyenne(id));
-
-        // Écoute des changements pour recalcul dynamique
-        document.querySelectorAll('select[data-eleve-id]').forEach(select => {
-            select.addEventListener('change', (e) => {
-                updateMoyenne(e.target.dataset.eleveId);
-            });
-        });
-    });
-</script>
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/saisie_resultats.css') }}">
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/saisie_resultats.js') }}"></script>
+{% endblock %}

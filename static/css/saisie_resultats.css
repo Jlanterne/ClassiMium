@@ -1,0 +1,156 @@
+.table-resultats {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+.table-resultats th,
+.table-resultats td {
+    border: 1px solid #ddd;
+    padding: 6px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+/* Colonne Élève élargie + non-retour à la ligne */
+.col-eleve {
+    width: 280px;
+}
+
+.eleve-identite {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 280px;
+    text-align: left;
+}
+
+/* Objectifs pivotés à 90° (lisible de bas en haut) */
+.col-objectif {
+    width: 56px;
+}
+
+.rotate-90 {
+    display: inline-block;
+    transform: rotate(-90deg);
+    transform-origin: left top;
+    white-space: nowrap;
+    line-height: 1;
+    margin-top: 36px;
+    /* ajuste si besoin */
+}
+
+/* Pastilles NA/PA/A en ligne (taille identique) */
+.note-pills {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    white-space: nowrap;
+}
+
+.note-pills.disabled {
+    opacity: .5;
+    pointer-events: none;
+}
+
+.pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 28px;
+    border-radius: 999px;
+    border: 1px solid rgba(0, 0, 0, .15);
+    font-size: .84rem;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+    background: #f6f6f6;
+}
+
+.pill:hover {
+    filter: brightness(0.97);
+}
+
+.pill-na.selected {
+    background: #ff000075;
+    color: #000;
+    border-color: #ff000075;
+}
+
+.pill-pa.selected {
+    background: #ffe223;
+    color: #000;
+    border-color: #ffe223;
+}
+
+.pill-a.selected {
+    background: #5cc995;
+    color: #000;
+    border-color: #5cc995;
+}
+
+/* Moyenne en ligne : xx.x/20 + pastille couleur (palette dictées) */
+.cell-moyenne .moyenne-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.moyenne-note {
+    min-width: 64px;
+    text-align: right;
+    display: inline-block;
+}
+
+.moyenne-badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 12px;
+    display: inline-block;
+    min-width: 44px;
+    text-align: center;
+}
+
+/* Disquette (taille fixe, pas de déformation) */
+.save-icon,
+.save-icon-moy {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-left: 6px;
+    vertical-align: middle;
+    background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" \
+viewBox="0 0 16 16" fill="%234a7cff"><path d="M1 3a2 2 0 0 1 2-2h8l4 4v8a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2zM3 2a1 1 0 0 0-1 1v10a1 \
+1 0 0 0 1 1h1v-4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v4h1a1 1 0 0 0 1-1V6.5L10.5 2zM6 14h4v-4H6zM4 4h6v3H4z"/></svg>') no-repeat center/contain;
+    opacity: 0;
+}
+
+.save-icon.show,
+.save-icon-moy.show {
+    animation: saveFade 1s ease-in-out;
+}
+
+@keyframes saveFade {
+    0% {
+        opacity: .0;
+    }
+
+    10% {
+        opacity: 1;
+    }
+
+    90% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: .0;
+    }
+}
+
+/* Absent : grisé (sans changer les valeurs en DB) */
+tr.ligne-eleve.absent {
+    opacity: .55;
+}

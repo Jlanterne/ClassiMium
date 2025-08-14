@@ -1387,3 +1387,282 @@ def protocol_check():
         return jsonify(status="ok")
     return jsonify(status="pending")
 
+
+@bp.route("/update_resultat/<int:evaluation_id>", methods=["POST"])
+def update_resultat(evaluation_id):
+    data = request.get_json()
+    eleve_id = data.get("eleve_id")
+    objectif_id = data.get("objectif_id")
+    valeur = data.get("valeur")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO resultats (evaluation_id, eleve_id, objectif_id, valeur)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (evaluation_id, eleve_id, objectif_id)
+        DO UPDATE SET valeur = EXCLUDED.valeur
+    """, (evaluation_id, eleve_id, objectif_id, valeur))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return jsonify(success=True)
+
+
+@bp.route("/update_absence/<int:evaluation_id>", methods=["POST"])
+def update_absence(evaluation_id):
+    data = request.get_json()
+    eleve_id = data.get("eleve_id")
+    est_absent = data.get("absent")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    if est_absent:
+        cur.execute("""
+            INSERT INTO absences (evaluation_id, eleve_id)
+            VALUES (%s, %s)
+            ON CONFLICT DO NOTHING
+        """, (evaluation_id, eleve_id))
+    else:
+        cur.execute("""
+            DELETE FROM absences WHERE evaluation_id=%s AND eleve_id=%s
+        """, (evaluation_id, eleve_id))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return jsonify(success=True)
+
+
+
+
+@bp.route(
+    "/classes/<int:classe_id>/evaluations/<int:evaluation_id>/saisir-resultats/<string:niveau>",
+    methods=["GET", "POST"],
+    endpoint="saisir_resultats"
+)
+def saisir_resultats(classe_id: int, evaluation_id: int, niveau: str):
+    import psycopg2.extras
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    if request.method == "POST":
+        form = request.form
+        VALID = {"NA", "PA", "A"}
+
+        # 1) Notes : upsert seulement les champs présents et valides
+        for key, val in form.items():
+            if not key.startswith("resultat_"):
+                continue
+            try:
+                _, eleve_id_str, objectif_id_str = key.split("_", 2)
+                eleve_id = int(eleve_id_str)
+                objectif_id = int(objectif_id_str)
+            except Exception:
+                continue
+
+            v = (val or "").strip().upper()
+            if v in VALID:
+                # delete ciblé puis insert (simple et robuste)
+                cur.execute("""
+                    DELETE FROM resultats
+                    WHERE evaluation_id=%s AND eleve_id=%s AND objectif_id=%s
+                """, (evaluation_id, eleve_id, objectif_id))
+                cur.execute("""
+                    INSERT INTO resultats (evaluation_id, eleve_id, objectif_id, niveau)
+                    VALUES (%s,%s,%s,%s)
+                """, (evaluation_id, eleve_id, objectif_id, v))
+            # si vide -> on ne touche pas la valeur existante
+
+        # 2) Absences : cases cochées reçues, décochées à retirer
+        eleves_ids = [int(x) for x in form.getlist("eleve[]")]
+        absents_checked = {int(el) for el in eleves_ids if form.get(f"absent_{el}") is not None}
+
+        if eleves_ids:
+            # Supprimer pour ceux visibles mais non cochés
+            cur.execute("""
+                DELETE FROM absences
+                WHERE evaluation_id = %s
+                  AND eleve_id = ANY(%s)
+                  AND NOT (eleve_id = ANY(%s))
+            """, (evaluation_id, eleves_ids, list(absents_checked) if absents_checked else [0]))
+            # Upsert pour les cochés
+            for el in absents_checked:
+                cur.execute("""
+                    INSERT INTO absences (evaluation_id, eleve_id)
+                    VALUES (%s,%s)
+                    ON CONFLICT (evaluation_id, eleve_id) DO NOTHING
+                """, (evaluation_id, el))
+
+        conn.commit()
+        cur.close(); conn.close()
+        return ("", 204)
+
+    # -------- GET (F5) : reconstitution complète de l'écran --------
+
+    # Classe + niveaux (titre / sidebar)
+    cur.execute("SELECT * FROM classes WHERE id = %s", (classe_id,))
+    classe = cur.fetchone() or abort(404, description="Classe introuvable")
+    cur.execute(
+        "SELECT niveau FROM classes_niveaux WHERE classe_id = %s ORDER BY " + NIVEAU_ORDER_COL('niveau'),
+        (classe_id,)
+    )
+    classe["niveaux"] = [r["niveau"] for r in cur.fetchall()]
+
+    cur.execute("SELECT * FROM classes ORDER BY annee DESC")
+    toutes_les_classes = cur.fetchall()
+    for cl in toutes_les_classes:
+        cur.execute(
+            "SELECT niveau FROM classes_niveaux WHERE classe_id = %s ORDER BY " + NIVEAU_ORDER_COL('niveau'),
+            (cl["id"],)
+        )
+        cl["niveaux"] = [row["niveau"] for row in cur.fetchall()]
+
+    # Évaluation
+    cur.execute("SELECT * FROM evaluations WHERE id = %s", (evaluation_id,))
+    evaluation = cur.fetchone() or abort(404, description="Évaluation introuvable")
+
+    # Niveaux concernés (tri canonique)
+    cur.execute("""
+        SELECT niveau
+        FROM evaluations_niveaux
+        WHERE evaluation_id = %s
+        ORDER BY """ + NIVEAU_ORDER_COL('niveau'), (evaluation_id,))
+    niveaux_concernes = [row["niveau"] for row in cur.fetchall()]
+
+    # Objectifs — ✅ colonne correcte: texte
+    cur.execute("""
+        SELECT id, texte
+        FROM objectifs
+        WHERE evaluation_id = %s
+        ORDER BY id
+    """, (evaluation_id,))
+    objectifs = cur.fetchall()
+
+    # Élèves du niveau demandé — tri par PRÉNOM puis NOM
+    cur.execute("""
+        SELECT id, nom, prenom, niveau
+        FROM eleves
+        WHERE classe_id = %s AND niveau = %s
+        ORDER BY prenom ASC, nom ASC
+    """, (classe_id, niveau))
+    eleves = cur.fetchall()
+
+    # Résultats saisis
+    cur.execute("""
+        SELECT eleve_id, objectif_id, niveau
+        FROM resultats
+        WHERE evaluation_id = %s
+    """, (evaluation_id,))
+    rows = cur.fetchall()
+    resultats = {e["id"]: {} for e in eleves}
+    for r in rows:
+        resultats.setdefault(r["eleve_id"], {})[r["objectif_id"]] = r["niveau"]
+
+    # Absences
+    cur.execute("SELECT eleve_id FROM absences WHERE evaluation_id = %s", (evaluation_id,))
+    absents = {row["eleve_id"] for row in cur.fetchall()}
+
+    cur.close(); conn.close()
+
+    return render_template(
+        "classe.html",
+        mode="saisie_resultats",
+        classe=classe,
+        toutes_les_classes=toutes_les_classes,
+        evaluation=evaluation,
+        niveaux_concernes=niveaux_concernes,
+        niveau=niveau,
+        objectifs=objectifs,
+        eleves=eleves,
+        resultats=resultats,
+        absents=absents
+    )
+
+
+
+
+
+
+@bp.post("/api/evaluations/<int:evaluation_id>/resultat")
+def api_save_resultat(evaluation_id: int):
+    data = request.get_json(silent=True) or {}
+    eleve_id = int(data.get("eleve_id"))
+    objectif_id = int(data.get("objectif_id"))
+    valeur = (data.get("valeur") or "").upper().strip()  # 'NA' | 'PA' | 'A' | '---'
+
+    if valeur not in ("NA", "PA", "A", "---"):
+        return jsonify(ok=False, error="valeur invalide"), 400
+
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        # Upsert simple et robuste (delete + insert)
+        cur.execute("""
+            DELETE FROM resultats
+            WHERE evaluation_id=%s AND eleve_id=%s AND objectif_id=%s
+        """, (evaluation_id, eleve_id, objectif_id))
+        cur.execute("""
+            INSERT INTO resultats (evaluation_id, eleve_id, objectif_id, niveau)
+            VALUES (%s,%s,%s,%s)
+        """, (evaluation_id, eleve_id, objectif_id, valeur))
+        conn.commit()
+        return jsonify(ok=True)
+    except Exception as e:
+        conn.rollback()
+        return jsonify(ok=False, error=str(e)), 500
+    finally:
+        try: cur.close(); conn.close()
+        except Exception: pass
+
+
+@bp.post("/api/evaluations/<int:evaluation_id>/absence")
+def api_save_absence(evaluation_id: int):
+    """
+    Marque un élève absent sur TOUTE l'évaluation (tous objectifs -> '---'),
+    ou le remet présent (on ne force pas les notes ; on laisse ce qui existe).
+    Payload: { eleve_id: int, absent: bool }
+    """
+    data = request.get_json(silent=True) or {}
+    eleve_id = int(data.get("eleve_id"))
+    absent = bool(data.get("absent"))
+
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        if absent:
+            # Récupère la liste des objectifs pour l'évaluation
+            cur.execute("SELECT id FROM objectifs WHERE evaluation_id = %s ORDER BY id", (evaluation_id,))
+            obj_ids = [row[0] for row in cur.fetchall()]
+            # Met '---' pour tous
+            for oid in obj_ids:
+                cur.execute("""
+                    DELETE FROM resultats
+                    WHERE evaluation_id=%s AND eleve_id=%s AND objectif_id=%s
+                """, (evaluation_id, eleve_id, oid))
+                cur.execute("""
+                    INSERT INTO resultats (evaluation_id, eleve_id, objectif_id, niveau)
+                    VALUES (%s,%s,%s,'---')
+                """, (evaluation_id, eleve_id, oid))
+        else:
+            # On ne touche pas aux notes existantes ; on enlève juste les '---' si tu veux.
+            # Si tu préfères ne rien faire en "présent", commente le bloc suivant.
+            cur.execute("""
+                UPDATE resultats
+                SET niveau = NULL
+                WHERE evaluation_id=%s AND eleve_id=%s AND niveau='---'
+            """, (evaluation_id, eleve_id))
+        conn.commit()
+        return jsonify(ok=True)
+    except Exception as e:
+        conn.rollback()
+        return jsonify(ok=False, error=str(e)), 500
+    finally:
+        try: cur.close(); conn.close()
+        except Exception: pass
+
+
+    
+
+

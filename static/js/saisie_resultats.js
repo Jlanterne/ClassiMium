@@ -1,10 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('form-resultats');
 
-    // barème NA/PA/A
+    // Barème NA/PA/A
     const PTS = { 'NA': 0, 'PA': 2, 'A': 4 };
 
-    // palette dictées pour la moyenne
+    // Palette dictées pour la moyenne
     const COLOR = {
         'NA': '#ff000075', 'PA-': '#ff7d1aa6', 'PA': '#ffe223', 'PA+': '#d4f5b0',
         'A-': '#a7e9b7', 'A': '#5cc995', 'A+': '#3dbcb9', 'D': '#00d3f8'
@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Calcul sur les hidden inputs
+        // Calcul à partir des hidden inputs
         const hidden = tr.querySelectorAll('input[type="hidden"][name^="resultat_"]');
         let sum = 0, n = 0;
         hidden.forEach(h => {
@@ -75,7 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const icon = rowElem?.querySelector('.save-icon-moy');
         if (icon) {
             icon.classList.remove('show');
-            // reflow pour relancer l’anim si besoin
+            // reflow pour relancer l’animation
             // eslint-disable-next-line no-unused-expressions
             icon.offsetWidth;
         }
@@ -94,7 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const tr = btn.closest('tr.ligne-eleve');
             if (!td || !tr || tr.classList.contains('absent')) return;
 
-            // sélection visuelle unique
+            // sélection unique
             td.querySelectorAll('.pill').forEach(p => p.classList.remove('selected'));
             btn.classList.add('selected');
 
@@ -102,13 +102,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const hidden = td.querySelector('input[type="hidden"][name^="resultat_"]');
             if (hidden) hidden.value = btn.dataset.val || btn.getAttribute('data-val');
 
-            // recalcul moyenne + autosave (icône de la MOYENNE uniquement)
+            // recalcul moyenne + autosave (icône côté moyenne)
             renderMoyenneRow(tr);
             autoSave(tr);
         });
     });
 
-    // Absence : grise / dégrise la ligne, désactive les pastilles, efface la moyenne affichée
+    // Absence : grise la ligne, désactive pastilles, efface la moyenne affichée
     document.querySelectorAll('.absent-checkbox').forEach(cb => {
         cb.addEventListener('change', () => {
             const tr = cb.closest('tr.ligne-eleve');
@@ -123,10 +123,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             renderMoyenneRow(tr);
-            autoSave(tr); // disquette uniquement à droite de la moyenne
+            autoSave(tr);
         });
     });
 
-    // Init (F5) – restaure l’affichage depuis les valeurs (GET)
+    // Init (F5) – on relit les valeurs déjà injectées par Jinja
     renderAll();
 });

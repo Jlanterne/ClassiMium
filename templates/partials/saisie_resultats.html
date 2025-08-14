@@ -1,5 +1,5 @@
 {# templates/partials/saisie_resultats.html #}
-<div class="saisie-resultats">
+<div class="saisie-resultats fullwidth">
     <h3>
         Saisie des résultats : {{ evaluation.titre }} ({{ evaluation.date }})
 
@@ -29,60 +29,66 @@
         action="{{ url_for('main.saisir_resultats', classe_id=classe.id, evaluation_id=evaluation.id, niveau=niveau) }}"
         data-autosave="true">
 
-        <table class="table-resultats">
-            <thead>
-                <tr>
-                    <th class="col-eleve">Élève</th>
-                    <th>Absent</th>
-                    {% for obj in objectifs %}
-                    <th class="col-objectif">
-                        <div class="rotate-90" title="{{ obj.texte }}">{{ obj.texte }}</div>
-                    </th>
+        {# === wrapper pour scroll horizontal des objectifs === #}
+        <div class="table-scroll-x">
+            <table class="table-resultats">
+                <thead>
+                    <tr>
+                        <th class="col-eleve sticky-col th-styled">Élève</th>
+                        <th class="col-moyenne sticky-col-2 th-styled">Moyenne</th>
+                        <th class="col-absent sticky-col-3 th-styled">Absent</th>
+
+                        {# Objectifs (scrollables) #}
+                        {% for obj in objectifs %}
+                        <th class="col-objectif th-styled">
+                            <div class="rotate-90" title="{{ obj.texte }}">{{ obj.texte }}</div>
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for eleve in eleves %}
+                    {% set est_absent = (eleve.id in absents) %}
+                    <tr class="ligne-eleve {% if est_absent %}absent{% endif %}" data-eleve-id="{{ eleve.id }}">
+                        <input type="hidden" name="eleve[]" value="{{ eleve.id }}">
+
+                        <td class="eleve-identite sticky-col">{{ eleve.prenom }} {{ eleve.nom }}</td>
+
+                        <td class="cell-moyenne sticky-col-2">
+                            <span class="moyenne-wrap">
+                                <span class="moyenne-note"></span>
+                                <span class="pill pill-moy"></span>
+                                <span class="save-icon save-icon-moy" aria-hidden="true" title="Enregistré"></span>
+                            </span>
+                        </td>
+
+                        <td class="sticky-col-3">
+                            <input type="checkbox" name="absent_{{ eleve.id }}" class="absent-checkbox"
+                                data-eleve-id="{{ eleve.id }}" {% if est_absent %}checked{% endif %}>
+                        </td>
+
+                        {# Objectifs (NA/PA/A) — scrollables #}
+                        {% for obj in objectifs %}
+                        {% set valeur = resultats.get(eleve.id, {}).get(obj.id, '') %}
+                        <td class="note-cell" data-eleve-id="{{ eleve.id }}" data-objectif-id="{{ obj.id }}">
+                            <div class="note-pills{% if est_absent %} disabled{% endif %}">
+                                <button type="button" class="pill pill-na  {% if valeur=='NA' %}selected{% endif %}"
+                                    data-val="NA">NA</button>
+                                <button type="button" class="pill pill-pa  {% if valeur=='PA' %}selected{% endif %}"
+                                    data-val="PA">PA</button>
+                                <button type="button" class="pill pill-a   {% if valeur=='A'  %}selected{% endif %}"
+                                    data-val="A">A</button>
+                            </div>
+                            <input type="hidden" name="resultat_{{ eleve.id }}_{{ obj.id }}" value="{{ valeur }}">
+                            {# ⛔️ PAS DE DISQUETTE DANS LES CELLULES DE NOTES #}
+                        </td>
+                        {% endfor %}
+                    </tr>
                     {% endfor %}
-                    <th>Moyenne</th>
-                </tr>
-            </thead>
-
-            <tbody>
-                {% for eleve in eleves %}
-                {% set est_absent = (eleve.id in absents) %}
-                <tr class="ligne-eleve {% if est_absent %}absent{% endif %}" data-eleve-id="{{ eleve.id }}">
-                    <input type="hidden" name="eleve[]" value="{{ eleve.id }}">
-
-                    <td class="eleve-identite">{{ eleve.prenom }} {{ eleve.nom }}</td>
-
-                    <td>
-                        <input type="checkbox" name="absent_{{ eleve.id }}" class="absent-checkbox"
-                            data-eleve-id="{{ eleve.id }}" {% if est_absent %}checked{% endif %}>
-                    </td>
-
-                    {% for obj in objectifs %}
-                    {% set valeur = resultats.get(eleve.id, {}).get(obj.id, '') %}
-                    <td class="note-cell" data-eleve-id="{{ eleve.id }}" data-objectif-id="{{ obj.id }}">
-                        <div class="note-pills{% if est_absent %} disabled{% endif %}">
-                            <button type="button" class="pill pill-na  {% if valeur=='NA' %}selected{% endif %}"
-                                data-val="NA">NA</button>
-                            <button type="button" class="pill pill-pa  {% if valeur=='PA' %}selected{% endif %}"
-                                data-val="PA">PA</button>
-                            <button type="button" class="pill pill-a   {% if valeur=='A'  %}selected{% endif %}"
-                                data-val="A">A</button>
-                        </div>
-                        <input type="hidden" name="resultat_{{ eleve.id }}_{{ obj.id }}" value="{{ valeur }}">
-                        {# ⛔️ PAS DE DISQUETTE DANS LES CELLULES DE NOTES #}
-                    </td>
-                    {% endfor %}
-
-                    <td class="cell-moyenne">
-                        <span class="moyenne-wrap">
-                            <span class="moyenne-note"></span>
-                            <span class="pill pill-moy"></span>
-                            <span class="save-icon save-icon-moy" aria-hidden="true" title="Enregistré"></span>
-                        </span>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                </tbody>
+            </table>
+        </div>
     </form>
 </div>
 

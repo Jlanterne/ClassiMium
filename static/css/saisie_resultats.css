@@ -1,39 +1,79 @@
-/* Tableau */
+/* ========== TABLEAU DE BASE ========== */
 .table-resultats {
-    border-collapse: collapse;
     width: 100%;
+    border-collapse: collapse;
     table-layout: fixed;
-    /* force le respect des largeurs */
+    /* les TH fixent les largeurs */
 }
 
-.table-resultats th,
-.table-resultats td {
+.table-resultats thead th,
+.table-resultats tbody td {
     border: 1px solid #ddd;
     padding: 6px;
     text-align: center;
     vertical-align: middle;
+    box-sizing: border-box;
+    /* évite que le padding gonfle la largeur */
 }
 
-/* Colonne Élève : largeur triplée */
-.col-eleve {
-    width: 840px !important;
+/* ========== COLONNES (robustes avec :nth-of-type) ========== */
+/* 1) Élève = 1ère colonne visuelle (large) */
+.table-resultats thead th:first-of-type,
+.table-resultats tbody td:first-of-type {
+    width: 960px;
+    /* ↔️ élargie (ajuste si besoin) */
+    max-width: 960px;
+    text-align: left;
 }
 
-/* priorité pour surpasser styles globaux */
 .eleve-identite {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 840px !important;
+    max-width: 960px;
+    /* doit matcher la largeur de la col */
     text-align: left;
 }
 
-/* Objectifs pivotés à 90° (lisibles) */
-.col-objectif {
-    width: 56px;
+/* 2) Absent = 2e colonne (étroite, alignée à gauche) */
+.table-resultats thead th:nth-of-type(2),
+.table-resultats tbody td:nth-of-type(2) {
+    width: 90px;
+    /* ajuste si besoin */
+    max-width: 90px;
+    text-align: left;
+    /* demandé */
+    padding-left: 8px;
+    padding-right: 8px;
 }
 
-/* ajuste si besoin */
+/* normalise la checkbox pour qu’elle tienne dans 90px */
+.table-resultats tbody td:nth-of-type(2) input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    /* pas de centrage forcé */
+    transform: none;
+    /* au cas où un scale traînait */
+}
+
+/* 3) Objectifs = colonnes 3 .. avant-dernière (toutes élargies) */
+.table-resultats thead th:nth-of-type(n+3):not(:last-of-type),
+.table-resultats tbody td:nth-of-type(n+3):not(:last-of-type) {
+    width: 120px;
+    /* ↔️ élargies (avant 56px). Mets 140px si tu veux encore + large */
+    max-width: 120px;
+}
+
+/* 4) Moyenne = dernière colonne */
+.table-resultats thead th:last-of-type,
+.table-resultats tbody td:last-of-type {
+    width: 220px;
+    /* confortable pour “xx.x / 20” + pastille + disquette */
+    max-width: 220px;
+}
+
+/* ========== EN-TÊTES OBJECTIFS PIVOTÉS ========== */
 .rotate-90 {
     display: inline-block;
     transform: rotate(-90deg);
@@ -41,12 +81,14 @@
     white-space: nowrap;
     line-height: 1;
     margin-top: 36px;
+    /* augmente si ça touche */
 }
 
-/* Pastilles NA/PA/A en ligne (même taille) */
+/* ========== PASTILLES NA / PA / A ========== */
 .note-pills {
     display: inline-flex;
-    gap: 6px;
+    gap: 8px;
+    /* un peu d’air entre pastilles */
     align-items: center;
     white-space: nowrap;
 }
@@ -61,7 +103,6 @@
     align-items: center;
     justify-content: center;
     width: 48px;
-    /* même format utilisé pour la moyenne */
     height: 28px;
     border-radius: 999px;
     border: 1px solid rgba(0, 0, 0, .15);
@@ -94,7 +135,7 @@
     border-color: #5cc995;
 }
 
-/* Moyenne en ligne : “xx.x / 20” + pastille (même format .pill) + disquette à DROITE */
+/* ========== MOYENNE (texte + pastille + disquette) ========== */
 .cell-moyenne .moyenne-wrap {
     display: inline-flex;
     align-items: center;
@@ -103,20 +144,20 @@
 }
 
 .moyenne-note {
-    min-width: 72px;
+    min-width: 100px;
+    /* “xx.x / 20” tient sans casser la ligne */
     text-align: right;
     display: inline-block;
 }
 
 .pill-moy {
-    /* même rendu que .pill sélectionnée ; couleurs via JS */
+    /* couleur posée via JS */
 }
 
-/* Disquette UNIQUEMENT à droite de la moyenne */
+/* disquette à droite de la moyenne (invisible par défaut, sans déformer la ligne) */
 .save-icon,
 .save-icon-moy {
     display: none;
-    /* par défaut : invisible, ne prend pas de place */
     width: 14px;
     height: 14px;
     margin-left: 6px;
@@ -129,7 +170,6 @@ viewBox="0 0 16 16" fill="%234a7cff"><path d="M1 3a2 2 0 0 1 2-2h8l4 4v8a2 2 0 0
 
 .save-icon-moy.show {
     display: inline-block;
-    /* visible seulement pendant l’anim */
     animation: saveFade 1s ease-in-out;
 }
 
@@ -151,7 +191,7 @@ viewBox="0 0 16 16" fill="%234a7cff"><path d="M1 3a2 2 0 0 1 2-2h8l4 4v8a2 2 0 0
     }
 }
 
-/* Absent : grisé (sans écraser la DB) */
+/* ========== ABSENTS (effet visuel) ========== */
 tr.ligne-eleve.absent {
     opacity: .55;
 }

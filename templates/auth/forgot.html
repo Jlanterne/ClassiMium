@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Mot de passe oublié{% endblock %}
+{% block content %}
+<div class="panel-card">
+    <h1>Mot de passe oublié</h1>
+    <p>Entre ton identifiant. Un lien de réinitialisation sera affiché (valable 1 heure).</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}{% for c,m in messages %}<div class="flash {{c}}">{{ m }}</div>{% endfor %}{% endif %}
+    {% endwith %}
+
+    <form method="post" action="{{ url_for('auth.forgot') }}">
+        <label><span>Identifiant</span>
+            <input name="username" type="text" autocomplete="username" required>
+        </label>
+        <div class="actions" style="margin-top:10px;">
+            <button class="btn btn-primary" type="submit">Générer le lien</button>
+            <a class="btn btn-secondary" href="{{ url_for('auth.login') }}">Retour</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

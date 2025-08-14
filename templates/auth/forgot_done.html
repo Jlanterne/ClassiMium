@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Lien de réinitialisation{% endblock %}
+{% block content %}
+<div class="panel-card">
+    <h1>Lien de réinitialisation</h1>
+    <p>Utilisateur : <strong>{{ username }}</strong></p>
+    <p>Ce lien est valable <strong>1 heure</strong> :</p>
+    <p><a href="{{ reset_link }}">{{ reset_link }}</a></p>
+    <p style="color:#6b7280;">(En production, on l'enverrait par e-mail. Ici, on l'affiche.)</p>
+    <div class="actions" style="margin-top:10px;">
+        <a class="btn btn-secondary" href="{{ url_for('auth.login') }}">Retour connexion</a>
+    </div>
+</div>
+{% endblock %}

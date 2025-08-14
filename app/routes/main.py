@@ -1,5 +1,8 @@
-# app/routes/main.py — clean & harmonisé
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app, abort, session
+# app/routes/main.py — clean & harmonisé (1 seul Blueprint "main")
+from flask import (
+    Blueprint, render_template, request, redirect, url_for, flash, jsonify,
+    current_app, abort, session, make_response
+)
 import os, io, csv, json
 from datetime import datetime, date
 
@@ -16,7 +19,20 @@ from app.utils import (
     set_ui_settings_in_db,
 )
 
+# ---- Valeurs par défaut sûres pour la page Config (évite NameError) ----
+PRIMARY_ROOT     = os.getenv("DOCS_ROOT_PRIMARY",   r"Z:\Education Nationale")
+SECONDARY_ROOT   = os.getenv("DOCS_ROOT_SECONDARY", r"\\Serveur\Documents\Education Nationale")
+REUNIONS_DIRNAME = os.getenv("REUNIONS_DIRNAME",    "Réunions")
+_ACTIVE_ROOT = None
+_LAST_CHECK  = 0
+
 bp = Blueprint("main", __name__)
+
+@bp.get("/ping-session")
+def ping_session():
+    session['ping'] = session.get('ping', 0) + 1
+    return f"ping={session['ping']}"
+
 
 # On importe l'ancien module pour conserver ses utilitaires (si présents)
 try:
@@ -44,6 +60,15 @@ def NIVEAU_ORDER_COL(col="niveau") -> str:
         "WHEN 'CM2' THEN 5 "
         "ELSE 99 END"
     )
+
+
+
+
+
+
+
+
+
 
 # ---------- CSS généré ----------
 @bp.route('/static/style.css')
@@ -101,9 +126,7 @@ def page_classe(classe_id):
     groupes_dict = {}
 
     # Année scolaire courante
-    now = datetime.now()
-    year = now.year
-    month = now.month
+    now = datetime.now(); year = now.year; month = now.month
     annee_scolaire = f"{year}-{year + 1}" if month >= 8 else f"{year - 1}-{year}"
 
     conn = get_db_connection()
@@ -189,7 +212,7 @@ def page_classe(classe_id):
             )
             ev["niveaux"] = [row["niveau"] for row in cur.fetchall()]
 
-        # Filtres dynamiques (niveaux présents dans les évals listées) — tri CP → CM2
+        # Filtres dynamiques — tri CP → CM2
         evaluation_ids = [e["id"] for e in evaluations]
         if evaluation_ids:
             cur.execute("""
@@ -212,7 +235,7 @@ def page_classe(classe_id):
         else:
             niveaux_filtres = []
 
-        # Avancement des saisies (les absents '---' comptent comme complets)
+        # Avancement des saisies
         for ev in evaluations:
             cur.execute("SELECT COUNT(*) FROM objectifs WHERE evaluation_id = %s", (ev["id"],))
             nb_objectifs = cur.fetchone()["count"]
@@ -238,7 +261,7 @@ def page_classe(classe_id):
             progression = int((nb_complets / len(eleves)) * 100) if eleves else 0
             avancements[ev["id"]] = progression
 
-    # Mode : saisie des résultats (chargement des datas pour le template)
+    # Mode : saisie des résultats
     if mode == "saisie_resultats" and evaluation_id:
         cur.execute("SELECT * FROM evaluations WHERE id = %s", (evaluation_id,))
         evaluation = cur.fetchone()
@@ -283,7 +306,7 @@ def page_classe(classe_id):
         """, (classe_id,))
         eleves_classe = cur.fetchall()
 
-    # Mode : ajouter dictée (prépare structures)
+    # Mode : ajouter dictée
     if mode == "ajouter_dictee":
         from collections import defaultdict
         eleves_par_niveau = {}
@@ -383,10 +406,10 @@ def api_save_dictee():
     data = request.get_json(silent=True) or {}
     conn = None; cur = None
     try:
-        classe_id = int(data.get("classe_id"))
-        niveau_txt = data.get("niveau")
-        ddate = data.get("date")                 # "YYYY-MM-DD" ou "YYYY-MM-DDTHH:MM"
-        dtype = data.get("type")                 # "simple" | "bilan"
+        classe_id   = int(data.get("classe_id"))
+        niveau_txt  = data.get("niveau")
+        ddate       = data.get("date")                 # "YYYY-MM-DD" ou "YYYY-MM-DDTHH:MM"
+        dtype       = data.get("type")                 # "simple" | "bilan"
 
         # Normalisation date -> datetime
         if isinstance(ddate, str):
@@ -407,7 +430,7 @@ def api_save_dictee():
         if not (classe_id and niveau_txt and ddate and dtype in ("simple", "bilan")):
             return jsonify(ok=False, error="Payload incomplet ou invalide"), 400
 
-        # savoir quelles clés sont présentes (pour ne pas écraser lors d’un lock-only)
+        # savoir quelles clés sont présentes
         keys_present = set(data.keys())
         has_simple = "nb_mots_simple" in keys_present
         has_g1     = "nb_mots_g1"     in keys_present
@@ -415,9 +438,9 @@ def api_save_dictee():
         has_g3     = "nb_mots_g3"     in keys_present
 
         nb_simple = data.get("nb_mots_simple")
-        nb_g1 = data.get("nb_mots_g1")
-        nb_g2 = data.get("nb_mots_g2")
-        nb_g3 = data.get("nb_mots_g3")
+        nb_g1     = data.get("nb_mots_g1")
+        nb_g2     = data.get("nb_mots_g2")
+        nb_g3     = data.get("nb_mots_g3")
 
         resultats = data.get("resultats") or []
         if not isinstance(resultats, list):
@@ -1275,3 +1298,92 @@ def api_test_paths():
         "secondary": {"path": s, "exists": os.path.exists(s)},
     }
     return jsonify(ok=True, **res)
+
+@bp.get("/api/education-path")
+def api_education_path():
+    """
+    Retourne le meilleur chemin vers le dossier 'Éducation Nationale'.
+    - Teste d'abord Z:\Education Nationale
+    - Sinon \\Serveur\Documents\Education Nationale
+    Réponse: { ok: bool, path: str, file_url: str }
+    """
+    candidates = [
+        r"Z:\Education Nationale",
+        r"\\Serveur\Documents\Education Nationale",
+    ]
+    for p in candidates:
+        try:
+            # remplace ce bloc dans api_education_path()
+            if p.startswith(r"\\"):
+                # UNC —> file://Serveur/Documents/...
+                file_url = "file://" + p.lstrip("\\").replace("\\", "/")
+            else:
+                # Lettre —> file:///Z:/Education...
+                file_url = "file:///" + p.replace("\\", "/")
+
+
+                return jsonify(ok=True, path=p, file_url=file_url)
+        except Exception:
+            pass
+    return jsonify(ok=False, message="Aucun des chemins n'est accessible."), 404
+
+# ---------- Fichier .reg (protocole classimium-en://) ----------
+# app/routes/main.py  -> dans download_en_reg()
+
+
+# app/routes/main.py
+@bp.get("/tools/en-protocol.reg", endpoint="download_en_reg")
+def download_en_reg():
+    reg = r'''Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\Classes\classimium-en]
+@="URL:ClassiMium EN"
+"URL Protocol"=""
+
+[HKEY_CURRENT_USER\Software\Classes\classimium-en\shell]
+@="open"
+
+[HKEY_CURRENT_USER\Software\Classes\classimium-en\shell\open\command]
+@="C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command \"$u=$args[0]; if($u){ $u=$u.Trim('\"'); }; $cb=$null; if($u -match '^classimium-en:(//)?(.+)$'){ $cb=[System.Uri]::UnescapeDataString($matches[2]); }; $p1='Z:\\Education Nationale'; $p2='\\\\Serveur\\Documents\\Education Nationale'; if (Test-Path $p1) { Start-Process explorer.exe $p1 } elseif (Test-Path $p2) { Start-Process explorer.exe $p2 }; if ($cb) { try { Invoke-WebRequest -UseBasicParsing -Uri $cb -Method GET | Out-Null } catch {} }\" \"%1\""
+'''
+    resp = make_response(reg)
+    resp.headers["Content-Type"] = "application/octet-stream"
+    resp.headers["Content-Disposition"] = 'attachment; filename="classimium-en.reg"'
+    return resp
+
+
+
+
+
+
+# --- Détection protocole classimium-en:// ---
+from time import time
+
+_PROTO_PINGS = {}           # nonce -> timestamp (mémoire process)
+_PROTO_TTL   = 60           # on garde l’info 60s max
+
+@bp.get("/protocol/callback", endpoint="protocol_callback")
+def protocol_callback():
+    """Appelé par le handler Windows (via le protocole). Marque le nonce comme OK."""
+    nonce = (request.args.get("nonce") or "").strip()
+    if nonce:
+        _PROTO_PINGS[nonce] = time()
+    # 204 = pas de contenu, retour rapide
+    return ("", 204)
+
+@bp.get("/protocol/check", endpoint="protocol_check")
+def protocol_check():
+    """La page interroge ici pour savoir si le handler a bien ping."""
+    nonce = (request.args.get("nonce") or "").strip()
+    now   = time()
+
+    # petit ménage
+    for k, ts in list(_PROTO_PINGS.items()):
+        if now - ts > _PROTO_TTL:
+            _PROTO_PINGS.pop(k, None)
+
+    ts = _PROTO_PINGS.get(nonce)
+    if ts and (now - ts) <= _PROTO_TTL:
+        return jsonify(status="ok")
+    return jsonify(status="pending")
+

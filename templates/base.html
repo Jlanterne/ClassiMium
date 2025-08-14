@@ -2,12 +2,9 @@
 <html lang="fr">
 
 <head>
-    <!-- Pose js-ready AVANT les CSS pour éviter les “sauts” -->
     <script>document.documentElement.classList.add('js-ready');</script>
-
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-
     <title>{% block title %}Gestion de classe{% endblock %}</title>
 
     <!-- CSS globales -->
@@ -23,32 +20,26 @@
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 
-
-    <!-- CSS additionnel (pages enfants) -->
     {% block extra_css %}{% endblock %}
 
-    <!-- Réglages UI injectés par le serveur -->
-    <script id="ui-settings" type="application/json">
-  {{ ui | tojson }}
-</script>
+    <!-- Réglages UI (depuis la DB) -->
+    <script id="ui-settings" type="application/json">{{ ui | tojson }}</script>
     <script>
         (function () {
             try {
                 window.UI = Object.assign(
-                    { anim_mode: 'slide-down', anim_duration: 520 }, // défauts cohérents
+                    { anim_mode: 'slide-down', anim_duration: 520 },
                     JSON.parse(document.getElementById('ui-settings')?.textContent || '{}') || {}
                 );
             } catch {
                 window.UI = { anim_mode: 'slide-down', anim_duration: 520 };
             }
-            // Pousse sur <html> pour que modes.js lise la bonne valeur
             document.documentElement.dataset.animMode = window.UI.anim_mode;
             document.documentElement.dataset.animDuration = String(window.UI.anim_duration);
         })();
     </script>
 
-
-    <!-- Fallback jQuery local si le CDN tombe -->
+    <!-- Fallback jQuery local -->
     <script>
         if (!window.jQuery) {
             var s = document.createElement('script');
@@ -57,7 +48,7 @@
         }
     </script>
 
-    <!-- Styles utilitaires (pouvant aller plus tard dans overrides.css) -->
+    <!-- Styles utilitaires -->
     <style>
         .panel-card {
             display: flow-root;
@@ -69,21 +60,17 @@
             contain: layout paint;
         }
 
-        .panel-card> :first-child {
+        .panel-card>:first-child {
             margin-top: 0;
         }
 
         .panel-from-actions {
             position: relative;
             z-index: 1;
-            /* sous la barre d’actions */
             display: flow-root;
             overflow: hidden;
-            /* requis pour wipe/clip */
             min-height: 12px;
-            /* anti micro-jumps */
             transform: translateZ(0);
-            /* lissage GPU */
         }
 
         .actions-classe {
@@ -98,37 +85,50 @@
         .divider {
             border: 0;
             height: 1px;
-            background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
             margin: 14px 0;
+            background: linear-gradient(90deg, transparent, #e5e7eb, transparent);
         }
 
-        /* Quand non authentifié : le contenu prend toute la largeur */
         .content--fullwidth {
             margin-left: 0 !important;
         }
 
-        @media (prefers-reduced-motion: reduce) {
+        @media (prefers-reduced-motion:reduce) {
             .panel-from-actions {
                 transition: none !important;
                 animation: none !important;
             }
         }
 
-        /* ===== Auth panel & carte utilisateur ===== */
+        /* ===== Bloc user ===== */
         .auth-panel {
             padding: 0;
-            margin-top: 0;
-            margin-bottom: 20px;
+            margin: 0 0 20px;
         }
 
         .user-block {
             background: #EDF3FA;
             border: 1px solid #dbe7ff;
             border-radius: 12px;
-            padding: 10px 8px;
+            padding: 10px;
             margin: 0 0 10px 0;
             width: 100%;
             box-sizing: border-box;
+        }
+
+        .user-card-wrap {
+            display: block;
+        }
+
+        .user-block-link {
+            display: block;
+            padding: 0;
+            border-radius: 10px;
+            transition: background-color .15s ease;
+        }
+
+        .user-block-link:hover {
+            background: #f3f4f6;
         }
 
         .user-card {
@@ -138,24 +138,8 @@
             color: #374151;
         }
 
-        .user-avatar {
-            width: 56px;
-            height: 56px;
-            border-radius: 9999px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #f3f4f6;
-            border: 1px solid #e5e7eb;
-            overflow: hidden;
-        }
-
-        .user-avatar img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-            border-radius: inherit;
+        .user-meta {
+            min-width: 0;
         }
 
         .user-name {
@@ -166,7 +150,86 @@
             line-height: 1.2;
         }
 
-        /* ===== Harmonisation des largeurs/hauteurs dans la sidebar ===== */
+        .user-sub {
+            color: #6b7280;
+            font-size: .92em;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .badge-role {
+            background: #eef2ff;
+            color: #4338ca;
+            padding: 1px 6px;
+            border-radius: 6px;
+            font-size: .75em;
+        }
+
+        /* Avatar carré agrandi */
+        .user-avatar {
+            width: 88px;
+            height: 88px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #f3f4f6;
+            border: 1px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .user-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            border-radius: 0;
+        }
+
+        /* Actions SOUS le login (pas sous la photo) */
+        .user-quick {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+            flex-wrap: wrap;
+            /* Indentation = largeur avatar (88) + gap (10) → visuel sous le login */
+            margin-left: 98px;
+        }
+
+        .icon-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            justify-content: center;
+            height: 28px;
+            padding: 0 10px;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+            background: #fff;
+            cursor: pointer;
+            font-size: .9rem;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .icon-btn:hover {
+            background: #f9fafb;
+        }
+
+        .icon-btn i {
+            font-size: .95em;
+        }
+
+        .icon-btn.ok {
+            border-color: #22c55e;
+            box-shadow: 0 0 0 2px rgba(34, 197, 94, .15) inset;
+        }
+
+        /* ===== Sidebar ===== */
         .sidebar {
             display: flex;
             justify-content: center;
@@ -188,7 +251,6 @@
             margin-bottom: 0;
         }
 
-        /* Boutons : pleine largeur + centrés, sans marges parasites héritées */
         .sidebar .sb-btn,
         .sidebar button.sb-btn,
         .sidebar .btn-nouvelle-classe.sb-btn,
@@ -203,40 +265,9 @@
             text-align: center;
         }
 
-        /* Assure aussi que les formulaires n'imposent pas de décalage */
         .sidebar form.sb-item {
             margin: 0 0 16px 0;
             padding: 0;
-        }
-
-        .sidebar .sb-hr {
-            width: 100%;
-            margin: 16px 0;
-            border: 0;
-            height: 1px;
-            background: #e5e7eb;
-        }
-
-        .sidebar-inner {
-            width: 260px;
-            margin: 0 auto;
-            padding: 0;
-        }
-
-        .sb-item {
-            margin-bottom: 16px;
-        }
-
-        .sb-item:last-child {
-            margin-bottom: 0;
-        }
-
-        .sidebar .sb-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            box-sizing: border-box;
         }
 
         .sb-hr {
@@ -246,12 +277,26 @@
             height: 1px;
             background: #e5e7eb;
         }
+
+        /* ===== Affichage niveaux / année ===== */
+        .niv {
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        .sep {
+            color: #ffffff;
+        }
+
+        .annee {
+            color: #a6b8ce;
+            font-weight: 600;
+        }
     </style>
 </head>
 
 <body class="anim-{{ ui.anim_mode|default('slide') }}" data-anim-mode="{{ ui.anim_mode|default('slide') }}"
     data-anim-duration="{{ ui.anim_duration|default(520) }}">
-
     {% set is_auth = session.get('auth') %}
 
     <div class="main-container">
@@ -259,42 +304,76 @@
         <aside class="sidebar">
             <div class="sidebar-inner">
                 <table style="border-collapse:separate;border-spacing:0;border:none;outline:none;">
-                    <tr style="border:none;outline:none;">
-                        <td
-                            style="padding:10px;vertical-align:top;overflow:visible;position:relative;height:120px;line-height:0;border:none;outline:none;background:none;">
+                    <tr>
+                        <td style="padding:10px;vertical-align:top;position:relative;height:120px;line-height:0;">
                             <img src="{{ url_for('static', filename='photos/logo_CLassiMium.svg') }}" alt="Logo"
-                                style="display:block;position:absolute;top:14px;left:0;height:80%;z-index:9999;border:none;outline:none;background:none;">
+                                style="display:block;position:absolute;top:14px;left:0;height:80%;z-index:9999;">
                         </td>
                     </tr>
                 </table>
 
                 <br>
 
-                <!-- ===== Auth panel : AU-DESSUS de “Créer une nouvelle classe” ===== -->
+                <!-- ===== Auth panel ===== -->
                 <div class="auth-panel">
                     {% if is_auth %}
-                    {% set user_photo = session.get('user_photo_url') %}
                     <div class="user-block sb-item">
-                        <div class="user-card">
-                            <div class="user-avatar">
-                                {% if user_photo %}
-                                <img src="{{ user_photo }}" alt="Photo utilisateur">
-                                {% else %}
-                                <i class="fa-regular fa-user"></i>
-                                {% endif %}
+                        <div class="user-card-wrap">
+                            <a href="{{ url_for('users.profile') }}" class="user-block-link"
+                                aria-label="Ouvrir mon profil">
+                                <div class="user-card">
+                                    <div class="user-avatar">
+                                        {% if session.get('user_photo_url') %}
+                                        <img src="{{ session.get('user_photo_url') }}" alt="Photo utilisateur">
+                                        {% else %}
+                                        <img src="{{ url_for('static', filename='photos/users/default_user.png') }}"
+                                            alt="Photo utilisateur">
+                                        {% endif %}
+                                    </div>
+                                    <div class="user-meta">
+                                        <div class="user-name">{{ session.get('display_name') or session.get('username')
+                                            or 'Connecté' }}</div>
+                                        <div class="user-sub">
+                                            {% if session.get('role') %}<span class="badge-role">{{ session.get('role')
+                                                }}</span>{% endif %}
+                                            {% if session.get('email') %}<span class="user-email">{{
+                                                session.get('email') }}</span>{% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </a>
+
+                            <!-- Boutons SOUS le login (alignés à droite) -->
+                            <div class="user-quick">
+                                <!-- 1 bouton : ouvre l’Explorateur via protocole classimium-en:// + callback -->
+                                <button type="button" class="icon-btn js-open-en"
+                                    title="Ouvrir le dossier Éducation Nationale">
+                                    <i class="fa-regular fa-folder-open"></i> EN
+                                </button>
+
+                                <!-- Logout -->
+                                <form action="{{ url_for('auth.logout') }}" method="get" style="margin:0;">
+                                    <button type="submit" class="icon-btn" title="Se déconnecter"
+                                        aria-label="Se déconnecter">
+                                        <i class="fa-solid fa-right-from-bracket"></i>
+                                    </button>
+                                </form>
                             </div>
-                            <div class="user-name">{{ session.get('username') or 'Connecté' }}</div>
+
+                            <!-- Aide statique (masquée automatiquement après succès) -->
+                            <div id="en-hint-static" style="margin-top:6px;color:#6b7280;font-size:.85em;">
+                                Première utilisation : si rien ne s’ouvre, installe le bouton EN (une seule fois).
+                                <a href="{{ url_for('main.download_en_reg') }}">Télécharger l’installeur</a>
+                            </div>
                         </div>
                     </div>
-                    <form action="{{ url_for('auth.logout') }}" method="get" class="sb-item">
-                        <button type="submit" class="btn-nouvelle-classe sb-btn btn-auth">
-                            <i class="fa-solid fa-right-from-bracket"></i> Se déconnecter
-                        </button>
-                    </form>
                     {% else %}
                     <div class="user-block sb-item">
                         <div class="user-card">
-                            <div class="user-avatar"><i class="fa-regular fa-user"></i></div>
+                            <div class="user-avatar">
+                                <img src="{{ url_for('static', filename='photos/users/default_user.png') }}"
+                                    alt="Photo utilisateur">
+                            </div>
                             <div class="user-name">Non connecté</div>
                         </div>
                     </div>
@@ -310,15 +389,16 @@
                 <form method="get" action="{{ url_for('main.index') }}" class="sb-item">
                     <button type="submit" class="btn-nouvelle-classe sb-btn">➕ Créer une nouvelle classe</button>
                 </form>
-                {% endif %}
 
-                {% if is_auth %}
                 <hr class="sb-hr">
 
                 {% for cl in toutes_les_classes %}
                 <form action="{{ url_for('main.page_classe', classe_id=cl.id) }}" method="get" class="sb-item">
-                    <button type="submit" class="btn-classe sb-btn">{{ cl.niveaux | join(' / ') }} {{
-                        cl.annee|replace('-', ' / ') }}</button>
+                    <button type="submit" class="btn-classe sb-btn">
+                        <span class="niv">{{ cl.niveaux | format_niveaux }}</span>
+                        <span class="sep"> - </span>
+                        <span class="annee">{{ cl.annee | format_annee }}</span>
+                    </button>
                 </form>
                 {% endfor %}
 
@@ -337,7 +417,9 @@
             <div class="bandeau-titre">
                 {% block header_title %}
                 {% if classe %}
-                Classe {{ classe.niveaux | join(' / ') }} {{ classe.annee|replace('-', ' / ') }}
+                <span class="niv">{{ classe.niveaux | format_niveaux }}</span>
+                <span class="sep"> - </span>
+                <span class="annee">{{ classe.annee | format_annee }}</span>
                 {% elif evaluation %}
                 Classe {{ evaluation.classe_id }}
                 {% else %}
@@ -346,25 +428,13 @@
                 {% endblock %}
             </div>
 
-            {# Messages flash (désactivés par défaut)
-            {% with messages = get_flashed_messages() %}
-            {% if messages %}
-            <ul class="flashes">
-                {% for message in messages %}
-                <li>{{ message }}</li>
-                {% endfor %}
-            </ul>
-            {% endif %}
-            {% endwith %}
-            #}
-
             <div id="page">
                 {% block content %}{% endblock %}
             </div>
         </main>
     </div>
 
-    <!-- DataTables : init simple et sûre -->
+    <!-- DataTables : init simple -->
     <script>
         (function initDataTables() {
             if (!window.jQuery) { console.warn('jQuery absent → skip DataTables'); return; }
@@ -383,8 +453,7 @@
                 const $th3 = $tbl.find('thead th').eq(3);
                 if ($th3.length) {
                     $th3.off('click.dt-niveau').on('click.dt-niveau', function () {
-                        const cur = table.order();
-                        let dir = 'asc';
+                        const cur = table.order(); let dir = 'asc';
                         if (cur.length && cur[0][0] === 3) dir = (cur[0][1] === 'asc') ? 'desc' : 'asc';
                         table.order([[3, dir], [0, 'asc']]).draw();
                     });
@@ -392,13 +461,97 @@
             });
         })();
     </script>
-    <script src="{{ url_for('static', filename='js/throw-to-trash.js') }}"></script>
 
-    <!-- JS additionnel (pages enfants) : on y charge le SEUL moteur d’anim -->
     {% block extra_js %}
     <script src="{{ url_for('static', filename='js/modes.js') }}"></script>
     {% endblock %}
 
+    <!-- Bouton EN — Protocole + ping + aide une seule fois -->
+    <script>
+        (function () {
+            const HAS_KEY = "enProtoInstalled";
+            const CHECK_URL = "{{ url_for('main.protocol_check') }}";
+            // IMPORTANT: garde le même host:port que la page courante
+            const CB_BASE = location.origin + "{{ url_for('main.protocol_callback') }}";
+
+            function showHelpOnce() {
+                if (localStorage.getItem(HAS_KEY) === "1") return;
+                if (document.getElementById("en-help")) return;
+                const wrap = document.createElement("div");
+                wrap.id = "en-help";
+                wrap.style.cssText = "margin-top:8px;font-size:.9rem;color:#6b7280;";
+                wrap.innerHTML = `Si rien ne s'est ouvert, <a href="{{ url_for('main.download_en_reg') }}">installe le connecteur (.reg)</a>, puis réessaie.`;
+                document.querySelector(".user-quick")?.appendChild(wrap);
+            }
+            function hideHelp() { document.getElementById("en-help")?.remove(); }
+
+            async function openEN() {
+                const nonce = (Date.now().toString(36) + Math.random().toString(36).slice(2));
+                const cb = encodeURIComponent(CB_BASE + "?nonce=" + nonce);
+                const href = "classimium-en://" + cb;
+
+                let lostFocus = false;
+                const onBlur = () => { lostFocus = true; };
+                const onVis = () => { if (document.visibilityState === "hidden") lostFocus = true; };
+
+                window.addEventListener("blur", onBlur, { once: true, capture: true });
+                document.addEventListener("visibilitychange", onVis, { once: true });
+                window.addEventListener("pagehide", onBlur, { once: true });
+
+                // Lancement via gesture utilisateur
+                window.location.href = href;
+
+                // Attente: soit le handler ping, soit la fenêtre perd le focus (Explorer a pris le focus)
+                const deadline = Date.now() + 4500;
+                while (Date.now() < deadline) {
+                    try {
+                        const r = await fetch(CHECK_URL + "?nonce=" + encodeURIComponent(nonce), { cache: "no-store" });
+                        if (r.ok) {
+                            const j = await r.json();
+                            if (j.status === "ok") {
+                                window.removeEventListener("blur", onBlur, { capture: true });
+                                document.removeEventListener("visibilitychange", onVis);
+                                window.removeEventListener("pagehide", onBlur);
+                                return true;
+                            }
+                        }
+                    } catch { }
+                    if (lostFocus) {
+                        window.removeEventListener("blur", onBlur, { capture: true });
+                        document.removeEventListener("visibilitychange", onVis);
+                        window.removeEventListener("pagehide", onBlur);
+                        return true;
+                    }
+                    await new Promise(r => setTimeout(r, 250));
+                }
+                window.removeEventListener("blur", onBlur, { capture: true });
+                document.removeEventListener("visibilitychange", onVis);
+                window.removeEventListener("pagehide", onBlur);
+                return false;
+            }
+
+            document.addEventListener("click", async (e) => {
+                const btn = e.target.closest(".js-open-en");
+                if (!btn) return;
+                e.preventDefault();
+
+                hideHelp();
+                btn.disabled = true;
+                const ok = await openEN();
+                btn.disabled = false;
+
+                if (ok) {
+                    localStorage.setItem(HAS_KEY, "1");  // ne repropose plus l’installation
+                    hideHelp();
+                } else {
+                    showHelpOnce();
+                }
+            });
+
+            // si déjà validé auparavant, ne jamais afficher l’aide
+            if (localStorage.getItem(HAS_KEY) === "1") hideHelp();
+        })();
+    </script>
 
 </body>
 

@@ -1,58 +1,53 @@
-{# templates/index.html #}
 {% extends "base.html" %}
-
-{% block title %}Accueil - Gestion de classe{% endblock %}
-
-{% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}">
-{% endblock %}
-
-{% block header_title %}Gestion de classe{% endblock %}
-
+{% block title %}Accueil{% endblock %}
 {% block content %}
-{% with messages = get_flashed_messages(with_categories=true) %}
-{% if messages %}
-<ul class="flashes">
-    {% for category, message in messages %}
-    <li class="flash {{ category }}">{{ message }}</li>
-    {% endfor %}
-</ul>
-{% endif %}
-{% endwith %}
+<div class="panel" style="max-width:720px;margin:24px auto">
+    <h2>Créer une classe</h2>
 
-<div class="page">
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+    {% if msgs %}
+    <ul style="padding:0;list-style:none;margin:0 0 12px 0">
+        {% for cat, msg in msgs %}
+        <li class="flash {{cat}}">{{ msg }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+    {% endwith %}
 
+    <form method="post" action="{{ url_for('main.ajouter_classe') }}">
+        <div class="field">
+            <label for="annee_debut">Année scolaire (début)</label>
+            <input id="annee_debut" name="annee_debut" type="number" min="2000" max="2100" required placeholder="2024">
+            <div class="hint">Ex.: 2024 → créera “2024-2025”.</div>
+        </div>
 
-    <!-- Création de classe -->
-    <div class="grid">
-        <section class="card">
-            <h2 class="card-title"><i class="fa-solid fa-plus"></i> Créer une classe</h2>
+        <div class="field">
+            <label>Niveaux</label>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+                {% for n in ['CP','CE1','CE2','CM1','CM2'] %}
+                <label
+                    style="display:inline-flex;gap:6px;align-items:center;border:1px solid #e5e7eb;padding:6px 10px;border-radius:8px">
+                    <input type="checkbox" name="niveau" value="{{ n }}"> {{ n }}
+                </label>
+                {% endfor %}
+            </div>
+        </div>
 
-            <form method="POST" action="{{ url_for('main.ajouter_classe') }}" class="form">
-                <fieldset class="fieldset">
-                    <legend>Niveaux concernés</legend>
-                    <div class="checks">
-                        <label><input type="checkbox" name="niveau" value="CP"> CP</label>
-                        <label><input type="checkbox" name="niveau" value="CE1"> CE1</label>
-                        <label><input type="checkbox" name="niveau" value="CE2"> CE2</label>
-                        <label><input type="checkbox" name="niveau" value="CM1"> CM1</label>
-                        <label><input type="checkbox" name="niveau" value="CM2"> CM2</label>
-                    </div>
-                </fieldset>
+        <button type="submit" class="btn">Créer</button>
+    </form>
 
-                <div class="form-row">
-                    <label for="annee_debut">Année scolaire</label>
-                    <div class="inline">
-                        <input type="number" name="annee_debut" id="annee_debut" min="2000" max="2100" required>
-                        <small class="hint">ex : 2025 → année scolaire 2025-2026</small>
-                    </div>
-                </div>
-
-                <button type="submit" class="btn btn-primary">
-                    Créer la classe
-                </button>
-            </form>
-        </section>
-    </div>
+    {% if classes and classes|length %}
+    <hr class="divider">
+    <h3>Classes existantes</h3>
+    <ul>
+        {% for c in classes %}
+        <li>
+            <a href="{{ url_for('main.page_classe', classe_id=c.id) }}">
+                {{ c.niveaux | format_niveaux }} — {{ c.annee | format_annee }}
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
 </div>
 {% endblock %}

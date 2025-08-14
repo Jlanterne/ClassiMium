@@ -542,4 +542,13 @@ Secondaire : ${data.secondary.path}
         playFromScratch();
     })();
 </script>
+<a href="#" id="reset-en-proto">Réinitialiser la détection EN</a>
+<script>
+    document.getElementById("reset-en-proto")?.addEventListener("click", function (e) {
+        e.preventDefault();
+        localStorage.removeItem("enProtoInstalled");
+        alert("OK, la détection a été réinitialisée.");
+    });
+</script>
+
 {% endblock %}

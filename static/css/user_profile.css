@@ -1,0 +1,166 @@
+/* static/css/user_profile.css */
+
+.profile-form {
+    display: block;
+}
+
+/* Grille principale : colonne photo + colonne champs */
+.profile-grid {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    column-gap: 28px;
+    /* espace horizontal entre colonnes */
+    row-gap: 24px;
+    /* espace vertical entre lignes */
+    align-items: start;
+}
+
+.left {
+    text-align: center;
+}
+
+/* Bloc photo */
+.avatar-wrap {
+    width: 180px;
+    height: 180px;
+    margin: 0 auto 10px;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+    background: #f8fafc;
+}
+
+.avatar-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.actions-photo {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    align-items: center;
+}
+
+.file-btn {
+    display: inline-block;
+    margin: 6px 0;
+    padding: 8px 14px;
+    border-radius: 8px;
+    background: #edf2f7;
+    cursor: pointer;
+}
+
+.file-btn:hover {
+    background: #e2e8f0;
+}
+
+.hint {
+    display: block;
+    color: #6b7280;
+}
+
+/* Colonne droite : champs en grille 2 colonnes */
+.right .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 24px;
+    /* espace horizontal entre colonnes */
+    row-gap: 18px;
+    /* espace vertical entre lignes */
+}
+
+/* Chaque label empile son libellé + input, avec une hauteur mini
+   pour éviter le chevauchement si une extension injecte une icône */
+.right .grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 68px;
+}
+
+label span {
+    font-weight: 600;
+}
+
+/* Inputs : taille/espacement cohérents et marge à droite
+   pour laisser la place aux pastilles (Keeper, 1Password, etc.) */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="date"] {
+    width: 100%;
+    height: 42px;
+    min-height: 42px;
+    padding: 10px 12px;
+    padding-right: 36px;
+    /* réserve pour les icônes injectées */
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    box-sizing: border-box;
+}
+
+/* Boutons form */
+.actions {
+    margin-top: 16px;
+    display: flex;
+    gap: 10px;
+}
+
+.btn {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background: #2b6cb0;
+    color: #fff;
+}
+
+.btn-secondary {
+    background: #718096;
+    color: #fff;
+}
+
+.btn-danger {
+    background: #ef4444;
+    color: #fff;
+}
+
+.btn-danger:hover {
+    filter: brightness(0.95);
+}
+
+/* Flashes */
+.flash {
+    padding: 10px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+}
+
+.flash.success {
+    background: #c6f6d5;
+}
+
+.flash.error {
+    background: #fed7d7;
+}
+
+/* Responsive */
+@media (max-width: 860px) {
+    .profile-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .left {
+        order: -1;
+    }
+}
+
+keeper-lock {
+    display: none !important;
+}

@@ -154,3 +154,101 @@ html.js-ready .panel-card {
     background: #111827;
     opacity: .7;
 }
+
+/* Bloc user */
+.user-block {
+    padding: 10px;
+}
+
+/* 10px tout autour du contenu */
+
+.user-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #374151;
+}
+
+.user-meta {
+    min-width: 0;
+}
+
+.user-name {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+}
+
+.user-sub {
+    color: #6b7280;
+    font-size: .92em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Avatar carré ; dimension augmentée (≈88px) et bien à 10px du bord grâce au padding .user-block */
+.user-avatar {
+    width: 88px;
+    height: 88px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.user-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    border-radius: 0;
+}
+
+/* Lien cliquable + actions */
+.user-card-wrap {
+    display: block;
+}
+
+.user-block-link {
+    display: block;
+    border-radius: 10px;
+    transition: background-color .15s ease;
+}
+
+.user-block-link:hover {
+    background: #f3f4f6;
+}
+
+.user-quick {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.icon-btn:hover {
+    background: #f9fafb;
+}
+
+.icon-btn.ok {
+    border-color: #22c55e;
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, .15) inset;
+}

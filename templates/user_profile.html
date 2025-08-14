@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Mon profil{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/user_profile.css', v=3) }}">
+{% endblock %}
+
+{% block content %}
+<div class="panel-card">
+    <h1 style="margin-bottom:12px;">Mon profil</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for cat, msg in messages %}
+    <div class="flash {{ cat }}">{{ msg }}</div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <form method="post" action="{{ url_for('users.profile') }}" enctype="multipart/form-data" class="profile-form"
+        autocomplete="off">
+
+        <div class="profile-grid">
+            <!-- Colonne gauche : photo + actions -->
+            <div class="left">
+                <div class="avatar-wrap">
+                    <img src="{{ photo_url }}" alt="Photo de profil" class="avatar-img">
+                </div>
+
+                <div class="actions-photo">
+                    <label class="btn file-btn" for="photo">
+                        Changer la photo
+                        <input id="photo" name="photo" type="file" accept=".jpg,.jpeg,.png,.webp" class="keeper-ignore"
+                            hidden>
+                    </label>
+
+                    {% set has_custom_photo = user.photo_path is not none and user.photo_path|length > 0 %}
+                    <button class="btn btn-danger" type="submit" name="action" value="remove_photo" {% if not
+                        has_custom_photo %}disabled title="Aucune photo personnelle à supprimer" {% endif %}>
+                        Supprimer la photo
+                    </button>
+                </div>
+                <small class="hint">JPG/PNG/WebP, max 4&nbsp;Mo</small>
+            </div>
+
+            <!-- Colonne droite : champs -->
+            <div class="right">
+                <div class="grid">
+                    <label for="last_name">
+                        <span>Nom</span>
+                        <input id="last_name" name="last_name" type="text" class="keeper-ignore"
+                            autocomplete="family-name" autocapitalize="words" value="{{ user.last_name or '' }}">
+                    </label>
+
+                    <label for="first_name">
+                        <span>Prénom</span>
+                        <input id="first_name" name="first_name" type="text" class="keeper-ignore"
+                            autocomplete="given-name" autocapitalize="words" value="{{ user.first_name or '' }}">
+                    </label>
+
+                    <label for="birth_date">
+                        <span>Date de naissance</span>
+                        <input id="birth_date" name="birth_date" type="date" class="keeper-ignore" autocomplete="bday"
+                            value="{{ user.birth_date or '' }}">
+                    </label>
+
+                    <div></div>
+
+                    <label for="email">
+                        <span>E-mail</span>
+                        <input id="email" name="email" type="email" class="keeper-ignore" inputmode="email"
+                            autocomplete="email" value="{{ user.email or '' }}">
+                    </label>
+
+                    <label for="email_academic">
+                        <span>E-mail académique</span>
+                        <input id="email_academic" name="email_academic" type="email" class="keeper-ignore"
+                            inputmode="email" autocomplete="email" value="{{ user.email_academic or '' }}">
+                    </label>
+
+                    <label for="username">
+                        <span>Identifiant (login)</span>
+                        <input id="username" name="username" type="text" autocomplete="username" spellcheck="false"
+                            value="{{ user.username or '' }}">
+                    </label>
+
+                    <label for="new_password">
+                        <span>Nouveau mot de passe</span>
+                        <input id="new_password" name="new_password" type="password" autocomplete="new-password"
+                            placeholder="Laisser vide pour ne pas changer">
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="actions">
+            <button class="btn btn-primary" type="submit">Enregistrer</button>
+            <a class="btn btn-secondary" href="{{ url_for('main.index') }}">Annuler</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Prévisualisation instantanée de la nouvelle photo
+    document.addEventListener('change', function (e) {
+        if (e.target && e.target.id === 'photo' && e.target.files && e.target.files[0]) {
+            const img = document.querySelector('.avatar-img');
+            if (img) img.src = URL.createObjectURL(e.target.files[0]);
+        }
+    });
+</script>
+{% endblock %}

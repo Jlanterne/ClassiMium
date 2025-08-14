@@ -1,132 +1,137 @@
-document.addEventListener('DOMContentLoaded', () => {
-    const form = document.getElementById('form-resultats');
+// === Saisie résultats : moyenne + disquette save par ligne =================
+(function () {
+    const map = { "NA": 0, "PA": 2, "A": 4 };
 
-    // Barème NA/PA/A
-    const PTS = { 'NA': 0, 'PA': 2, 'A': 4 };
+    const form = document.getElementById('form-saisie-resultats');
+    if (!form) return;
 
-    // Palette dictées pour la moyenne
-    const COLOR = {
-        'NA': '#ff000075', 'PA-': '#ff7d1aa6', 'PA': '#ffe223', 'PA+': '#d4f5b0',
-        'A-': '#a7e9b7', 'A': '#5cc995', 'A+': '#3dbcb9', 'D': '#00d3f8'
-    };
+    function getRowValues(tr) {
+        // 1) Selects (si présents)
+        const selects = [...tr.querySelectorAll('.niv-select')];
+        const values = selects.map(s => s.value).filter(v => v !== null);
 
-    function appreciation(note20) {
-        if (note20 === 20) return 'D';
-        if (note20 > 16 && note20 < 20) return 'A+';
-        if (note20 > 13 && note20 <= 16) return 'A';
-        if (note20 >= 12 && note20 <= 13) return 'PA+';
-        if (note20 >= 8 && note20 < 12) return 'PA';
-        if (note20 >= 6 && note20 < 8) return 'PA-';
-        return 'NA';
-    }
-
-    function renderMoyenneRow(tr) {
-        const note = tr.querySelector('.moyenne-note');
-        const badge = tr.querySelector('.pill-moy');
-        if (!note || !badge) return;
-
-        // Absent → pas d’affichage de moyenne
-        if (tr.classList.contains('absent')) {
-            note.textContent = '';
-            badge.textContent = '';
-            badge.style.backgroundColor = '';
-            badge.style.color = '#000';
-            badge.classList.remove('selected');
-            return;
-        }
-
-        // Calcul à partir des hidden inputs
-        const hidden = tr.querySelectorAll('input[type="hidden"][name^="resultat_"]');
-        let sum = 0, n = 0;
-        hidden.forEach(h => {
-            const v = (h.value || '').toUpperCase();
-            if (v in PTS) { sum += PTS[v]; n++; }
-        });
-
-        if (n === 0) {
-            note.textContent = '';
-            badge.textContent = '';
-            badge.style.backgroundColor = '';
-            badge.style.color = '#000';
-            badge.classList.remove('selected');
-            return;
-        }
-
-        const avg = sum / n;            // 0..4
-        const note20 = (avg / 4) * 20;  // /20
-        const app = appreciation(note20);
-
-        note.textContent = `${note20.toFixed(1)} / 20`;
-        badge.textContent = app;
-        badge.style.backgroundColor = COLOR[app] || '#ddd';
-        badge.style.color = '#000';
-        badge.classList.add('selected'); // même rendu que pastilles objectifs
-    }
-
-    function renderAll() {
-        document.querySelectorAll('tr.ligne-eleve').forEach(renderMoyenneRow);
-    }
-
-    // autosave : POST du formulaire entier, disquette 1s UNIQUEMENT à droite de la moyenne
-    let saveTimer = null;
-    function autoSave(rowElem) {
-        if (saveTimer) clearTimeout(saveTimer);
-
-        const icon = rowElem?.querySelector('.save-icon-moy');
-        if (icon) {
-            icon.classList.remove('show');
-            // reflow pour relancer l’animation
-            // eslint-disable-next-line no-unused-expressions
-            icon.offsetWidth;
-        }
-
-        saveTimer = setTimeout(() => {
-            fetch(form.action, { method: 'POST', body: new FormData(form) })
-                .then(() => { if (icon) icon.classList.add('show'); })
-                .catch(() => { });
-        }, 160);
-    }
-
-    // Clic sur pastilles NA/PA/A
-    document.querySelectorAll('.note-cell .pill').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const td = btn.closest('.note-cell');
-            const tr = btn.closest('tr.ligne-eleve');
-            if (!td || !tr || tr.classList.contains('absent')) return;
-
-            // sélection unique
-            td.querySelectorAll('.pill').forEach(p => p.classList.remove('selected'));
-            btn.classList.add('selected');
-
-            // MAJ hidden
-            const hidden = td.querySelector('input[type="hidden"][name^="resultat_"]');
-            if (hidden) hidden.value = btn.dataset.val || btn.getAttribute('data-val');
-
-            // recalcul moyenne + autosave (icône côté moyenne)
-            renderMoyenneRow(tr);
-            autoSave(tr);
-        });
-    });
-
-    // Absence : grise la ligne, désactive pastilles, efface la moyenne affichée
-    document.querySelectorAll('.absent-checkbox').forEach(cb => {
-        cb.addEventListener('change', () => {
-            const tr = cb.closest('tr.ligne-eleve');
-            if (!tr) return;
-
-            if (cb.checked) {
-                tr.classList.add('absent');
-                tr.querySelectorAll('.note-pills').forEach(g => g.classList.add('disabled'));
-            } else {
-                tr.classList.remove('absent');
-                tr.querySelectorAll('.note-pills').forEach(g => g.classList.remove('disabled'));
+        // 2) Sinon, pastilles (si utilisées)
+        if (values.length === 0) {
+            const pills = tr.querySelectorAll('.note-pills .pill.selected');
+            if (pills.length) {
+                // on mappe par objectif si tu as un data-objectif-id sur le parent (facultatif)
+                return [...pills].map(p => (p.dataset.valeur || p.textContent || '').trim().toUpperCase());
             }
+        }
+        return values;
+    }
 
-            renderMoyenneRow(tr);
-            autoSave(tr);
+    function calcRow(tr) {
+        const vals = getRowValues(tr)
+            .map(v => (v || '').toUpperCase())
+            .filter(v => v && v !== '---' && map[v] !== undefined);
+
+        const out = tr.querySelector('.moy, .moyenne-note');
+        if (!out) return;
+
+        if (vals.length === 0) {
+            out.textContent = "—";
+            return;
+        }
+        const sum = vals.reduce((s, v) => s + map[v], 0);
+        const sur20 = (sum / vals.length) / 4 * 20;
+        out.textContent = sur20.toFixed(1) + " / 20";
+    }
+
+    function recalcAll() {
+        document.querySelectorAll('tr[data-eleve-id], tr.ligne-eleve').forEach(calcRow);
+    }
+
+    async function saveRow(tr) {
+        // feedback visuel (disquette)
+        const saver = tr.querySelector('.save-icon-moy');
+        if (saver) { saver.classList.remove('show'); }
+
+        // Construit un POST minimal compatible avec ta route
+        const fd = new FormData();
+        const csrf = form.querySelector('input[name="csrf_token"]');
+        if (csrf) fd.append('csrf_token', csrf.value);
+
+        // identifiant élève visible (pour la partie absences côté serveur)
+        const eleveId = tr.getAttribute('data-eleve-id') || tr.querySelector('input[name="eleve[]"]')?.value;
+        if (eleveId) fd.append('eleve[]', eleveId);
+
+        // absent ?
+        const chk = tr.querySelector('input[type="checkbox"][name^="absent_"]');
+        if (chk && chk.checked) fd.append(`absent_${eleveId}`, 'on');
+
+        // selects
+        tr.querySelectorAll('.niv-select[name^="resultat_"]').forEach(sel => {
+            fd.append(sel.name, sel.value || '');
         });
+
+        // Si tu utilises des pastilles au lieu des selects, ajoute leur payload ici (facultatif)
+        // Exemple: name="resultat_<eleve>_<objectif>"
+        tr.querySelectorAll('.note-pills[data-eleve][data-objectif]').forEach(group => {
+            const el = group.dataset.eleve;
+            const obj = group.dataset.objectif;
+            const selected = group.querySelector('.pill.selected');
+            const val = (selected?.dataset.valeur || '').toUpperCase();
+            if (el && obj) fd.append(`resultat_${el}_${obj}`, val);
+        });
+
+        try {
+            const resp = await fetch(form.action, { method: 'POST', body: fd });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            if (saver) {
+                saver.classList.add('show');
+                setTimeout(() => saver && saver.classList.remove('show'), 1200);
+            }
+        } catch (e) {
+            console.error('Save row error:', e);
+        }
+    }
+
+    // init
+    recalcAll();
+
+    // Changement selects => recalc
+    document.addEventListener('change', (e) => {
+        if (e.target.matches('.niv-select')) {
+            const tr = e.target.closest('tr[data-eleve-id], tr.ligne-eleve');
+            if (tr) calcRow(tr);
+        }
     });
 
-    // Init (F5) – on relit les valeurs déjà injectées par Jinja
-    renderAll();
-});
+    // Click pastilles => toggle + recalc
+    document.addEventListener('click', (e) => {
+        const pill = e.target.closest('.note-pills .pill');
+        if (!pill) return;
+        const group = pill.closest('.note-pills');
+        if (!group) return;
+        // une seule pastille active par groupe
+        group.querySelectorAll('.pill').forEach(p => p.classList.remove('selected'));
+        pill.classList.add('selected');
+        const tr = pill.closest('tr[data-eleve-id], tr.ligne-eleve');
+        if (tr) calcRow(tr);
+    });
+
+    // Disquette (dans la colonne Moyenne)
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.btn-save-row, .save-icon, .save-icon-moy');
+        if (!btn) return;
+        const tr = btn.closest('tr[data-eleve-id], tr.ligne-eleve');
+        if (tr) saveRow(tr);
+    });
+
+    // Absent => grise la ligne + vide visuellement les selects (sans POST auto)
+    document.addEventListener('change', (e) => {
+        if (!e.target.matches('input[type="checkbox"][name^="absent_"]')) return;
+        const tr = e.target.closest('tr[data-eleve-id], tr.ligne-eleve');
+        if (!tr) return;
+        if (e.target.checked) {
+            tr.classList.add('absent');
+            tr.querySelectorAll('.niv-select').forEach(s => s.value = "");
+            tr.querySelectorAll('.note-pills .pill').forEach(p => p.classList.remove('selected'));
+        } else {
+            tr.classList.remove('absent');
+        }
+        calcRow(tr);
+    });
+
+})();

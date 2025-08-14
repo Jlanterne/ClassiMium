@@ -1,100 +1,316 @@
-{# templates/partials/saisie_resultats.html #}
-<div class="saisie-resultats fullwidth">
-    <h3>
-        Saisie des résultats : {{ evaluation.titre }} ({{ evaluation.date }})
+{% if mode == "saisie_resultats" %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dictees.css') }}">
 
-        {% if evaluation.matiere %}
-        <span class="bulle-matiere-{{ evaluation.matiere | replace(' ', '') | replace('.', '') }}"
-            style="margin-left:10px;">
-            {{ evaluation.matiere }}
-        </span>
-        {% endif %}
+<style>
+    :root {
+        --w-col-moy: 140px;
+        --w-col-abs: 74px;
+    }
 
-        {% if evaluation.sous_matiere %}
-        <span class="bulle-sousmatiere-{{ evaluation.sous_matiere | replace(' ', '') | replace('.', '') }}"
-            style="margin-left:5px;">
-            {{ evaluation.sous_matiere }}
-        </span>
-        {% endif %}
+    .table-dictee_d thead th {
+        height: 200px;
+        vertical-align: bottom;
+        overflow: visible;
+        padding: 0 4px 6px 4px;
+        background-clip: padding-box;
+    }
 
-        {% for niv in niveaux_concernes %}
-        <a href="{{ url_for('main.saisir_resultats', classe_id=classe.id, evaluation_id=evaluation.id, niveau=niv) }}"
-            class="niveau-bulle {% if niveau == niv %}niveau-selectionne{% endif %}">
-            {{ niv }}
-        </a>
-        {% endfor %}
-    </h3>
+    .th-abs_t>span,
+    .entete-dictee_d>span {
+        display: block;
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        white-space: normal;
+        word-break: break-word;
+        height: calc(200px - 12px);
+        margin: 0 auto;
+        overflow: hidden;
+    }
 
-    <form id="form-resultats" method="POST"
-        action="{{ url_for('main.saisir_resultats', classe_id=classe.id, evaluation_id=evaluation.id, niveau=niveau) }}"
-        data-autosave="true">
+    .col-moy-titre_sr {
+        position: sticky;
+        left: var(--w-col-eleve);
+        z-index: var(--z-groupe-th);
+        width: var(--w-col-moy);
+        min-width: var(--w-col-moy);
+        max-width: var(--w-col-moy);
+        background: var(--c-header);
+        color: var(--c-text-on-header);
+        font-size: 18px;
+        box-shadow: 2px 0 5px -2px rgba(0, 0, 0, .08);
+    }
 
-        {# === wrapper pour scroll horizontal des objectifs === #}
-        <div class="table-scroll-x">
-            <table class="table-resultats">
-                <thead>
-                    <tr>
-                        <th class="col-eleve sticky-col th-styled">Élève</th>
-                        <th class="col-moyenne sticky-col-2 th-styled">Moyenne</th>
-                        <th class="col-absent sticky-col-3 th-styled">Absent</th>
+    .col-moy_sr {
+        position: sticky;
+        left: var(--w-col-eleve);
+        z-index: var(--z-groupe-td);
+        width: var(--w-col-moy);
+        min-width: var(--w-col-moy);
+        max-width: var(--w-col-moy);
+        background: #f7f7f7;
+        height: 36px;
+        padding: 0 6px;
+        white-space: nowrap;
+    }
 
-                        {# Objectifs (scrollables) #}
-                        {% for obj in objectifs %}
-                        <th class="col-objectif th-styled">
-                            <div class="rotate-90" title="{{ obj.texte }}">{{ obj.texte }}</div>
-                        </th>
+    .col-abs-titre_sr {
+        position: sticky;
+        left: calc(var(--w-col-eleve) + var(--w-col-moy));
+        z-index: calc(var(--z-groupe-th) + 1);
+        width: var(--w-col-abs);
+        min-width: var(--w-col-abs);
+        max-width: var(--w-col-abs);
+        background: var(--c-header);
+        color: var(--c-text-on-header);
+        font-size: 18px;
+        box-shadow: 2px 0 5px -2px rgba(0, 0, 0, .08);
+    }
+
+    .col-abs_sr {
+        position: sticky;
+        left: calc(var(--w-col-eleve) + var(--w-col-moy));
+        z-index: calc(var(--z-groupe-td) + 1);
+        width: var(--w-col-abs);
+        min-width: var(--w-col-abs);
+        max-width: var(--w-col-abs);
+        background: #fbfbfb;
+        height: 36px;
+        padding: 0 6px;
+    }
+
+    .col-abs_sr input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        margin: 0;
+        transform: translateY(2px);
+    }
+
+    .th-obj_sr {
+        width: var(--w-col-dictee);
+        min-width: var(--w-col-dictee);
+        max-width: var(--w-col-dictee);
+    }
+
+    .moy-wrap_sr {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .moy-note_sr {
+        min-width: 76px;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        display: inline-block;
+    }
+
+    .btn-save_sr {
+        border: 1px solid var(--c-border);
+        background: #f5f5f5;
+        border-radius: 6px;
+        padding: .15rem .35rem;
+        font-size: 12px;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .btn-save_sr:hover {
+        background: #eee;
+    }
+
+    .save-state_sr {
+        margin-left: 4px;
+        font-size: 12px;
+        color: #888;
+    }
+
+    .niv-select_sr {
+        width: 100%;
+        height: 26px;
+        font-size: 12px;
+    }
+
+    .row-eleve_d.is-absent {
+        background: #e8e8e8 !important;
+    }
+
+    .col-eleve-titre_d,
+    .col-eleve_d,
+    .col-moy-titre_sr,
+    .col-moy_sr,
+    .col-abs-titre_sr,
+    .col-abs_sr {
+        position: sticky;
+    }
+
+    .col-eleve_d::after,
+    .col-eleve-titre_d::after,
+    .col-moy_sr::after,
+    .col-moy-titre_sr::after,
+    .col-abs_sr::after,
+    .col-abs-titre_sr::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: -1px;
+        bottom: 0;
+        width: 1px;
+        background: #bbb;
+    }
+
+    /* ✅ Bandeau Titre : largeur auto, pas calée sur colonnes */
+    .table-container_d>.titre-niveau {
+        display: inline-block;
+        white-space: nowrap;
+        padding: 6px 12px;
+        font-weight: bold;
+        font-size: 1.2em;
+        margin-bottom: 8px;
+        background: var(--c-header);
+        color: var(--c-text-on-header);
+        border-radius: 6px 6px 0 0;
+    }
+
+    .titre-niveau .eval-date {
+        margin-left: 15px;
+        font-weight: normal;
+        font-size: 0.9em;
+        opacity: 0.9;
+    }
+
+    #sr-legend {
+        margin: 8px 0 0 0;
+        font-size: 12px;
+        color: #444;
+    }
+
+    /* Bandeau titre = largeur selon contenu (pas calé sur les colonnes) */
+    .table-container_d>.titre-niveau {
+        /* on annule les largeurs figées de dictees.css */
+        width: max-content;
+        min-width: max-content;
+        max-width: none;
+
+        /* reste sticky via dictees.css (position: sticky; left:0; top:0; z-index...) */
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+
+        /* une seule ligne, pas de coupe */
+        white-space: nowrap;
+        overflow: visible;
+        text-overflow: clip;
+
+        /* style visuel (à toi d’ajuster si besoin) */
+        padding: 6px 12px;
+        font-weight: 800;
+        font-size: 1.2em;
+        background: var(--c-header);
+        color: var(--c-text-on-header);
+        border-radius: 6px 6px 0 0;
+    }
+
+    /* petit style pour la date */
+    .titre-niveau .eval-date {
+        margin-left: 15px;
+        font-weight: 600;
+        font-size: .95em;
+        opacity: .9;
+    }
+
+    /* Étend le conteneur sur toute la largeur de la zone centrale */
+    .table-container_d {
+        width: auto !important;
+        /* occupe toute la largeur */
+        max-width: auto !important;
+        overflow-x: auto;
+        /* autorise un scroll horizontal si besoin */
+        box-sizing: border-box;
+        /* prend en compte padding/border */
+    }
+
+    .content {
+        max-width: 100%;
+    }
+</style>
+
+<div class="page-dictees">
+    <div class="dictees-scope">
+
+        <form id="form-saisie-resultats" method="post" action="{{ url_for('main.saisir_resultats',
+                             classe_id=classe.id,
+                             evaluation_id=evaluation.id,
+                             niveau=niveau) }}">
+            {% if csrf_token is defined %}
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% endif %}
+
+            <div class="table-container_d">
+                <!-- ✅ Titre = largeur auto -->
+                <div class="titre-niveau">
+                    <span class="eval-title">{{ evaluation.titre or 'Évaluation' }}</span>
+                    {% if evaluation.date %}<span class="eval-date">{{ evaluation.date }}</span>{% endif %}
+                </div>
+
+                <table class="table-dictee_d" aria-describedby="sr-legend">
+                    <thead>
+                        <tr>
+                            <th class="col-eleve-titre_d">Élèves</th>
+                            <th class="col-moy-titre_sr">Moy.</th>
+                            <th class="col-abs-titre_sr th-abs_t" title="Absent·e"><span>ABSENT</span></th>
+                            {% for obj in objectifs %}
+                            <th class="entete-dictee_d th-obj_sr" data-type="simple">
+                                <span>{{ obj.texte }}</span>
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for e in eleves %}
+                        {% set est_absent = e.id in absents %}
+                        <tr class="row-eleve_d {{ 'is-absent' if est_absent }} " data-eleve-id="{{ e.id }}">
+                            <td class="col-eleve_d">
+                                <input type="hidden" name="eleve[]" value="{{ e.id }}">
+                                <span style="color:#00688B;font-weight:bold;">{{ e.prenom }}</span> {{ e.nom|upper }}
+                                {% if e.niveau %}<small> ({{ e.niveau }})</small>{% endif %}
+                            </td>
+                            <td class="col-moy_sr">
+                                <div class="moy-wrap_sr">
+                                    <span class="moy-note_sr">—</span>
+                                    <button type="button" class="btn-save_sr">💾</button>
+                                    <span class="save-state_sr"></span>
+                                </div>
+                            </td>
+                            <td class="col-abs_sr">
+                                <input type="checkbox" name="absent_{{ e.id }}" {{ 'checked' if est_absent }}>
+                            </td>
+                            {% for obj in objectifs %}
+                            {% set v = resultats.get(e.id, {}).get(obj.id) %}
+                            <td class="cell-dictee_d">
+                                <select name="resultat_{{ e.id }}_{{ obj.id }}" class="niv-select_sr">
+                                    <option value="" {{ 'selected' if not v or v=='' or v is none }}></option>
+                                    <option value="NA" {{ 'selected' if v=='NA' }}>NA</option>
+                                    <option value="PA" {{ 'selected' if v=='PA' }}>PA</option>
+                                    <option value="A" {{ 'selected' if v=='A' }}>A</option>
+                                </select>
+                            </td>
+                            {% endfor %}
+                        </tr>
                         {% endfor %}
-                    </tr>
-                </thead>
+                    </tbody>
+                </table>
+            </div>
 
-                <tbody>
-                    {% for eleve in eleves %}
-                    {% set est_absent = (eleve.id in absents) %}
-                    <tr class="ligne-eleve {% if est_absent %}absent{% endif %}" data-eleve-id="{{ eleve.id }}">
-                        <input type="hidden" name="eleve[]" value="{{ eleve.id }}">
+            <p id="sr-legend">
+                Échelle : NA=0, PA=2, A=4 — moyenne ramenée sur 20. La disquette 💾 enregistre uniquement la ligne
+                affichée.
+            </p>
 
-                        <td class="eleve-identite sticky-col">{{ eleve.prenom }} {{ eleve.nom }}</td>
-
-                        <td class="cell-moyenne sticky-col-2">
-                            <span class="moyenne-wrap">
-                                <span class="moyenne-note"></span>
-                                <span class="pill pill-moy"></span>
-                                <span class="save-icon save-icon-moy" aria-hidden="true" title="Enregistré"></span>
-                            </span>
-                        </td>
-
-                        <td class="sticky-col-3">
-                            <input type="checkbox" name="absent_{{ eleve.id }}" class="absent-checkbox"
-                                data-eleve-id="{{ eleve.id }}" {% if est_absent %}checked{% endif %}>
-                        </td>
-
-                        {# Objectifs (NA/PA/A) — scrollables #}
-                        {% for obj in objectifs %}
-                        {% set valeur = resultats.get(eleve.id, {}).get(obj.id, '') %}
-                        <td class="note-cell" data-eleve-id="{{ eleve.id }}" data-objectif-id="{{ obj.id }}">
-                            <div class="note-pills{% if est_absent %} disabled{% endif %}">
-                                <button type="button" class="pill pill-na  {% if valeur=='NA' %}selected{% endif %}"
-                                    data-val="NA">NA</button>
-                                <button type="button" class="pill pill-pa  {% if valeur=='PA' %}selected{% endif %}"
-                                    data-val="PA">PA</button>
-                                <button type="button" class="pill pill-a   {% if valeur=='A'  %}selected{% endif %}"
-                                    data-val="A">A</button>
-                            </div>
-                            <input type="hidden" name="resultat_{{ eleve.id }}_{{ obj.id }}" value="{{ valeur }}">
-                            {# ⛔️ PAS DE DISQUETTE DANS LES CELLULES DE NOTES #}
-                        </td>
-                        {% endfor %}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </form>
+            <div style="margin:10px 0 0 0;">
+                <button type="submit" class="btn btn-primary">Tout enregistrer</button>
+            </div>
+        </form>
+    </div>
 </div>
-
-{% block styles %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/saisie_resultats.css') }}">
-{% endblock %}
-{% block scripts %}
-<script src="{{ url_for('static', filename='js/saisie_resultats.js') }}"></script>
-{% endblock %}
+{% endif %}

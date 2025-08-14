@@ -2,17 +2,117 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/dictees.css') }}">
 
 <style>
+    /* =========================================================
+   SAISIE RÉSULTATS — overrides compacts au-dessus de dictees.css
+   ========================================================= */
+
+    /* Largeurs locales */
     :root {
         --w-col-moy: 140px;
+        /* Moyenne */
         --w-col-abs: 74px;
+        /* Absent  */
+        --obj-count: 0;
+        /* rempli en JS */
+        --w-col-moy: 140px;
+        /* Moyenne */
+        --w-col-abs: 74px;
+        /* Absent */
+        --w-col-dictee: 80px;
+        /* 👈 largeur des colonnes objectifs */
+        --obj-count: 0;
+        /* rempli en JS */
     }
 
+    /* ====== Étirement du conteneur ====== */
+    .page-dictees,
+    .dictees-scope,
+    #form-saisie-resultats {
+        overflow: visible !important;
+    }
+
+    /* Conteneur : occupe toute la page et autorise le scroll horizontal */
+    .table-container_d {
+        width: 100vw;
+        /* occupe toute la largeur visible */
+        overflow-x: auto;
+        /* scroll horizontal */
+        overflow-y: visible;
+        box-sizing: border-box;
+
+    }
+
+
+    /* Table : largeur selon son contenu (pas 100%) */
+    .table-dictee_d {
+        width: auto;
+        /* ne colle pas à 100% */
+        min-width: max-content;
+        /* >>> s’étire en fonction des colonnes réelles */
+        border-collapse: collapse;
+        table-layout: auto;
+        /* laisse chaque colonne gérer sa largeur */
+        vertical-align: bottom;
+        /* colle le contenu en bas */
+    }
+
+
+
+    /* OPTIONNEL : pleine largeur viewport si ton layout limite la zone centrale.
+   Active en ajoutant la classe `full-bleed` sur le conteneur (déjà fait plus bas). */
+    .table-container_d.full-bleed {
+
+        /* centre et casse les paddings du parent (technique “bleed”) */
+
+
+        border-radius: 0;
+        /* au cas où le parent a des coins arrondis */
+    }
+
+    /* ====== Bandeau titre collé aux colonnes fixes ====== */
+    /* Bandeau titre : collé à gauche, s'étire à la taille du contenu */
+    .table-container_d>.titre-niveau {
+        position: sticky;
+        left: 0;
+        top: 0;
+        z-index: var(--z-bandeau);
+
+        /* largeur calée sur le contenu */
+        display: inline-block;
+        width: max-content;
+        /* clé pour suivre la longueur du texte */
+        max-width: none;
+
+        /* style */
+        white-space: nowrap;
+        /* pas de retour à la ligne */
+        padding: 6px 12px;
+        margin: 0 0 0 0;
+        background: var(--c-header);
+        color: var(--c-text-on-header);
+        border-radius: 6px 6px 0 0;
+        font-weight: 800;
+        font-size: 1.2em;
+    }
+
+    /* Évite que le parent centre/étire l'inline-block */
+    .table-container_d {
+        text-align: left;
+    }
+
+
+
+
+    /* ====== En-têtes hautes + rotation 90° (Absent + Objectifs) ====== */
     .table-dictee_d thead th {
         height: 200px;
         vertical-align: bottom;
         overflow: visible;
         padding: 0 4px 6px 4px;
         background-clip: padding-box;
+        font-size: 14px;
+
+        /* taille globale des titres */
     }
 
     .th-abs_t>span,
@@ -27,6 +127,7 @@
         overflow: hidden;
     }
 
+    /* ====== Colonnes sticky Élève / Moyenne / Absent ====== */
     .col-moy-titre_sr {
         position: sticky;
         left: var(--w-col-eleve);
@@ -53,30 +154,29 @@
         white-space: nowrap;
     }
 
+    /* Absent — entête sticky (gauche) + au-dessus des objectifs */
     .col-abs-titre_sr {
         position: sticky;
         left: calc(var(--w-col-eleve) + var(--w-col-moy));
-        z-index: calc(var(--z-groupe-th) + 1);
-        width: var(--w-col-abs);
-        min-width: var(--w-col-abs);
-        max-width: var(--w-col-abs);
+        z-index: calc(var(--z-groupe-th) + 3);
+        /* plus haut que les th objectifs */
         background: var(--c-header);
+        /* solide pour masquer dessous */
         color: var(--c-text-on-header);
-        font-size: 18px;
         box-shadow: 2px 0 5px -2px rgba(0, 0, 0, .08);
+        will-change: left;
     }
 
+    /* Absent — cellules du corps, même position gauche + z-index */
     .col-abs_sr {
         position: sticky;
         left: calc(var(--w-col-eleve) + var(--w-col-moy));
-        z-index: calc(var(--z-groupe-td) + 1);
-        width: var(--w-col-abs);
-        min-width: var(--w-col-abs);
-        max-width: var(--w-col-abs);
+        z-index: calc(var(--z-groupe-td) + 3);
         background: #fbfbfb;
-        height: 36px;
-        padding: 0 6px;
+        /* fond opaque */
+        will-change: left;
     }
+
 
     .col-abs_sr input[type="checkbox"] {
         width: 16px;
@@ -85,12 +185,39 @@
         transform: translateY(2px);
     }
 
+    /* Objectifs = même gabarit que dictee */
     .th-obj_sr {
         width: var(--w-col-dictee);
         min-width: var(--w-col-dictee);
         max-width: var(--w-col-dictee);
     }
 
+    /* Traits fins à droite des sticky (lisibilité) */
+    .col-eleve-titre_d,
+    .col-eleve_d,
+    .col-moy-titre_sr,
+    .col-moy_sr,
+    .col-abs-titre_sr,
+    .col-abs_sr {
+        position: sticky;
+    }
+
+    .col-eleve_d::after,
+    .col-eleve-titre_d::after,
+    .col-moy_sr::after,
+    .col-moy-titre_sr::after,
+    .col-abs_sr::after,
+    .col-abs-titre_sr::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: -1px;
+        bottom: 0;
+        width: 1px;
+        background: #bbb;
+    }
+
+    /* Moyenne + disquette */
     .moy-wrap_sr {
         display: inline-flex;
         align-items: center;
@@ -124,114 +251,153 @@
         color: #888;
     }
 
+    /* Sélecteurs NA/PA/A & absent */
     .niv-select_sr {
         width: 100%;
         height: 26px;
         font-size: 12px;
     }
 
-    .row-eleve_d.is-absent {
-        background: #e8e8e8 !important;
+
+
+    /* ====== MIN-WIDTH CALCULÉE du tableau ======
+   évite la “compression” quand il y a peu d’objectifs visibles */
+    .table-dictee_d {
+        width: max-content !important;
+        /* <<< clé pour éviter la coupe */
+        min-width: calc(var(--w-col-eleve) + var(--w-col-moy) + var(--w-col-abs) + (var(--obj-count) * var(--w-col-dictee))) !important;
+        /* pas de width:100% ici, sinon le scroll arrive trop tôt */
     }
 
-    .col-eleve-titre_d,
-    .col-eleve_d,
-    .col-moy-titre_sr,
-    .col-moy_sr,
-    .col-abs-titre_sr,
-    .col-abs_sr {
-        position: sticky;
-    }
-
-    .col-eleve_d::after,
-    .col-eleve-titre_d::after,
-    .col-moy_sr::after,
-    .col-moy-titre_sr::after,
-    .col-abs_sr::after,
-    .col-abs-titre_sr::after {
-        content: "";
-        position: absolute;
-        top: 0;
-        right: -1px;
-        bottom: 0;
-        width: 1px;
-        background: #bbb;
-    }
-
-    /* ✅ Bandeau Titre : largeur auto, pas calée sur colonnes */
-    .table-container_d>.titre-niveau {
-        display: inline-block;
-        white-space: nowrap;
-        padding: 6px 12px;
-        font-weight: bold;
-        font-size: 1.2em;
-        margin-bottom: 8px;
-        background: var(--c-header);
-        color: var(--c-text-on-header);
-        border-radius: 6px 6px 0 0;
-    }
-
-    .titre-niveau .eval-date {
-        margin-left: 15px;
-        font-weight: normal;
-        font-size: 0.9em;
-        opacity: 0.9;
-    }
-
+    /* Légende */
     #sr-legend {
         margin: 8px 0 0 0;
         font-size: 12px;
         color: #444;
     }
 
-    /* Bandeau titre = largeur selon contenu (pas calé sur les colonnes) */
-    .table-container_d>.titre-niveau {
-        /* on annule les largeurs figées de dictees.css */
-        width: max-content;
-        min-width: max-content;
-        max-width: none;
-
-        /* reste sticky via dictees.css (position: sticky; left:0; top:0; z-index...) */
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 12px;
-
-        /* une seule ligne, pas de coupe */
-        white-space: nowrap;
-        overflow: visible;
-        text-overflow: clip;
-
-        /* style visuel (à toi d’ajuster si besoin) */
-        padding: 6px 12px;
-        font-weight: 800;
-        font-size: 1.2em;
-        background: var(--c-header);
-        color: var(--c-text-on-header);
-        border-radius: 6px 6px 0 0;
-    }
-
-    /* petit style pour la date */
-    .titre-niveau .eval-date {
-        margin-left: 15px;
-        font-weight: 600;
-        font-size: .95em;
-        opacity: .9;
-    }
-
-    /* Étend le conteneur sur toute la largeur de la zone centrale */
-    .table-container_d {
-        width: auto !important;
-        /* occupe toute la largeur */
-        max-width: auto !important;
+    html,
+    body {
         overflow-x: auto;
-        /* autorise un scroll horizontal si besoin */
-        box-sizing: border-box;
-        /* prend en compte padding/border */
+        /* empêche un overflow-x:hidden global de couper la droite */
     }
 
-    .content {
-        max-width: 100%;
+    .col-eleve-titre_d,
+    .col-moy-titre_sr {
+        vertical-align: middle;
+        /* centre verticalement */
+        text-align: center;
+        /* centre horizontalement */
+        height: 100%;
+        /* occupe toute la hauteur dispo */
+    }
+
+
+    /* Centre VRAIMENT le texte de "Élèves" et "Moy." dans l'axe vertical et horizontal */
+    .table-dictee_d thead th.col-eleve-titre_d,
+    .table-dictee_d thead th.col-moy-titre_sr {
+        vertical-align: middle !important;
+        /* annule le bottom global */
+        height: 200px;
+        /* même hauteur que les autres */
+        padding: 0 8px;
+        /* padding identique */
+        box-sizing: border-box;
+
+
+    }
+
+    .champ-note {
+        width: 40px;
+        /* largeur du champ */
+        height: 28px;
+        /* hauteur du champ */
+        text-align: center;
+        /* texte centré */
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        /* coins arrondis */
+        font-size: 14px;
+        /* texte un peu plus petit */
+        outline: none;
+        /* pas de contour bleu */
+        padding: 2px;
+        box-sizing: border-box;
+    }
+
+    /* Zébrure sur toutes les lignes du corps du tableau, sans impacter thead */
+    .table-dictee_d tbody tr:nth-child(odd) td {
+        background-color: #FFFFFF;
+    }
+
+    .table-dictee_d tbody tr:nth-child(even) td {
+        background-color: #F5F5F5;
+    }
+
+    /* Voile gris + inaction à partir de la 4e colonne quand absent */
+    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) {
+
+        position: relative;
+    }
+
+    /* Rendre tout inactif dans ces cellules (pas de clic, pas de focus) */
+    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) * {
+        pointer-events: none;
+    }
+
+    /* Aspect visuel des champs veillés */
+    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) input,
+    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) select,
+    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) textarea,
+    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) button {
+        opacity: .6;
+        cursor: not-allowed;
+    }
+
+    /* Palette des niveaux appliquée aux champs */
+    .champ-note.level-NA {
+        background-color: #ff000075;
+        color: #000;
+    }
+
+    .champ-note.level-PA- {
+        background-color: #ff7d1aa6;
+        color: #000;
+    }
+
+    .champ-note.level-PA {
+        background-color: #ffe223;
+        color: #000;
+    }
+
+    .champ-note.level-PA+ {
+        background-color: #d4f5b0;
+        color: #000;
+    }
+
+    .champ-note.level-A- {
+        background-color: #a7e9b7;
+        color: #000;
+    }
+
+    .champ-note.level-A {
+        background-color: #5cc995;
+        color: #000;
+    }
+
+    .champ-note.level-A+ {
+        background-color: #3dbcb9;
+        color: #000;
+    }
+
+    .champ-note.level-D {
+        background-color: #00d3f8;
+        color: #000;
+    }
+
+    /* Par défaut : fond blanc */
+    .champ-note {
+        background-color: #fff;
     }
 </style>
 
@@ -239,15 +405,15 @@
     <div class="dictees-scope">
 
         <form id="form-saisie-resultats" method="post" action="{{ url_for('main.saisir_resultats',
-                             classe_id=classe.id,
-                             evaluation_id=evaluation.id,
-                             niveau=niveau) }}">
+                         classe_id=classe.id,
+                         evaluation_id=evaluation.id,
+                         niveau=niveau) }}">
             {% if csrf_token is defined %}
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             {% endif %}
 
-            <div class="table-container_d">
-                <!-- ✅ Titre = largeur auto -->
+            <!-- ACTIVE le “full-bleed” pour prendre toute la largeur du viewport -->
+            <div class="table-container_d full-bleed">
                 <div class="titre-niveau">
                     <span class="eval-title">{{ evaluation.titre or 'Évaluation' }}</span>
                     {% if evaluation.date %}<span class="eval-date">{{ evaluation.date }}</span>{% endif %}
@@ -260,40 +426,38 @@
                             <th class="col-moy-titre_sr">Moy.</th>
                             <th class="col-abs-titre_sr th-abs_t" title="Absent·e"><span>ABSENT</span></th>
                             {% for obj in objectifs %}
-                            <th class="entete-dictee_d th-obj_sr" data-type="simple">
-                                <span>{{ obj.texte }}</span>
-                            </th>
+                            <th class="entete-dictee_d th-obj_sr" data-type="simple"><span>{{ obj.texte }}</span></th>
                             {% endfor %}
                         </tr>
                     </thead>
+
                     <tbody>
                         {% for e in eleves %}
                         {% set est_absent = e.id in absents %}
-                        <tr class="row-eleve_d {{ 'is-absent' if est_absent }} " data-eleve-id="{{ e.id }}">
+                        <tr class="row-eleve_d {{ 'is-absent' if est_absent }}" data-eleve-id="{{ e.id }}">
                             <td class="col-eleve_d">
                                 <input type="hidden" name="eleve[]" value="{{ e.id }}">
                                 <span style="color:#00688B;font-weight:bold;">{{ e.prenom }}</span> {{ e.nom|upper }}
                                 {% if e.niveau %}<small> ({{ e.niveau }})</small>{% endif %}
                             </td>
+
                             <td class="col-moy_sr">
                                 <div class="moy-wrap_sr">
                                     <span class="moy-note_sr">—</span>
-                                    <button type="button" class="btn-save_sr">💾</button>
-                                    <span class="save-state_sr"></span>
+
                                 </div>
                             </td>
+
                             <td class="col-abs_sr">
                                 <input type="checkbox" name="absent_{{ e.id }}" {{ 'checked' if est_absent }}>
                             </td>
+
                             {% for obj in objectifs %}
                             {% set v = resultats.get(e.id, {}).get(obj.id) %}
                             <td class="cell-dictee_d">
-                                <select name="resultat_{{ e.id }}_{{ obj.id }}" class="niv-select_sr">
-                                    <option value="" {{ 'selected' if not v or v=='' or v is none }}></option>
-                                    <option value="NA" {{ 'selected' if v=='NA' }}>NA</option>
-                                    <option value="PA" {{ 'selected' if v=='PA' }}>PA</option>
-                                    <option value="A" {{ 'selected' if v=='A' }}>A</option>
-                                </select>
+                                <input type="text" class="champ-note" maxlength="2" placeholder="">
+
+
                             </td>
                             {% endfor %}
                         </tr>
@@ -313,4 +477,260 @@
         </form>
     </div>
 </div>
+
+<script>
+    (() => {
+        /* 1) Pose --obj-count pour la min-width du tableau */
+        const ths = document.querySelectorAll('.table-dictee_d thead th');
+        const objCount = Math.max(0, ths.length - 3); // total - (élève, moy, absent)
+        document.documentElement.style.setProperty('--obj-count', objCount);
+
+        const form = document.getElementById('form-saisie-resultats');
+        if (!form) return;
+
+        /* 2) Normalisation & mapping */
+        const VALID = new Set(['NA', 'PA-', 'PA', 'PA+', 'A-', 'A', 'A+', 'D']);
+        const NOTE_MAP = new Map([
+            ['NA', 0],
+            ['PA-', 1],
+            ['PA', 2],
+            ['PA+', 3],
+            ['A-', 3.5],
+            ['A', 4],
+            ['A+', 4],
+            ['D', 4],
+        ]);
+
+        /** Normalise une saisie libre en code attendu ou "" si invalide */
+        function normalizeNote(raw) {
+            if (!raw) return "";
+            let v = String(raw).toUpperCase().replace(/\s+/g, ""); // enlève espaces
+            // Alias rapides
+            if (v === 'N') v = 'NA';
+            if (v === 'P') v = 'PA';
+            if (v === 'P+' || v === 'P-') v = 'PA' + v[1]; // P+ -> PA+, P- -> PA-
+            if (v === 'D') v = 'D';
+            // Tolère "A +", "PA -" déjà gérés par trim ci-dessus
+            // Garde uniquement valeurs prévues
+            return VALID.has(v) ? v : "";
+        }
+
+        /** Coloration d'un input selon sa valeur (sans modifier la valeur) */
+        function paintByValue(input) {
+            const norm = normalizeNote(input.value);
+            input.classList.remove(
+                'level-NA', 'level-PA-', 'level-PA', 'level-PA+',
+                'level-A-', 'level-A', 'level-A+', 'level-D'
+            );
+            if (norm) input.classList.add('level-' + norm);
+        }
+
+        /* 3) Calcul de moyenne par ligne */
+        function calcRow(tr) {
+            const fields = tr.querySelectorAll('.champ-note, .niv-select_sr');
+            let sum = 0, n = 0;
+            fields.forEach(f => {
+                const v = normalizeNote((f.value || '').trim());
+                if (v) { sum += NOTE_MAP.get(v); n++; }
+            });
+            const out = tr.querySelector('.moy-note_sr');
+            if (!out) return;
+            out.textContent = n === 0 ? '—' : ((sum / n) / 4 * 20).toFixed(1) + ' / 20';
+        }
+
+        /* 4) Init : couleur + moyenne pour chaque ligne */
+        document.querySelectorAll('.champ-note').forEach(paintByValue);
+        document.querySelectorAll('tr[data-eleve-id]').forEach(calcRow);
+
+        /* 5) Live: recalcule à chaque frappe + recoloration */
+        document.addEventListener('input', (e) => {
+            if (e.target.matches('.champ-note')) {
+                paintByValue(e.target); // recolore selon la valeur actuelle
+                const tr = e.target.closest('tr[data-eleve-id]');
+                if (tr) calcRow(tr);
+            }
+            if (e.target.matches('.niv-select_sr')) {
+                const tr = e.target.closest('tr[data-eleve-id]');
+                if (tr) calcRow(tr);
+            }
+        });
+
+        /* 6) Blur: normalise (n->NA, p->PA, etc.), recolore, recalcule */
+        document.querySelectorAll('.champ-note').forEach(input => {
+            input.addEventListener('blur', () => {
+                const norm = normalizeNote(input.value);
+                input.value = norm;      // impose la valeur normalisée
+                paintByValue(input);     // remet la bonne couleur
+                const tr = input.closest('tr[data-eleve-id]');
+                if (tr) calcRow(tr);     // recalcule la moyenne
+            });
+        });
+
+        /* 7) Gestion Absent: vide à partir de la 4e col (CSS bloque l'édition), recalcule */
+        document.addEventListener('change', (e) => {
+            if (!e.target.matches('.col-abs_sr input[type="checkbox"]')) return;
+            const tr = e.target.closest('tr[data-eleve-id]');
+            if (!tr) return;
+
+            if (e.target.checked) {
+                tr.classList.add('is-absent');
+                // vide tous les champs de note (text + select)
+                tr.querySelectorAll('td:nth-child(n+4) .champ-note, td:nth-child(n+4) .niv-select_sr')
+                    .forEach(el => { el.value = ""; if (el.classList) paintByValue(el); });
+            } else {
+                tr.classList.remove('is-absent');
+            }
+            calcRow(tr);
+        });
+
+        /* 8) Sauvegarde par ligne (AJAX) */
+        async function saveRow(tr) {
+            const saver = tr.querySelector('.save-state_sr');
+            if (saver) saver.textContent = '…';
+
+            const fd = new FormData();
+            const csrf = form.querySelector('input[name="csrf_token"]');
+            if (csrf) fd.append('csrf_token', csrf.value);
+
+            const eleveId = tr.getAttribute('data-eleve-id');
+            if (eleveId) fd.append('eleve[]', eleveId);
+
+            const chk = tr.querySelector('.col-abs_sr input[type="checkbox"]');
+            if (chk && chk.checked) fd.append('absent_' + eleveId, 'on');
+
+            // on envoie ce qui a un name commençant par "resultat_"
+            tr.querySelectorAll('.niv-select_sr[name^="resultat_"], .champ-note[name^="resultat_"]').forEach(el => {
+                // normalise avant d'envoyer
+                const val = el.classList.contains('champ-note') ? normalizeNote(el.value) : el.value;
+                fd.append(el.name, val || '');
+            });
+
+            try {
+                const resp = await fetch(form.action, { method: 'POST', body: fd });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                if (saver) { saver.textContent = '✔︎'; setTimeout(() => { saver.textContent = ''; }, 1200); }
+            } catch (err) {
+                if (saver) { saver.textContent = '⚠︎'; setTimeout(() => { saver.textContent = ''; }, 2000); }
+                console.error(err);
+            }
+        }
+
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-save_sr');
+            if (!btn) return;
+            const tr = btn.closest('tr[data-eleve-id]');
+            if (tr) saveRow(tr);
+        });
+    })();
+</script>
+<script>
+    /* ===== AUTOSAVE PATCH — AUCUNE MODIF DE MISE EN PAGE ===== */
+    (() => {
+        const form = document.getElementById('form-saisie-resultats');
+        if (!form) return;
+
+        // On réutilise tes fonctions si elles existent, sinon on no-op.
+        const has = fn => typeof window[fn] === 'function';
+        const norm = has('normalizeNote') ? window.normalizeNote : (v) => v;
+        const paint = has('paintByValue') ? window.paintByValue : () => { };
+        const calc = has('calcRow') ? window.calcRow : () => { };
+        const doSave = has('saveRow') ? window.saveRow : () => { };
+
+        // Debounce par ligne (clé = data-eleve-id)
+        const DEBOUNCE_MS = 300;
+        const timers = new Map();
+        const queueSave = (tr) => {
+            if (!tr) return;
+            const id = tr.getAttribute('data-eleve-id') || Math.random().toString(36).slice(2);
+            clearTimeout(timers.get(id));
+            timers.set(id, setTimeout(() => {
+                doSave(tr);
+            }, DEBOUNCE_MS));
+        };
+
+        // 1) À chaque frappe dans un champ de note -> recolore, recalcule, autosave (debounced)
+        document.addEventListener('input', (e) => {
+            if (!e.target.closest('#form-saisie-resultats')) return;
+
+            if (e.target.classList && e.target.classList.contains('champ-note')) {
+                // recoloration si dispo
+                paint(e.target);
+                // recalcule la moyenne de la ligne
+                const tr = e.target.closest('tr[data-eleve-id]');
+                if (tr) {
+                    calc(tr);
+                    queueSave(tr);
+                }
+            }
+            // Si tu as des <select> de niveaux .niv-select_sr on gère pareil
+            if (e.target.classList && e.target.classList.contains('niv-select_sr')) {
+                const tr = e.target.closest('tr[data-eleve-id]');
+                if (tr) {
+                    calc(tr);
+                    queueSave(tr);
+                }
+            }
+        }, true);
+
+        // 2) Sur blur : normalise (si dispo), recolore, recalcule, autosave
+        document.addEventListener('blur', (e) => {
+            if (!e.target.closest || !e.target.closest('#form-saisie-resultats')) return;
+
+            if (e.target.classList && e.target.classList.contains('champ-note')) {
+                if (has('normalizeNote')) {
+                    e.target.value = norm(e.target.value);
+                }
+                paint(e.target);
+                const tr = e.target.closest('tr[data-eleve-id]');
+                if (tr) {
+                    calc(tr);
+                    queueSave(tr);
+                }
+            }
+        }, true);
+
+        // 3) Coche "Absent" : vide les champs objectifs de la ligne (sans toucher au layout) + autosave
+        document.addEventListener('change', (e) => {
+            if (!e.target.closest || !e.target.closest('#form-saisie-resultats')) return;
+
+            const isAbsCheckbox = e.target.matches('.col-abs_sr input[type="checkbox"]');
+            if (!isAbsCheckbox) return;
+
+            const tr = e.target.closest('tr[data-eleve-id]');
+            if (!tr) return;
+
+            if (e.target.checked) {
+                tr.classList.add('is-absent');
+                // Vide les champs objectifs de la ligne (texte + select), recolore au besoin
+                tr.querySelectorAll('td:nth-child(n+4) .champ-note, td:nth-child(n+4) .niv-select_sr')
+                    .forEach(el => {
+                        el.value = '';
+                        if (el.classList && el.classList.contains('champ-note')) paint(el);
+                    });
+            } else {
+                tr.classList.remove('is-absent');
+            }
+            calc(tr);
+            queueSave(tr);
+        }, true);
+
+        // 4) Option : empêcher "Enter" de soumettre le formulaire par accident lors de la saisie
+        form.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('champ-note')) {
+                e.preventDefault();
+                // on déclenche quand même un save debounced de la ligne
+                const tr = e.target.closest('tr[data-eleve-id]');
+                if (tr) {
+                    if (has('normalizeNote')) e.target.value = norm(e.target.value);
+                    paint(e.target);
+                    calc(tr);
+                    queueSave(tr);
+                }
+            }
+        });
+    })();
+</script>
+
+
+
 {% endif %}

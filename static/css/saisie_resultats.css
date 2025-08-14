@@ -1,0 +1,95 @@
+/* ====== Conteneur ====== */
+.saisie-resultats-wrapper {
+    padding: 20px;
+}
+
+/* ====== Titre ====== */
+.titre-matiere {
+    margin-bottom: 15px;
+    font-size: 1.5em;
+    font-weight: bold;
+}
+
+/* ====== Table ====== */
+.table-container_d {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.table-resultats_d {
+    border-collapse: collapse;
+    width: 100%;
+    table-layout: fixed;
+}
+
+/* Bordures */
+.table-resultats_d th,
+.table-resultats_d td {
+    border: 1px solid #ccc;
+    text-align: center;
+    vertical-align: middle;
+    padding: 6px;
+}
+
+/* ====== Colonnes fixes ====== */
+.col-eleve {
+    width: 200px;
+    text-align: left;
+    position: sticky;
+    left: 0;
+    background: #f9f9f9;
+    z-index: 2;
+}
+
+.col-moyenne {
+    width: 120px;
+    position: sticky;
+    left: 200px;
+    background: #f9f9f9;
+    z-index: 2;
+}
+
+.col-absent {
+    width: 80px;
+    position: sticky;
+    left: 320px;
+    background: #f9f9f9;
+    z-index: 2;
+}
+
+/* Objectifs */
+.col-objectif {
+    width: 80px;
+}
+
+/* Rotation du texte */
+.rotate-text {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap;
+}
+
+/* Ligne grisée si absent */
+.absent-row {
+    background: #eee;
+    color: #888;
+}
+
+/* ====== Boutons ====== */
+.form-actions {
+    margin-top: 15px;
+    text-align: right;
+}
+
+.btn-enregistrer {
+    padding: 8px 14px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.btn-enregistrer:hover {
+    background: #45a049;
+}

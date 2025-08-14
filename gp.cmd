@@ -34,33 +34,33 @@ echo [4/4] push
 git push || goto PUSHERR
 
 echo.
-echo OK pushed to %BRANCH%
-pause
-exit /b 0
+echo ✅ OK pushed to %BRANCH%
+goto END
 
 :NOGIT
-echo Not a git repo: %cd%
-pause
-exit /b 1
+echo ❌ Not a git repo: %cd%
+goto END
 
 :NOGITBIN
-echo Git not found in PATH.
-pause
-exit /b 1
+echo ❌ Git not found in PATH.
+goto END
 
 :REBASEERR
-echo Rebase failed. Resolve conflicts, then:
+echo ❌ Rebase failed. Resolve conflicts, then:
 echo   git add <files>
 echo   git rebase --continue
-pause
-exit /b 1
+goto END
 
 :PUSHERR
-echo Push failed.
-pause
-exit /b 1
+echo ❌ Push failed.
+goto END
 
 :ABORT
 echo Aborted by user.
-pause
+goto END
+
+:END
+echo.
+echo --- Script termine, appuyez sur une touche pour fermer ---
+pause >nul
 exit /b 0

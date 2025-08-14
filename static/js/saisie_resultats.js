@@ -22,16 +22,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderMoyenneRow(tr) {
         const note = tr.querySelector('.moyenne-note');
-        const badge = tr.querySelector('.moyenne-badge');
+        const badge = tr.querySelector('.pill-moy');
         if (!note || !badge) return;
 
+        // Absent → pas d’affichage de moyenne
         if (tr.classList.contains('absent')) {
             note.textContent = '';
             badge.textContent = '';
             badge.style.backgroundColor = '';
+            badge.style.color = '#000';
+            badge.classList.remove('selected');
             return;
         }
 
+        // Calcul sur les hidden inputs
         const hidden = tr.querySelectorAll('input[type="hidden"][name^="resultat_"]');
         let sum = 0, n = 0;
         hidden.forEach(h => {
@@ -43,31 +47,35 @@ document.addEventListener('DOMContentLoaded', () => {
             note.textContent = '';
             badge.textContent = '';
             badge.style.backgroundColor = '';
+            badge.style.color = '#000';
+            badge.classList.remove('selected');
             return;
         }
 
-        const avg = sum / n;              // 0..4
-        const note20 = (avg / 4) * 20;    // /20
+        const avg = sum / n;            // 0..4
+        const note20 = (avg / 4) * 20;  // /20
         const app = appreciation(note20);
 
         note.textContent = `${note20.toFixed(1)} / 20`;
         badge.textContent = app;
         badge.style.backgroundColor = COLOR[app] || '#ddd';
+        badge.style.color = '#000';
+        badge.classList.add('selected'); // même rendu que pastilles objectifs
     }
 
     function renderAll() {
         document.querySelectorAll('tr.ligne-eleve').forEach(renderMoyenneRow);
     }
 
-    // autosave : POST du formulaire entier, disquette 1s locale
+    // autosave : POST du formulaire entier, disquette 1s UNIQUEMENT à droite de la moyenne
     let saveTimer = null;
-    function autoSave(cellForIcon) {
+    function autoSave(rowElem) {
         if (saveTimer) clearTimeout(saveTimer);
 
-        const icon = cellForIcon?.querySelector('.save-icon') || cellForIcon?.querySelector('.save-icon-moy');
+        const icon = rowElem?.querySelector('.save-icon-moy');
         if (icon) {
             icon.classList.remove('show');
-            // reflow pour relancer l'anim si besoin
+            // reflow pour relancer l’anim si besoin
             // eslint-disable-next-line no-unused-expressions
             icon.offsetWidth;
         }
@@ -76,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fetch(form.action, { method: 'POST', body: new FormData(form) })
                 .then(() => { if (icon) icon.classList.add('show'); })
                 .catch(() => { });
-        }, 180);
+        }, 160);
     }
 
     // Clic sur pastilles NA/PA/A
@@ -86,18 +94,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const tr = btn.closest('tr.ligne-eleve');
             if (!td || !tr || tr.classList.contains('absent')) return;
 
+            // sélection visuelle unique
             td.querySelectorAll('.pill').forEach(p => p.classList.remove('selected'));
             btn.classList.add('selected');
 
+            // MAJ hidden
             const hidden = td.querySelector('input[type="hidden"][name^="resultat_"]');
             if (hidden) hidden.value = btn.dataset.val || btn.getAttribute('data-val');
 
+            // recalcul moyenne + autosave (icône de la MOYENNE uniquement)
             renderMoyenneRow(tr);
-            autoSave(td);
+            autoSave(tr);
         });
     });
 
-    // Absence : grise / dégrise la ligne, supprime l'affichage moyenne
+    // Absence : grise / dégrise la ligne, désactive les pastilles, efface la moyenne affichée
     document.querySelectorAll('.absent-checkbox').forEach(cb => {
         cb.addEventListener('change', () => {
             const tr = cb.closest('tr.ligne-eleve');
@@ -112,11 +123,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             renderMoyenneRow(tr);
-            const moyCell = tr.querySelector('.cell-moyenne');
-            autoSave(moyCell);
+            autoSave(tr); // disquette uniquement à droite de la moyenne
         });
     });
 
-    // Init (F5)
+    // Init (F5) – restaure l’affichage depuis les valeurs (GET)
     renderAll();
 });

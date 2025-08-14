@@ -1,6 +1,9 @@
+/* Tableau */
 .table-resultats {
     border-collapse: collapse;
     width: 100%;
+    table-layout: fixed;
+    /* force le respect des largeurs */
 }
 
 .table-resultats th,
@@ -11,24 +14,26 @@
     vertical-align: middle;
 }
 
-/* Colonne Élève élargie + non-retour à la ligne */
+/* Colonne Élève : largeur triplée */
 .col-eleve {
-    width: 280px;
+    width: 840px !important;
 }
 
+/* priorité pour surpasser styles globaux */
 .eleve-identite {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 280px;
+    max-width: 840px !important;
     text-align: left;
 }
 
-/* Objectifs pivotés à 90° (lisible de bas en haut) */
+/* Objectifs pivotés à 90° (lisibles) */
 .col-objectif {
     width: 56px;
 }
 
+/* ajuste si besoin */
 .rotate-90 {
     display: inline-block;
     transform: rotate(-90deg);
@@ -36,10 +41,9 @@
     white-space: nowrap;
     line-height: 1;
     margin-top: 36px;
-    /* ajuste si besoin */
 }
 
-/* Pastilles NA/PA/A en ligne (taille identique) */
+/* Pastilles NA/PA/A en ligne (même taille) */
 .note-pills {
     display: inline-flex;
     gap: 6px;
@@ -56,7 +60,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
+    width: 48px;
+    /* même format utilisé pour la moyenne */
     height: 28px;
     border-radius: 999px;
     border: 1px solid rgba(0, 0, 0, .15);
@@ -89,34 +94,29 @@
     border-color: #5cc995;
 }
 
-/* Moyenne en ligne : xx.x/20 + pastille couleur (palette dictées) */
+/* Moyenne en ligne : “xx.x / 20” + pastille (même format .pill) + disquette à DROITE */
 .cell-moyenne .moyenne-wrap {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     white-space: nowrap;
 }
 
 .moyenne-note {
-    min-width: 64px;
+    min-width: 72px;
     text-align: right;
     display: inline-block;
 }
 
-.moyenne-badge {
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-weight: bold;
-    font-size: 12px;
-    display: inline-block;
-    min-width: 44px;
-    text-align: center;
+.pill-moy {
+    /* même rendu que .pill sélectionnée ; couleurs via JS */
 }
 
-/* Disquette (taille fixe, pas de déformation) */
+/* Disquette UNIQUEMENT à droite de la moyenne */
 .save-icon,
 .save-icon-moy {
-    display: inline-block;
+    display: none;
+    /* par défaut : invisible, ne prend pas de place */
     width: 14px;
     height: 14px;
     margin-left: 6px;
@@ -127,8 +127,9 @@ viewBox="0 0 16 16" fill="%234a7cff"><path d="M1 3a2 2 0 0 1 2-2h8l4 4v8a2 2 0 0
     opacity: 0;
 }
 
-.save-icon.show,
 .save-icon-moy.show {
+    display: inline-block;
+    /* visible seulement pendant l’anim */
     animation: saveFade 1s ease-in-out;
 }
 
@@ -150,7 +151,7 @@ viewBox="0 0 16 16" fill="%234a7cff"><path d="M1 3a2 2 0 0 1 2-2h8l4 4v8a2 2 0 0
     }
 }
 
-/* Absent : grisé (sans changer les valeurs en DB) */
+/* Absent : grisé (sans écraser la DB) */
 tr.ligne-eleve.absent {
     opacity: .55;
 }

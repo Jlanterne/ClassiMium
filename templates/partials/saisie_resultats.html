@@ -68,14 +68,14 @@
                                 data-val="A">A</button>
                         </div>
                         <input type="hidden" name="resultat_{{ eleve.id }}_{{ obj.id }}" value="{{ valeur }}">
-                        <span class="save-icon" aria-hidden="true" title="Enregistré"></span>
+                        {# ⛔️ PAS DE DISQUETTE DANS LES CELLULES DE NOTES #}
                     </td>
                     {% endfor %}
 
                     <td class="cell-moyenne">
                         <span class="moyenne-wrap">
                             <span class="moyenne-note"></span>
-                            <span class="moyenne-badge"></span>
+                            <span class="pill pill-moy"></span>
                             <span class="save-icon save-icon-moy" aria-hidden="true" title="Enregistré"></span>
                         </span>
                     </td>

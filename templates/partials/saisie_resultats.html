@@ -8,20 +8,28 @@
 
     /* Largeurs locales */
     :root {
-        --w-col-moy: 140px;
-        /* Moyenne */
-        --w-col-abs: 74px;
-        /* Absent  */
-        --obj-count: 0;
-        /* rempli en JS */
+        --w-col-eleve: 200px;
+        /* Élèves (≈5 cm) */
         --w-col-moy: 140px;
         /* Moyenne */
         --w-col-abs: 74px;
         /* Absent */
         --w-col-dictee: 80px;
-        /* 👈 largeur des colonnes objectifs */
+        /* Objectifs */
         --obj-count: 0;
         /* rempli en JS */
+
+        /* Z-index */
+        --z-groupe-th: 4;
+        --z-groupe-td: 2;
+        --z-bandeau: 5;
+
+        /* Couleurs d’entête */
+        --c-header: #4078A0;
+        --c-text-on-header: #fff;
+
+        /* Bordures */
+        --c-border: #d0d0d0;
     }
 
     /* ====== Étirement du conteneur ====== */
@@ -34,85 +42,67 @@
     /* Conteneur : occupe toute la page et autorise le scroll horizontal */
     .table-container_d {
         width: 100vw;
-        /* occupe toute la largeur visible */
         overflow-x: auto;
-        /* scroll horizontal */
         overflow-y: visible;
         box-sizing: border-box;
-
+        text-align: left;
     }
 
-
-    /* Table : largeur selon son contenu (pas 100%) */
-    .table-dictee_d {
-        width: auto;
-        /* ne colle pas à 100% */
-        min-width: max-content;
-        /* >>> s’étire en fonction des colonnes réelles */
-        border-collapse: collapse;
-        table-layout: auto;
-        /* laisse chaque colonne gérer sa largeur */
-        vertical-align: bottom;
-        /* colle le contenu en bas */
-    }
-
-
-
-    /* OPTIONNEL : pleine largeur viewport si ton layout limite la zone centrale.
-   Active en ajoutant la classe `full-bleed` sur le conteneur (déjà fait plus bas). */
+    /* OPTION : pleine largeur si parent a des paddings (classe activée ci-dessous) */
     .table-container_d.full-bleed {
-
-        /* centre et casse les paddings du parent (technique “bleed”) */
-
-
+        position: relative;
+        left: -23px;
         border-radius: 0;
-        /* au cas où le parent a des coins arrondis */
+        cursor: move;
+        transition: none;
     }
 
-    /* ====== Bandeau titre collé aux colonnes fixes ====== */
-    /* Bandeau titre : collé à gauche, s'étire à la taille du contenu */
+    /* Bandeau titre : sticky au bord gauche */
     .table-container_d>.titre-niveau {
         position: sticky;
         left: 0;
         top: 0;
         z-index: var(--z-bandeau);
-
-        /* largeur calée sur le contenu */
         display: inline-block;
         width: max-content;
-        /* clé pour suivre la longueur du texte */
         max-width: none;
-
-        /* style */
         white-space: nowrap;
-        /* pas de retour à la ligne */
         padding: 6px 12px;
-        margin: 0 0 0 0;
+        margin: 0;
         background: var(--c-header);
         color: var(--c-text-on-header);
-        border-radius: 6px 6px 0 0;
+        border-radius: 15px 15px 0 0;
         font-weight: 800;
         font-size: 1.2em;
     }
 
-    /* Évite que le parent centre/étire l'inline-block */
-    .table-container_d {
-        text-align: left;
+    /* ====== Table ====== */
+    .table-dictee_d {
+        width: auto;
+        min-width: max-content;
+        border-collapse: collapse;
+        table-layout: auto;
+        vertical-align: bottom;
+        width: max-content !important;
+        min-width: calc(var(--w-col-eleve) + var(--w-col-moy) + var(--w-col-abs) + (var(--obj-count)*var(--w-col-dictee))) !important;
     }
 
+    .table-dictee_d th,
+    .table-dictee_d td {
+        border: 1px solid #ddd;
+        padding: 6px;
+        text-align: center;
+        vertical-align: middle;
+        background-clip: padding-box;
+    }
 
-
-
-    /* ====== En-têtes hautes + rotation 90° (Absent + Objectifs) ====== */
+    /* En-têtes hautes + rotation 90° (Absent + Objectifs) */
     .table-dictee_d thead th {
         height: 200px;
         vertical-align: bottom;
         overflow: visible;
         padding: 0 4px 6px 4px;
-        background-clip: padding-box;
         font-size: 14px;
-
-        /* taille globale des titres */
     }
 
     .th-abs_t>span,
@@ -128,6 +118,29 @@
     }
 
     /* ====== Colonnes sticky Élève / Moyenne / Absent ====== */
+    .col-eleve-titre_d {
+        position: sticky;
+        left: 0;
+        z-index: var(--z-groupe-th);
+        width: var(--w-col-eleve);
+        min-width: var(--w-col-eleve);
+        max-width: var(--w-col-eleve);
+        background: var(--c-header);
+        color: var(--c-text-on-header);
+        font-size: 18px;
+        box-shadow: 2px 0 5px -2px rgba(0, 0, 0, .08);
+    }
+
+    .col-eleve_d {
+        position: sticky;
+        left: 0;
+        z-index: var(--z-groupe-td);
+        width: var(--w-col-eleve);
+        min-width: var(--w-col-eleve);
+        max-width: var(--w-col-eleve);
+        background: #fff;
+    }
+
     .col-moy-titre_sr {
         position: sticky;
         left: var(--w-col-eleve);
@@ -154,29 +167,23 @@
         white-space: nowrap;
     }
 
-    /* Absent — entête sticky (gauche) + au-dessus des objectifs */
     .col-abs-titre_sr {
         position: sticky;
         left: calc(var(--w-col-eleve) + var(--w-col-moy));
         z-index: calc(var(--z-groupe-th) + 3);
-        /* plus haut que les th objectifs */
         background: var(--c-header);
-        /* solide pour masquer dessous */
         color: var(--c-text-on-header);
         box-shadow: 2px 0 5px -2px rgba(0, 0, 0, .08);
         will-change: left;
     }
 
-    /* Absent — cellules du corps, même position gauche + z-index */
     .col-abs_sr {
         position: sticky;
         left: calc(var(--w-col-eleve) + var(--w-col-moy));
         z-index: calc(var(--z-groupe-td) + 3);
         background: #fbfbfb;
-        /* fond opaque */
         will-change: left;
     }
-
 
     .col-abs_sr input[type="checkbox"] {
         width: 16px;
@@ -185,7 +192,7 @@
         transform: translateY(2px);
     }
 
-    /* Objectifs = même gabarit que dictee */
+    /* Objectifs */
     .th-obj_sr {
         width: var(--w-col-dictee);
         min-width: var(--w-col-dictee);
@@ -217,20 +224,65 @@
         background: #bbb;
     }
 
-    /* Moyenne + disquette */
+    /* ====== Moyenne + pastille + disquette ====== */
     .moy-wrap_sr {
-        display: inline-flex;
+        display: flex;
         align-items: center;
+        justify-content: center;
         gap: 8px;
     }
 
-    .moy-note_sr {
-        min-width: 76px;
-        text-align: right;
-        font-variant-numeric: tabular-nums;
+    /* Pastille de moyenne (couleurs identiques à tes niveaux) */
+    .moy-pill {
         display: inline-block;
+        padding: 4px 10px;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 14px;
+        text-align: center;
+        min-width: 120px;
+        font-variant-numeric: tabular-nums;
+        color: #000;
     }
 
+    .pill-NA {
+        background-color: #ff000075;
+    }
+
+    .pill-PA\- {
+        background-color: #ff7d1aa6;
+    }
+
+    .pill-PA {
+        background-color: #ffe223;
+    }
+
+    .pill-PA\+ {
+        background-color: #d4f5b0;
+    }
+
+    .pill-A\- {
+        background-color: #a7e9b7;
+    }
+
+    .pill-A {
+        background-color: #5cc995;
+    }
+
+    .pill-A\+ {
+        background-color: #3dbcb9;
+    }
+
+    .pill-D {
+        background-color: #00d3f8;
+    }
+
+    .pill-empty {
+        background: #eee;
+        color: #666;
+    }
+
+    /* Bouton enregistrer (ligne) */
     .btn-save_sr {
         border: 1px solid var(--c-border);
         background: #f5f5f5;
@@ -246,115 +298,26 @@
     }
 
     .save-state_sr {
-        margin-left: 4px;
+        margin-left: 2px;
         font-size: 12px;
         color: #888;
     }
 
-    /* Sélecteurs NA/PA/A & absent */
-    .niv-select_sr {
-        width: 100%;
-        height: 26px;
-        font-size: 12px;
-    }
-
-
-
-    /* ====== MIN-WIDTH CALCULÉE du tableau ======
-   évite la “compression” quand il y a peu d’objectifs visibles */
-    .table-dictee_d {
-        width: max-content !important;
-        /* <<< clé pour éviter la coupe */
-        min-width: calc(var(--w-col-eleve) + var(--w-col-moy) + var(--w-col-abs) + (var(--obj-count) * var(--w-col-dictee))) !important;
-        /* pas de width:100% ici, sinon le scroll arrive trop tôt */
-    }
-
-    /* Légende */
-    #sr-legend {
-        margin: 8px 0 0 0;
-        font-size: 12px;
-        color: #444;
-    }
-
-    html,
-    body {
-        overflow-x: auto;
-        /* empêche un overflow-x:hidden global de couper la droite */
-    }
-
-    .col-eleve-titre_d,
-    .col-moy-titre_sr {
-        vertical-align: middle;
-        /* centre verticalement */
-        text-align: center;
-        /* centre horizontalement */
-        height: 100%;
-        /* occupe toute la hauteur dispo */
-    }
-
-
-    /* Centre VRAIMENT le texte de "Élèves" et "Moy." dans l'axe vertical et horizontal */
-    .table-dictee_d thead th.col-eleve-titre_d,
-    .table-dictee_d thead th.col-moy-titre_sr {
-        vertical-align: middle !important;
-        /* annule le bottom global */
-        height: 200px;
-        /* même hauteur que les autres */
-        padding: 0 8px;
-        /* padding identique */
-        box-sizing: border-box;
-
-
-    }
-
+    /* Inputs objectifs */
     .champ-note {
         width: 40px;
-        /* largeur du champ */
         height: 28px;
-        /* hauteur du champ */
         text-align: center;
-        /* texte centré */
         border: 1px solid #ccc;
         border-radius: 6px;
-        /* coins arrondis */
         font-size: 14px;
-        /* texte un peu plus petit */
         outline: none;
-        /* pas de contour bleu */
         padding: 2px;
         box-sizing: border-box;
+        background: #fff;
     }
 
-    /* Zébrure sur toutes les lignes du corps du tableau, sans impacter thead */
-    .table-dictee_d tbody tr:nth-child(odd) td {
-        background-color: #FFFFFF;
-    }
-
-    .table-dictee_d tbody tr:nth-child(even) td {
-        background-color: #F5F5F5;
-    }
-
-    /* Voile gris + inaction à partir de la 4e colonne quand absent */
-    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) {
-
-        position: relative;
-    }
-
-    /* Rendre tout inactif dans ces cellules (pas de clic, pas de focus) */
-    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) * {
-        pointer-events: none;
-    }
-
-    /* Aspect visuel des champs veillés */
-    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) input,
-    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) select,
-    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) textarea,
-    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) button {
-        opacity: .6;
-        cursor: not-allowed;
-    }
-
-    /* Palette des niveaux appliquée aux champs */
+    /* Couleurs de cellule selon niveau saisi */
     .champ-note.level-NA {
         background-color: #ff000075;
         color: #000;
@@ -395,24 +358,121 @@
         color: #000;
     }
 
-    /* Par défaut : fond blanc */
-    .champ-note {
-        background-color: #fff;
+    /* Zébrure corps (thead non impacté) */
+    .table-dictee_d tbody tr:nth-child(odd) td {
+        background-color: #FFFFFF;
+    }
+
+    .table-dictee_d tbody tr:nth-child(even) td {
+        background-color: #F5F5F5;
+    }
+
+    /* Absent : voile + inaction dès la 4e colonne */
+    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) {
+        position: relative;
+    }
+
+    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) * {
+        pointer-events: none;
+    }
+
+    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) input,
+    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) select,
+    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) textarea,
+    .table-dictee_d tbody tr.is-absent td:nth-child(n+4) button {
+        opacity: .6;
+        cursor: not-allowed;
+    }
+
+    /* Alignements en-têtes Élèves et Moy. vraiment centrés */
+    .col-eleve-titre_d,
+    .col-moy-titre_sr {
+        vertical-align: middle;
+        text-align: center;
+        height: 100%;
+    }
+
+    .table-dictee_d thead th.col-eleve-titre_d,
+    .table-dictee_d thead th.col-moy-titre_sr {
+        vertical-align: middle !important;
+        height: 200px;
+        padding: 0 8px;
+        box-sizing: border-box;
+    }
+
+    /* Global : autoriser le scroll horizontal si un reset aurait mis hidden */
+    html,
+    body {
+        overflow-x: auto;
+    }
+
+    .moy-wrap_sr {
+        position: relative;
+    }
+
+    .save-state_sr {
+        position: absolute;
+        right: 2px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 1.2em;
+        /* keeps a consistent hitbox */
+        text-align: center;
+        pointer-events: none;
+    }
+
+    /* Pastille compacte pour l'en-tête */
+    .moy-pill--small {
+        transform: scale(.9);
+        transform-origin: center;
+        min-width: 100px;
+        /* un peu plus étroite en tête */
+        font-size: 13px;
+        padding: 3px 8px;
+    }
+
+    /* Quand une ligne est absente, rendre les champs résultats fades */
+    .table-dictee_d tbody tr.is-absent .champ-note {
+        opacity: 0.35;
+        /* transparence */
+        pointer-events: none;
+        /* empêche la saisie */
+    }
+
+    /* Champs résultats fades quand absent */
+    .table-dictee_d tbody tr.is-absent .champ-note,
+    .champ-note.is-faded,
+    .champ-note[disabled] {
+        opacity: .0 !important;
+        background: #f3f4f6 !important;
+        /* gris très léger */
+        color: #666 !important;
+    }
+
+    /* Placeholder un peu atténué aussi */
+    .champ-note.is-faded::placeholder,
+    .champ-note[disabled]::placeholder {
+        color: #999 !important;
+    }
+
+    /* (Optionnel) curseur neutre sur champs désactivés */
+    .champ-note[disabled] {
+        cursor: not-allowed;
     }
 </style>
 
 <div class="page-dictees">
     <div class="dictees-scope">
-
         <form id="form-saisie-resultats" method="post" action="{{ url_for('main.saisir_resultats',
                          classe_id=classe.id,
                          evaluation_id=evaluation.id,
                          niveau=niveau) }}">
             {% if csrf_token is defined %}
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            {% endif %}
 
-            <!-- ACTIVE le “full-bleed” pour prendre toute la largeur du viewport -->
+            {% endif %}
+            <input type="hidden" id="evaluation-id" value="{{ evaluation.id or 0 }}">
+
             <div class="table-container_d full-bleed">
                 <div class="titre-niveau">
                     <span class="eval-title">{{ evaluation.titre or 'Évaluation' }}</span>
@@ -423,14 +483,19 @@
                     <thead>
                         <tr>
                             <th class="col-eleve-titre_d">Élèves</th>
-                            <th class="col-moy-titre_sr">Moy.</th>
+                            <th class="col-moy-titre_sr">
+                                Moy.
+                                <div style="margin-top:6px;">
+                                    <span id="global-moy-pill" class="moy-pill moy-pill--small pill-empty">—</span>
+                                </div>
+                            </th>
+
                             <th class="col-abs-titre_sr th-abs_t" title="Absent·e"><span>ABSENT</span></th>
                             {% for obj in objectifs %}
                             <th class="entete-dictee_d th-obj_sr" data-type="simple"><span>{{ obj.texte }}</span></th>
                             {% endfor %}
                         </tr>
                     </thead>
-
                     <tbody>
                         {% for e in eleves %}
                         {% set est_absent = e.id in absents %}
@@ -443,8 +508,10 @@
 
                             <td class="col-moy_sr">
                                 <div class="moy-wrap_sr">
-                                    <span class="moy-note_sr">—</span>
+                                    <!-- Pastille de moyenne (calculée en JS) -->
+                                    <span class="moy-pill pill-empty" aria-label="Moyenne">—</span>
 
+                                    <span class="save-state_sr" aria-live="polite"></span>
                                 </div>
                             </td>
 
@@ -455,9 +522,8 @@
                             {% for obj in objectifs %}
                             {% set v = resultats.get(e.id, {}).get(obj.id) %}
                             <td class="cell-dictee_d">
-                                <input type="text" class="champ-note" maxlength="2" placeholder="">
-
-
+                                <input type="text" class="champ-note" name="resultat_{{ e.id }}_{{ obj.id }}"
+                                    maxlength="3" value="{{ v or '' }}" placeholder="">
                             </td>
                             {% endfor %}
                         </tr>
@@ -466,10 +532,7 @@
                 </table>
             </div>
 
-            <p id="sr-legend">
-                Échelle : NA=0, PA=2, A=4 — moyenne ramenée sur 20. La disquette 💾 enregistre uniquement la ligne
-                affichée.
-            </p>
+
 
             <div style="margin:10px 0 0 0;">
                 <button type="submit" class="btn btn-primary">Tout enregistrer</button>
@@ -480,7 +543,34 @@
 
 <script>
     (() => {
-        /* 1) Pose --obj-count pour la min-width du tableau */
+        /* ========== AJOUT: utilitaires de stockage session pour restaurer les effacements ========== */
+        // const EVAL_ID = {{ evaluation.id|int if evaluation and evaluation.id is not none else 0 }}; // ❌ à supprimer
+        const EVAL_ID = Number(document.getElementById('evaluation-id')?.value || 0); // ✅
+
+        function keyFor(nameAttr) {
+            // name = "resultat_<eleveId>_<objId>"
+            const m = String(nameAttr || '').match(/^resultat_(\d+)_(\d+)$/);
+            if (!m) return null;
+            const [_, eleveId, objId] = m;
+            return `sr:${EVAL_ID}:${eleveId}:${objId}`;
+        }
+        function ssGet(nameAttr) {
+            const k = keyFor(nameAttr); if (!k) return null;
+            return sessionStorage.getItem(k); // peut être "" (effacé) ou string
+        }
+        function ssSet(nameAttr, value) {
+            const k = keyFor(nameAttr); if (!k) return;
+            // On stocke même la chaîne vide pour marquer l'effacement
+            sessionStorage.setItem(k, value ?? '');
+        }
+        function ssClearRow(tr) {
+            tr.querySelectorAll('.champ-note[name^="resultat_"]').forEach(el => {
+                ssSet(el.name, '');
+            });
+        }
+        /* ========================================================================================== */
+
+        /* 1) Pose --obj-count pour min-width du tableau */
         const ths = document.querySelectorAll('.table-dictee_d thead th');
         const objCount = Math.max(0, ths.length - 3); // total - (élève, moy, absent)
         document.documentElement.style.setProperty('--obj-count', objCount);
@@ -488,85 +578,137 @@
         const form = document.getElementById('form-saisie-resultats');
         if (!form) return;
 
-        /* 2) Normalisation & mapping */
+        /* 2) Normalisation & mapping (objectifs) */
         const VALID = new Set(['NA', 'PA-', 'PA', 'PA+', 'A-', 'A', 'A+', 'D']);
         const NOTE_MAP = new Map([
-            ['NA', 0],
-            ['PA-', 1],
-            ['PA', 2],
-            ['PA+', 3],
-            ['A-', 3.5],
-            ['A', 4],
-            ['A+', 4],
-            ['D', 4],
+            ['NA', 0], ['PA-', 1], ['PA', 2], ['PA+', 3], ['A-', 3.5], ['A', 4], ['A+', 4], ['D', 4],
         ]);
 
-        /** Normalise une saisie libre en code attendu ou "" si invalide */
         function normalizeNote(raw) {
             if (!raw) return "";
-            let v = String(raw).toUpperCase().replace(/\s+/g, ""); // enlève espaces
-            // Alias rapides
+            let v = String(raw).toUpperCase().replace(/\s+/g, "");
             if (v === 'N') v = 'NA';
             if (v === 'P') v = 'PA';
-            if (v === 'P+' || v === 'P-') v = 'PA' + v[1]; // P+ -> PA+, P- -> PA-
-            if (v === 'D') v = 'D';
-            // Tolère "A +", "PA -" déjà gérés par trim ci-dessus
-            // Garde uniquement valeurs prévues
+            if (v === 'P+' || v === 'P-') v = 'PA' + v[1];     // P+ -> PA+ , P- -> PA-
             return VALID.has(v) ? v : "";
         }
 
-        /** Coloration d'un input selon sa valeur (sans modifier la valeur) */
+        /* Pastille niveau depuis une note /20 */
+        function levelFromScore20(x) {
+            if (Number.isNaN(x)) return "";
+            if (x === 20) return 'D';
+            if (x > 16 && x < 20) return 'A+';
+            if (x > 14 && x <= 16) return 'A';
+            if (x >= 12 && x <= 14) return 'PA+';
+            if (x >= 8 && x < 12) return 'PA';
+            if (x >= 6 && x < 8) return 'PA-';
+            if (x < 6) return 'NA';
+            return '';
+        }
+
+        /* Coloration d’un input selon sa valeur */
         function paintByValue(input) {
             const norm = normalizeNote(input.value);
-            input.classList.remove(
-                'level-NA', 'level-PA-', 'level-PA', 'level-PA+',
-                'level-A-', 'level-A', 'level-A+', 'level-D'
-            );
+            input.classList.remove('level-NA', 'level-PA-', 'level-PA', 'level-PA+', 'level-A-', 'level-A', 'level-A+', 'level-D');
             if (norm) input.classList.add('level-' + norm);
         }
 
-        /* 3) Calcul de moyenne par ligne */
+        /* 3) Calcul de moyenne par ligne + pastille colorée */
         function calcRow(tr) {
-            const fields = tr.querySelectorAll('.champ-note, .niv-select_sr');
+            const fields = tr.querySelectorAll('.champ-note');
             let sum = 0, n = 0;
             fields.forEach(f => {
                 const v = normalizeNote((f.value || '').trim());
                 if (v) { sum += NOTE_MAP.get(v); n++; }
             });
-            const out = tr.querySelector('.moy-note_sr');
-            if (!out) return;
-            out.textContent = n === 0 ? '—' : ((sum / n) / 4 * 20).toFixed(1) + ' / 20';
+            const pill = tr.querySelector('.moy-pill');
+            if (!pill) return;
+
+            if (n === 0) {
+                pill.textContent = '—';
+                pill.className = 'moy-pill pill-empty';
+                pill.removeAttribute('data-level');
+                return;
+            }
+            const score20 = ((sum / n) / 4) * 20;
+            const lvl = levelFromScore20(score20);
+
+            pill.textContent = score20.toFixed(1) + ' / 20 – ' + lvl;
+            pill.className = 'moy-pill ' + (lvl ? ('pill-' + lvl) : 'pill-empty');
+            pill.setAttribute('data-level', lvl || '');
+            calcGlobalAverage();
+
         }
+
+        /* Calcule et colorise la moyenne générale de classe (en-tête) */
+        function calcGlobalAverage() {
+            const pills = document.querySelectorAll('tbody .moy-pill');
+            let sum = 0, n = 0;
+
+            pills.forEach(p => {
+                const m = p.textContent.match(/([\d.]+)\s*\/\s*20/);
+                if (m) {
+                    const v = parseFloat(m[1]);
+                    if (!Number.isNaN(v)) { sum += v; n++; }
+                }
+            });
+
+            const globalPill = document.getElementById('global-moy-pill');
+            if (!globalPill) return;
+
+            if (n === 0) {
+                globalPill.textContent = '—';
+                globalPill.className = 'moy-pill moy-pill--small pill-empty';
+                globalPill.removeAttribute('data-level');
+                return;
+            }
+
+            const moy = sum / n;
+            const lvl = levelFromScore20(moy);
+
+            globalPill.textContent = moy.toFixed(1) + ' / 20 – ' + lvl;
+            globalPill.className = 'moy-pill moy-pill--small ' + (lvl ? ('pill-' + lvl) : 'pill-empty');
+            globalPill.setAttribute('data-level', lvl || '');
+        }
+
+        /* ====== RESTAURATION depuis sessionStorage AVANT tout calcul ====== */
+        document.querySelectorAll('.champ-note[name^="resultat_"]').forEach(input => {
+            const stored = ssGet(input.name);
+            if (stored !== null) {
+                // Important : on ré-applique même si "" pour respecter l’effacement
+                input.value = stored;
+            }
+        });
 
         /* 4) Init : couleur + moyenne pour chaque ligne */
         document.querySelectorAll('.champ-note').forEach(paintByValue);
         document.querySelectorAll('tr[data-eleve-id]').forEach(calcRow);
+        calcGlobalAverage();
 
-        /* 5) Live: recalcule à chaque frappe + recoloration */
+        /* 5) Live: recalcule à chaque frappe + recoloration + enregistre dans sessionStorage */
         document.addEventListener('input', (e) => {
             if (e.target.matches('.champ-note')) {
-                paintByValue(e.target); // recolore selon la valeur actuelle
-                const tr = e.target.closest('tr[data-eleve-id]');
-                if (tr) calcRow(tr);
-            }
-            if (e.target.matches('.niv-select_sr')) {
+                // stocke la valeur tapée (même vide) pour qu’un F5 la restaure
+                ssSet(e.target.name, e.target.value);
+                paintByValue(e.target);
                 const tr = e.target.closest('tr[data-eleve-id]');
                 if (tr) calcRow(tr);
             }
         });
 
-        /* 6) Blur: normalise (n->NA, p->PA, etc.), recolore, recalcule */
+        /* 6) Blur: normalise + recolore + recalcule + met à jour sessionStorage */
         document.querySelectorAll('.champ-note').forEach(input => {
             input.addEventListener('blur', () => {
-                const norm = normalizeNote(input.value);
-                input.value = norm;      // impose la valeur normalisée
-                paintByValue(input);     // remet la bonne couleur
+                input.value = normalizeNote(input.value);
+                // on mémorise la valeur normalisée (peut être "")
+                ssSet(input.name, input.value);
+                paintByValue(input);
                 const tr = input.closest('tr[data-eleve-id]');
-                if (tr) calcRow(tr);     // recalcule la moyenne
+                if (tr) calcRow(tr);
             });
         });
 
-        /* 7) Gestion Absent: vide à partir de la 4e col (CSS bloque l'édition), recalcule */
+        /* 7) Gestion Absent: vide + recalcule + MISE À JOUR sessionStorage pour la ligne */
         document.addEventListener('change', (e) => {
             if (!e.target.matches('.col-abs_sr input[type="checkbox"]')) return;
             const tr = e.target.closest('tr[data-eleve-id]');
@@ -574,19 +716,24 @@
 
             if (e.target.checked) {
                 tr.classList.add('is-absent');
-                // vide tous les champs de note (text + select)
-                tr.querySelectorAll('td:nth-child(n+4) .champ-note, td:nth-child(n+4) .niv-select_sr')
-                    .forEach(el => { el.value = ""; if (el.classList) paintByValue(el); });
+                tr.querySelectorAll('td:nth-child(n+4) .champ-note').forEach(el => {
+                    el.value = '';
+                    ssSet(el.name, '');     // <<< mémorise l’effacement
+                    paintByValue(el);
+                });
             } else {
                 tr.classList.remove('is-absent');
             }
             calcRow(tr);
         });
 
-        /* 8) Sauvegarde par ligne (AJAX) */
+        /* 8) Sauvegarde par ligne (AJAX) — envoie aussi __clear quand vide */
+        let __pendingSaves = 0;
+
         async function saveRow(tr) {
             const saver = tr.querySelector('.save-state_sr');
             if (saver) saver.textContent = '…';
+            __pendingSaves++;
 
             const fd = new FormData();
             const csrf = form.querySelector('input[name="csrf_token"]');
@@ -598,20 +745,23 @@
             const chk = tr.querySelector('.col-abs_sr input[type="checkbox"]');
             if (chk && chk.checked) fd.append('absent_' + eleveId, 'on');
 
-            // on envoie ce qui a un name commençant par "resultat_"
-            tr.querySelectorAll('.niv-select_sr[name^="resultat_"], .champ-note[name^="resultat_"]').forEach(el => {
-                // normalise avant d'envoyer
-                const val = el.classList.contains('champ-note') ? normalizeNote(el.value) : el.value;
+            tr.querySelectorAll('.champ-note[name^="resultat_"]').forEach(el => {
+                const val = normalizeNote(el.value);
                 fd.append(el.name, val || '');
+                if (!val) fd.append(el.name + '__clear', '1'); // flag d’effacement
+                // On synchronise le stockage avec la valeur envoyée
+                ssSet(el.name, val || '');
             });
 
             try {
                 const resp = await fetch(form.action, { method: 'POST', body: fd });
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                if (saver) { saver.textContent = '✔︎'; setTimeout(() => { saver.textContent = ''; }, 1200); }
+                if (saver) { saver.textContent = '💾'; setTimeout(() => { saver.textContent = ''; }, 1200); }
             } catch (err) {
                 if (saver) { saver.textContent = '⚠︎'; setTimeout(() => { saver.textContent = ''; }, 2000); }
                 console.error(err);
+            } finally {
+                __pendingSaves--;
             }
         }
 
@@ -621,116 +771,173 @@
             const tr = btn.closest('tr[data-eleve-id]');
             if (tr) saveRow(tr);
         });
+
+        // Alerte si on quitte pendant une sauvegarde en vol (évite perte silencieuse)
+        window.addEventListener('beforeunload', (e) => {
+            if (__pendingSaves > 0) { e.preventDefault(); e.returnValue = ''; }
+        });
+
+        /* Expose pour l’autosave patch */
+        window.normalizeNote = normalizeNote;
+        window.paintByValue = paintByValue;
+        window.calcRow = calcRow;
+        window.saveRow = saveRow;
     })();
 </script>
+
 <script>
-    /* ===== AUTOSAVE PATCH — AUCUNE MODIF DE MISE EN PAGE ===== */
+    /* ===== AUTOSAVE PATCH — inchangé sauf qu’on garde la logique existante ===== */
     (() => {
         const form = document.getElementById('form-saisie-resultats');
         if (!form) return;
 
-        // On réutilise tes fonctions si elles existent, sinon on no-op.
         const has = fn => typeof window[fn] === 'function';
         const norm = has('normalizeNote') ? window.normalizeNote : (v) => v;
         const paint = has('paintByValue') ? window.paintByValue : () => { };
         const calc = has('calcRow') ? window.calcRow : () => { };
         const doSave = has('saveRow') ? window.saveRow : () => { };
 
-        // Debounce par ligne (clé = data-eleve-id)
         const DEBOUNCE_MS = 300;
         const timers = new Map();
         const queueSave = (tr) => {
             if (!tr) return;
             const id = tr.getAttribute('data-eleve-id') || Math.random().toString(36).slice(2);
             clearTimeout(timers.get(id));
-            timers.set(id, setTimeout(() => {
-                doSave(tr);
-            }, DEBOUNCE_MS));
+            timers.set(id, setTimeout(() => { doSave(tr); }, DEBOUNCE_MS));
         };
 
-        // 1) À chaque frappe dans un champ de note -> recolore, recalcule, autosave (debounced)
         document.addEventListener('input', (e) => {
             if (!e.target.closest('#form-saisie-resultats')) return;
+            if (!(e.target.classList && e.target.classList.contains('champ-note'))) return;
 
-            if (e.target.classList && e.target.classList.contains('champ-note')) {
-                // recoloration si dispo
-                paint(e.target);
-                // recalcule la moyenne de la ligne
-                const tr = e.target.closest('tr[data-eleve-id]');
-                if (tr) {
-                    calc(tr);
-                    queueSave(tr);
-                }
-            }
-            // Si tu as des <select> de niveaux .niv-select_sr on gère pareil
-            if (e.target.classList && e.target.classList.contains('niv-select_sr')) {
-                const tr = e.target.closest('tr[data-eleve-id]');
-                if (tr) {
-                    calc(tr);
-                    queueSave(tr);
-                }
+            const tr = e.target.closest('tr[data-eleve-id]');
+            if (!tr) return;
+
+            paint(e.target);
+            calc(tr);
+
+            const raw = (e.target.value || '').trim();
+            if (raw === '') {
+                doSave(tr);            // pas de debounce si effacé
+            } else {
+                queueSave(tr);         // sinon: debounce normal
             }
         }, true);
 
-        // 2) Sur blur : normalise (si dispo), recolore, recalcule, autosave
         document.addEventListener('blur', (e) => {
             if (!e.target.closest || !e.target.closest('#form-saisie-resultats')) return;
-
             if (e.target.classList && e.target.classList.contains('champ-note')) {
-                if (has('normalizeNote')) {
-                    e.target.value = norm(e.target.value);
-                }
+                if (has('normalizeNote')) e.target.value = norm(e.target.value);
                 paint(e.target);
                 const tr = e.target.closest('tr[data-eleve-id]');
-                if (tr) {
-                    calc(tr);
-                    queueSave(tr);
-                }
+                if (tr) { calc(tr); queueSave(tr); }
             }
         }, true);
 
-        // 3) Coche "Absent" : vide les champs objectifs de la ligne (sans toucher au layout) + autosave
         document.addEventListener('change', (e) => {
             if (!e.target.closest || !e.target.closest('#form-saisie-resultats')) return;
-
-            const isAbsCheckbox = e.target.matches('.col-abs_sr input[type="checkbox"]');
-            if (!isAbsCheckbox) return;
+            const isAbs = e.target.matches('.col-abs_sr input[type="checkbox"]');
+            if (!isAbs) return;
 
             const tr = e.target.closest('tr[data-eleve-id]');
             if (!tr) return;
 
             if (e.target.checked) {
                 tr.classList.add('is-absent');
-                // Vide les champs objectifs de la ligne (texte + select), recolore au besoin
-                tr.querySelectorAll('td:nth-child(n+4) .champ-note, td:nth-child(n+4) .niv-select_sr')
-                    .forEach(el => {
-                        el.value = '';
-                        if (el.classList && el.classList.contains('champ-note')) paint(el);
-                    });
+                tr.querySelectorAll('td:nth-child(n+4) .champ-note').forEach(el => {
+                    el.value = ''; if (el.classList) paint(el);
+                });
             } else {
                 tr.classList.remove('is-absent');
             }
-            calc(tr);
-            queueSave(tr);
+            calc(tr); queueSave(tr);
         }, true);
 
-        // 4) Option : empêcher "Enter" de soumettre le formulaire par accident lors de la saisie
         form.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('champ-note')) {
                 e.preventDefault();
-                // on déclenche quand même un save debounced de la ligne
                 const tr = e.target.closest('tr[data-eleve-id]');
                 if (tr) {
                     if (has('normalizeNote')) e.target.value = norm(e.target.value);
-                    paint(e.target);
-                    calc(tr);
-                    queueSave(tr);
+                    paint(e.target); calc(tr); queueSave(tr);
                 }
             }
         });
     })();
+
+    // === Navigation clavier avec saut des lignes "absentes" ===
+    document.addEventListener('keydown', function (e) {
+        const key = e.key;
+        if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'].includes(key)) return;
+
+        const active = document.activeElement;
+        if (!active || !active.classList.contains('champ-note')) return;
+
+        const td = active.closest('td');
+        const tr = active.closest('tr');
+        const table = tr.closest('table');
+        if (!td || !tr || !table) return;
+
+        const tbody = table.tBodies[0];
+        const rows = Array.from(tbody.rows);
+        const rIndex = rows.indexOf(tr);
+        const cIndex = td.cellIndex;
+
+        const nextRowIndex = (start, step) => {
+            let i = start + step;
+            while (i >= 0 && i < rows.length) {
+                if (!rows[i].classList.contains('is-absent')) return i;
+                i += step;
+            }
+            return -1;
+        };
+
+        const nextColIndex = (row, startCol, step) => {
+            let j = startCol + step;
+            while (j >= 0 && j < row.cells.length) {
+                if (row.cells[j].querySelector('.champ-note')) return j;
+                j += step;
+            }
+            return -1;
+        };
+
+        let targetInput = null;
+
+        if (key === 'ArrowUp') {
+            const ni = nextRowIndex(rIndex, -1);
+            if (ni !== -1) targetInput = rows[ni].cells[cIndex]?.querySelector('.champ-note');
+        } else if (key === 'ArrowDown' || key === 'Enter') {
+            const ni = nextRowIndex(rIndex, 1);
+            if (ni !== -1) targetInput = rows[ni].cells[cIndex]?.querySelector('.champ-note');
+        } else if (key === 'ArrowLeft') {
+            const nj = nextColIndex(rows[rIndex], cIndex, -1);
+            if (nj !== -1) targetInput = rows[rIndex].cells[nj]?.querySelector('.champ-note');
+        } else if (key === 'ArrowRight') {
+            const nj = nextColIndex(rows[rIndex], cIndex, 1);
+            if (nj !== -1) targetInput = rows[rIndex].cells[nj]?.querySelector('.champ-note');
+        }
+
+        if (targetInput) {
+            e.preventDefault();
+            const targetRow = targetInput.closest('tr');
+            if (targetRow.classList.contains('is-absent')) {
+                if (key === 'ArrowDown' || key === 'Enter') {
+                    const ni = nextRowIndex(rows.indexOf(targetRow), 1);
+                    if (ni !== -1) targetInput = rows[ni].cells[cIndex]?.querySelector('.champ-note');
+                    else return;
+                } else if (key === 'ArrowUp') {
+                    const ni = nextRowIndex(rows.indexOf(targetRow), -1);
+                    if (ni !== -1) targetInput = rows[ni].cells[cIndex]?.querySelector('.champ-note');
+                    else return;
+                } else {
+                    return;
+                }
+            }
+            targetInput.focus();
+            targetInput.select();
+            targetInput.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+    });
+
 </script>
-
-
-
 {% endif %}

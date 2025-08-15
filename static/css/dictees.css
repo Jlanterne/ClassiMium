@@ -118,10 +118,19 @@
     overflow-x: auto;
     /* scroll horizontal */
     overflow-y: visible;
-    padding-top: calc(var(--h-bandeau) + 8px);
+
     /* place pour le bandeau */
     padding-right: var(--scroll-tail);
     /* espace à droite pour “+” */
+
+
+    padding-top: 2px;
+    padding-bottom: 0px;
+
+    top: 0px;
+    transition: none;
+    cursor: move;
+
 }
 
 table.table-dictee_d {

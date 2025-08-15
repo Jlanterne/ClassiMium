@@ -1,29 +1,477 @@
-﻿:root{
-  --pc-bg:#f7f7fb; --pc-border:#d9d9e3; --pc-text:#222; --pc-accent:#3b82f6;
-  --niv-CP:#8dd3ff; --niv-CE1:#ffd27f; --niv-CE2:#9be7a2; --niv-CM1:#f6a6d8; --niv-CM2:#c5b4f0;
-  --moy-NA:#c62828; --moy-PA:#ef6c00; --moy-A:#2e7d32; --moy-Ap:#1b5e20; --moy-D:#1b5e20;
+﻿/* =========================
+   PLAN DE CLASSE — CSS FULL
+   3 colonnes : gauche (élèves) | centre (plan) | droite (meubles)
+   Objectif : PAS de scroll horizontal global + zones mortes fixées
+   ========================= */
+
+:root {
+  --bg: #f6f7fb;
+  --panel: #ffffff;
+  --ink: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --shadow: 0 6px 14px rgba(0, 0, 0, .08);
+  --accent: #2563eb;
+
+  --side-w: 280px;
+  --right-w: 300px;
+
+  /* contours par niveau (exemples) */
+  --niv-6: #60a5fa;
+  --niv-5: #34d399;
+  --niv-4: #f59e0b;
+  --niv-3: #f472b6;
+  --niv-2: #a78bfa;
+  --niv-1: #f97316;
+  --niv-t: #22d3ee;
 }
-.pc_toolbar{display:flex;justify-content:space-between;gap:12px;padding:10px 12px;background:#fff;border:1px solid var(--pc-border);border-radius:10px;margin-bottom:12px;}
-.pc_toolbar .pc_left,.pc_toolbar .pc_right{display:flex;gap:8px;align-items:center;}
-.pc_toolbar .btn,.pc_toolbar button,.pc_toolbar select{padding:6px 10px;border:1px solid var(--pc-border);background:#fff;border-radius:8px;cursor:pointer;text-decoration:none;color:inherit;}
-.pc_layout{display:grid;grid-template-columns:260px 1fr;gap:12px;}
-.pc_side{background:#fff;border:1px solid var(--pc-border);border-radius:10px;padding:8px;overflow:auto;max-height:72vh;}
-.pc_eleve_list{display:grid;grid-template-columns:1fr;gap:8px;}
-.pc_stage_wrap{background:var(--pc-bg);border:1px solid var(--pc-border);border-radius:10px;padding:10px;height:72vh;overflow:auto;position:relative;}
-.pc_stage{position:relative;background:repeating-linear-gradient(0deg,#fff,#fff 31px,#f0f0f7 31px,#f0f0f7 32px),repeating-linear-gradient(90deg,#fff,#fff 31px,#f0f0f7 31px,#f0f0f7 32px);width:960px;height:640px;touch-action:none;transform-origin:0 0;}
-.pc_card{position:absolute;width:96px;height:96px;border-radius:12px;overflow:hidden;background:#fff;border:3px solid var(--pc-border);box-shadow:0 2px 8px rgba(0,0,0,.08);user-select:none;touch-action:none;cursor:grab;}
-.pc_card:active{cursor:grabbing;}
-.pc_card img{width:100%;height:100%;object-fit:cover;display:block;}
-.pc_card .badge{position:absolute;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#fff;border:2px solid #000;font-size:12px;font-weight:700;}
-.pc_card .badge.sex{top:4px;left:4px;}
-.pc_card .badge.moy{top:4px;right:4px;border-color:transparent;color:#fff;}
-.pc_card[data-sexe="MASCULIN"] .badge.sex{border-color:#1e88e5;color:#1e88e5;}
-.pc_card[data-sexe="FEMININ"] .badge.sex{border-color:#d81b60;color:#d81b60;}
-.pc_card[data-niveau="CP"]{border-color:var(--niv-CP);} .pc_card[data-niveau="CE1"]{border-color:var(--niv-CE1);} .pc_card[data-niveau="CE2"]{border-color:var(--niv-CE2);} .pc_card[data-niveau="CM1"]{border-color:var(--niv-CM1);} .pc_card[data-niveau="CM2"]{border-color:var(--niv-CM2);}
-.pc_card .badge.moy.mNA{background:var(--moy-NA);} .pc_card .badge.moy.mPA{background:var(--moy-PA);} .pc_card .badge.moy.mA{background:var(--moy-A);} .pc_card .badge.moy.mAp{background:var(--moy-Ap);} .pc_card .badge.moy.mD{background:var(--moy-D);}
-.pc_furn{position:absolute;background:#e9eef9;border:2px dashed #7b8bb9;border-radius:8px;min-width:32px;min-height:32px;box-shadow:inset 0 0 0 2px rgba(255,255,255,.7);}
-.pc_furn .label{position:absolute;left:6px;top:4px;font:12px/1.2 sans-serif;color:#344;}
-.pc_furn .resize{position:absolute;width:12px;height:12px;right:-6px;bottom:-6px;background:#3b82f6;border:2px solid #fff;border-radius:50%;cursor:nwse-resize;}
-.pc_eleve_item{display:flex;gap:8px;align-items:center;border:1px solid var(--pc-border);border-radius:10px;padding:6px;background:#fff;cursor:grab;}
-.pc_eleve_item img{width:32px;height:32px;border-radius:6px;object-fit:cover;}
-.pc_eleve_item .name{font-size:14px;}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Arial;
+  overflow-x: hidden;
+  /* pas de scroll horizontal global */
+}
+
+/* ===== Toolbar ===== */
+.pc_toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.pc_toolbar .pc_left,
+.pc_toolbar .pc_right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pc_lbl {
+  color: var(--muted);
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* ===== Layout 3 colonnes ===== */
+.pc_layout {
+  display: grid;
+  grid-template-columns: var(--side-w) 1fr var(--right-w);
+  gap: 16px;
+  padding: 16px;
+}
+
+/* Panneaux latéraux */
+.pc_side {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 10px;
+  position: sticky;
+  top: calc(16px + 52px);
+  max-height: calc(100vh - 84px);
+  overflow: auto;
+}
+
+.pc_head {
+  margin: 0 0 8px;
+  font-weight: 700;
+}
+
+/* ===== Liste élèves ===== */
+.pc_eleve_list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.pc_eleve_item {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: #fff;
+  cursor: grab;
+}
+
+.pc_eleve_item img {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.pc_eleve_item .name {
+  font-weight: 600;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== Zone centrale : stage ===== */
+.pc_stage_wrap {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 10px;
+  display: grid;
+  place-items: center;
+  min-height: 60vh;
+  overflow: auto;
+}
+
+.pc_stage {
+  position: relative;
+  /* IMPORTANT: dimensions JS = surface interne → pas de zones mortes dues aux bordures */
+  box-sizing: content-box;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  transform: none !important;
+  /* pas de zoom CSS */
+}
+
+/* Grille dessinée par JS via background-size; rien à faire ici */
+
+/* ===== Élèves sur la scène ===== */
+.pc_card {
+  position: absolute;
+  width: 96px;
+  height: 96px;
+  border-radius: 14px;
+  background: #fff;
+  border: 2px solid #cbd5e1;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .10);
+  user-select: none;
+  cursor: grab;
+}
+
+.pc_card:active {
+  cursor: grabbing;
+}
+
+/* Contours par niveau (exemples) */
+.pc_card[data-niveau*="6"] {
+  border-color: var(--niv-6);
+}
+
+.pc_card[data-niveau*="5"] {
+  border-color: var(--niv-5);
+}
+
+.pc_card[data-niveau*="4"] {
+  border-color: var(--niv-4);
+}
+
+.pc_card[data-niveau*="3"] {
+  border-color: var(--niv-3);
+}
+
+.pc_card[data-niveau*="2"] {
+  border-color: var(--niv-2);
+}
+
+.pc_card[data-niveau*="1"] {
+  border-color: var(--niv-1);
+}
+
+.pc_card[data-niveau*="T"] {
+  border-color: var(--niv-t);
+}
+
+.pc_card_in {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  transition: transform .12s ease-out;
+}
+
+/* photo */
+.pc_card img {
+  width: 74px;
+  height: 74px;
+  object-fit: cover;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .06);
+}
+
+/* badges */
+.pc_card .badge {
+  position: absolute;
+  top: 6px;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .15);
+}
+
+.pc_card .badge.sex {
+  left: 6px;
+  background: #64748b;
+}
+
+.pc_card .badge.moy {
+  right: 6px;
+}
+
+.pc_card .badge.moy.mAp {
+  background: #16a34a;
+}
+
+.pc_card .badge.moy.mA {
+  background: #22c55e;
+}
+
+.pc_card .badge.moy.mPA {
+  background: #f59e0b;
+}
+
+.pc_card .badge.moy.mNA {
+  background: #ef4444;
+}
+
+/* pastille prénom À L’INTÉRIEUR (ne dépasse pas) */
+.pc_name_in {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  max-width: calc(100% - 12px);
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: rgba(17, 24, 39, .85);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* boutons (suppr / rotation) */
+.pc_delete_btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  background: rgba(15, 23, 42, .9);
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  transition: opacity .12s, transform .12s;
+}
+
+.pc_card:hover .pc_delete_btn,
+.pc_furn:hover .pc_delete_btn {
+  opacity: 1;
+}
+
+.pc_delete_btn:hover {
+  transform: scale(1.06);
+}
+
+/* ===== Meubles ===== */
+.pc_furn {
+  position: absolute;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .08);
+  user-select: none;
+  cursor: grab;
+  transform-origin: center center;
+}
+
+.pc_furn:active {
+  cursor: grabbing;
+}
+
+/* label au survol uniquement */
+.pc_furn .label {
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  transform: translateX(-50%);
+  font-weight: 700;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #0f172a;
+  background: rgba(255, 255, 255, .85);
+  border: 1px solid rgba(0, 0, 0, .08);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s ease-out;
+}
+
+.pc_furn:hover .label {
+  opacity: 1;
+}
+
+/* 4 poignées de resize (coins) */
+.pc_furn .rz {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid #94a3b8;
+  background: #fff;
+  opacity: .95;
+}
+
+.pc_furn .rz.nw {
+  left: 2px;
+  top: 2px;
+  cursor: nwse-resize;
+}
+
+.pc_furn .rz.ne {
+  right: 2px;
+  top: 2px;
+  cursor: nesw-resize;
+}
+
+.pc_furn .rz.se {
+  right: 2px;
+  bottom: 2px;
+  cursor: nwse-resize;
+}
+
+.pc_furn .rz.sw {
+  left: 2px;
+  bottom: 2px;
+  cursor: nesw-resize;
+}
+
+/* types visuels (raccourcis) */
+.pc_furn.type-table_round {
+  border-radius: 9999px;
+}
+
+/* ===== Palette meubles ===== */
+.pc_furn_palette {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.pc_furn_tpl {
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: #fff;
+  cursor: grab;
+}
+
+.pc_furn_tpl .thumb {
+  width: 56px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+}
+
+.pc_furn_tpl .thumb.round {
+  border-radius: 999px;
+}
+
+.pc_furn_tpl .info .name {
+  font-weight: 700;
+}
+
+.pc_furn_tpl .info .dims {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pc_btn_add {
+  margin-top: 10px;
+  width: 100%;
+  border: 1px solid var(--border);
+  background: #f5f8ff;
+  color: #2c3a57;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+/* Anim “shake” collision */
+@keyframes pc_shake_key {
+  0% {
+    transform: translateX(0)
+  }
+
+  25% {
+    transform: translateX(-3px)
+  }
+
+  50% {
+    transform: translateX(3px)
+  }
+
+  75% {
+    transform: translateX(-2px)
+  }
+
+  100% {
+    transform: translateX(0)
+  }
+}
+
+.pc_shake {
+  animation: pc_shake_key .25s linear;
+}
+
+/* Empêche l'étirement de la scène au re-render */
+.pc_stage_wrap {
+  position: sticky;
+  top: calc(16px + 52px);
+  /* même ancrage que .pc_side */
+  max-height: calc(100vh - 84px);
+  /* 16px padding haut + ~52px toolbar + 16px padding bas */
+  overflow: auto;
+  /* déjà présent, on confirme */
+}

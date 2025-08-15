@@ -5,23 +5,16 @@ from io import BytesIO
 from . import seating_bp
 from .mview import refresh_moyennes_if_needed
 
-# ==== Connexion DB simple (adapte si tu as déjà un util partagé) ====
-# ==== Connexion DB (reprend la config de l'app) ====
-# ==== Connexion DB (lit d'abord SQLALCHEMY_DATABASE_URI / DATABASE_URL, sinon PG*) ====
-# ==== Connexion DB robuste (lit .env, URI ou variables PG*, sans forcer de password) ====
+# ===== Connexion DB =====
 def db_conn():
     import os
     import psycopg2
-    from flask import current_app
     from dotenv import load_dotenv, find_dotenv
-
-    # Assure que .env est chargé (au cas où)
     try:
         load_dotenv(find_dotenv(), override=False)
     except Exception:
         pass
 
-    # 1) Chaîne de connexion complète (préférée)
     dsn = (
         current_app.config.get("SQLALCHEMY_DATABASE_URI")
         or current_app.config.get("DATABASE_URL")
@@ -29,54 +22,47 @@ def db_conn():
         or os.getenv("DATABASE_URL")
     )
     if dsn:
-        # Remplace l’URI par des paramètres séparés (évite les soucis d’encodage)
         if dsn.startswith("postgres://"):
             dsn = dsn.replace("postgres://", "postgresql://", 1)
-
         from urllib.parse import urlparse, unquote
         u = urlparse(dsn)
-
         params = {
             "host": u.hostname or "localhost",
             "port": u.port or 5432,
             "dbname": (u.path[1:] if u.path else None) or os.getenv("PGDATABASE", "postgres"),
         }
-        if u.username:
-            params["user"] = unquote(u.username)
-        if u.password:
-            params["password"] = unquote(u.password)
-            
+        if u.username: params["user"] = unquote(u.username)
+        if u.password: params["password"] = unquote(u.password)
         params["options"] = "-c lc_messages=C -c client_encoding=UTF8"
-
-
         return psycopg2.connect(**params)
 
-
-    # 2) Variables séparées (fallback) — ne PAS passer 'password' si absent (pgpass)
     host = current_app.config.get("PGHOST") or os.getenv("PGHOST", "localhost")
     db   = current_app.config.get("PGDATABASE") or os.getenv("PGDATABASE", "postgres")
     usr  = current_app.config.get("PGUSER") or os.getenv("PGUSER", "postgres")
-    pwd  = current_app.config.get("PGPASSWORD") or os.getenv("PGPASSWORD")  # peut être None
+    pwd  = current_app.config.get("PGPASSWORD") or os.getenv("PGPASSWORD")
     port = current_app.config.get("PGPORT") or os.getenv("PGPORT", "5432")
 
     params = dict(host=host, dbname=db, user=usr, port=port)
-    if pwd:  # seulement si réellement défini → sinon libpq utilisera pgpass.conf
+    if pwd:
         params["password"] = pwd
     params["options"] = "-c lc_messages=C -c client_encoding=UTF8"
-
+    import psycopg2
     return psycopg2.connect(**params)
 
-
-
-# ==== UI ====
+# ===== UI =====
 @seating_bp.get("/classe/<int:classe_id>")
 def ui_plan_classe(classe_id: int):
-    return render_template("seating/plan_classe.html", classe_id=classe_id)
+    # Important: pas de préfixe 'seating/' ici, le blueprint pointe déjà sur templates/seating
+    return render_template("plan_classe.html", classe_id=classe_id)
 
-# ==== API ====
+# ===== API =====
 @seating_bp.get("/api/plans/<int:classe_id>")
 def api_get_plans(classe_id: int):
-    refresh_moyennes_if_needed(db_conn)
+    # Rend la MV tolérante (ne fait pas planter la route)
+    try:
+        refresh_moyennes_if_needed(db_conn)
+    except Exception:
+        pass
 
     conn = db_conn(); cur = conn.cursor(cursor_factory=RealDictCursor)
     try:
@@ -96,7 +82,6 @@ def api_get_plans(classe_id: int):
         # Élèves de la classe (+ niveau si dispo)
         classe_niveau = None
         try:
-            # 1) Si la colonne e.niveau existe, on l'utilise
             cur.execute("""
               SELECT e.id, e.prenom, e.nom, e.photo_filename, e.sexe, e.niveau
               FROM eleves e
@@ -105,7 +90,6 @@ def api_get_plans(classe_id: int):
             """, (classe_id,))
             eleves = cur.fetchall()
         except Exception:
-            # 2) Fallback: on lit le niveau de la classe et on l'applique à tous
             conn.rollback()
             try:
                 cur.execute("SELECT niveau FROM classes WHERE id=%s", (classe_id,))
@@ -121,7 +105,6 @@ def api_get_plans(classe_id: int):
               ORDER BY e.nom, e.prenom
             """, (classe_id,))
             eleves = cur.fetchall()
-
 
         moyennes_map = {}
         try:
@@ -145,7 +128,6 @@ def api_get_plans(classe_id: int):
                 }
                 for e in eleves
             ]
-
         })
     finally:
         cur.close(); conn.close()
@@ -229,6 +211,18 @@ def api_upsert_positions(plan_id: int):
     finally:
         cur.close(); conn.close()
 
+@seating_bp.delete("/api/plans/<int:plan_id>/positions")
+def api_delete_position(plan_id: int):
+    data = request.get_json(force=True)
+    eleve_id = int(data["eleve_id"])
+    conn = db_conn(); cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM seating_positions WHERE plan_id=%s AND eleve_id=%s", (plan_id, eleve_id))
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        cur.close(); conn.close()
+
 @seating_bp.put("/api/plans/<int:plan_id>/furniture")
 def api_upsert_furniture(plan_id: int):
     data = request.get_json(force=True)
@@ -253,7 +247,56 @@ def api_upsert_furniture(plan_id: int):
     finally:
         cur.close(); conn.close()
 
-# ===== Export PDF (A4 paysage) =====
+@seating_bp.delete("/api/plans/<int:plan_id>/furniture/<int:item_id>")
+def api_delete_furniture(plan_id: int, item_id: int):
+    conn = db_conn(); cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM furniture_items WHERE plan_id=%s AND id=%s", (plan_id, item_id))
+        conn.commit()
+        return jsonify({"ok": True})
+    finally:
+        cur.close(); conn.close()
+
+@seating_bp.post("/api/plans/<int:plan_id>/reset")
+def api_reset_plan(plan_id: int):
+    """
+    Soft reset par défaut: supprime seating_positions + furniture_items du plan.
+    Si body JSON contient {"full": true}, supprime aussi seats (reset complet).
+    """
+    data = request.get_json(silent=True) or {}
+    full = bool(data.get("full"))
+
+    conn = db_conn(); cur = conn.cursor()
+    try:
+        # Vérifie que le plan existe
+        cur.execute("SELECT 1 FROM seating_plans WHERE id=%s", (plan_id,))
+        if not cur.fetchone():
+            abort(404)
+
+        # 1) Supprime d'abord les positions (FK vers seats possibles)
+        cur.execute("DELETE FROM seating_positions WHERE plan_id=%s", (plan_id,))
+        deleted_positions = cur.rowcount or 0
+
+        # 2) Puis les meubles
+        cur.execute("DELETE FROM furniture_items WHERE plan_id=%s", (plan_id,))
+        deleted_furniture = cur.rowcount or 0
+
+        # 3) Optionnel: reset complet → supprimer aussi seats
+        deleted_seats = 0
+        if full:
+            cur.execute("DELETE FROM seats WHERE plan_id=%s", (plan_id,))
+            deleted_seats = cur.rowcount or 0
+
+        conn.commit()
+        return jsonify({"ok": True, "full": full, "deleted": {
+            "positions": deleted_positions,
+            "furniture": deleted_furniture,
+            "seats": deleted_seats
+        }})
+    finally:
+        cur.close(); conn.close()
+
+# ===== Export PDF =====
 @seating_bp.get("/api/plans/<int:plan_id>/export/pdf")
 def api_export_pdf(plan_id: int):
     from reportlab.pdfgen import canvas
@@ -319,3 +362,4 @@ def api_export_pdf(plan_id: int):
     return send_file(buf, mimetype="application/pdf",
                      as_attachment=True,
                      download_name=f"plan_classe_{plan_id}.pdf")
+

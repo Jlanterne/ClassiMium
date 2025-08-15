@@ -1,44 +1,70 @@
-﻿{% extends "base.html" %}
-{% block title %}Plan de classe{% endblock %}
+﻿{% block content %}
+<link rel="stylesheet" href="{{ url_for('seating.static', filename='plan_classe.css') }}">
 
-{% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='seating/plan_classe.css') }}">
+<noscript>
+  <div class="pc_alert">Active JavaScript pour utiliser le plan de classe.</div>
+</noscript>
 
-<div class="pc_toolbar">
+<!-- ===== Toolbar ===== -->
+<div class="pc_toolbar" role="toolbar" aria-label="Actions du plan de classe">
   <div class="pc_left">
-    <a class="btn" href="{{ url_for('page_classe', classe_id=classe_id) }}">← Retour classe</a>
-    <select id="pc_plan_select"></select>
-    <button id="pc_new_plan">Nouveau plan</button>
-    <button id="pc_duplicate">Dupliquer</button>
-    <button id="pc_activate">Activer</button>
-    <button id="pc_export_pdf">Exporter PDF</button>
+    <select id="pc_plan_select" aria-label="Sélection du plan"></select>
+    <button id="pc_new_plan" type="button">Nouveau plan</button>
+    <button id="pc_duplicate" type="button">Dupliquer</button>
+    <button id="pc_activate" type="button">Activer</button>
+    <button id="pc_export_pdf" type="button">Exporter PDF</button>
+    <button id="pc_reset_plan" type="button" title="Shift+clic = reset complet">Réinitialiser</button>
   </div>
-  <div class="pc_right">
-    <button id="pc_add_furniture">+ Meuble / Bureau</button>
-    <label>Zoom <input id="pc_zoom" type="range" min="50" max="200" value="100"></label>
-    <button id="pc_fullscreen">Plein écran</button>
-  </div>
+
+
+  <button id="pc_fullscreen" type="button">Plein écran</button>
+</div>
 </div>
 
+<!-- ===== Layout à 3 colonnes : Élèves | Plan | Meubles ===== -->
 <div class="pc_layout">
-  <aside class="pc_side">
-    <h4>Élèves (non placés)</h4>
-    <div id="pc_eleve_list" class="pc_eleve_list"></div>
+  <!-- Colonne gauche : Élèves non placés -->
+  <aside class="pc_side" aria-label="Élèves non placés">
+    <h4 class="pc_head">Élèves (non placés)</h4>
+    <div id="pc_eleve_list" class="pc_eleve_list" role="list"></div>
   </aside>
-  <main class="pc_stage_wrap">
-    <div id="pc_stage"
-         class="pc_stage"
-         data-classe-id="{{ classe_id }}"
-         data-grid="32"></div>
+
+  <!-- Colonne centrale : la scène (plan) -->
+  <main class="pc_stage_wrap" aria-label="Surface du plan">
+    <div id="pc_stage" class="pc_stage" data-classe-id="{{ classe_id }}" data-grid="32" aria-label="Surface du plan">
+    </div>
   </main>
+
+  <!-- Colonne droite : Palette de meubles -->
+  <aside class="pc_side" aria-label="Meubles disponibles">
+    <h4 class="pc_head">Meubles</h4>
+    <div id="pc_furn_palette" class="pc_furn_palette" role="list"></div>
+    <button id="pc_add_furniture" class="pc_btn_add" type="button">+ Meuble / Bureau</button>
+  </aside>
 </div>
 
 <script>
-  window.SEATING_CONF = {
-    classeId: {{ classe_id }},
-    apiBase: "{{ url_for('seating.api_get_plans', classe_id=classe_id) | replace('/api/plans/' ~ classe_id, '') }}",
-    photosBase: "{{ url_for('static', filename='photos/') }}"
-  };
+  var CLASS_ID = JSON.parse('{{ classe_id | tojson | safe }}');
+  (function () {
+    var basePlans = "{{ url_for('seating.api_get_plans', classe_id=0) }}".replace(/0$/, "");
+    window.SEATING_URLS = {
+      getPlans: basePlans + CLASS_ID,
+      createPlan: basePlans,
+      activate: function (planId) { return basePlans + planId + "/activate"; },
+      duplicate: function (planId) { return basePlans + planId + "/duplicate"; },
+      upsertPositions: function (planId) { return basePlans + planId + "/positions"; },
+      upsertFurniture: function (planId) { return basePlans + planId + "/furniture"; },
+      exportPdf: function (planId) { return basePlans + planId + "/export/pdf"; }
+    };
+
+    window.SEATING_CONF = {
+      classeId: CLASS_ID,
+      apiBase: "/seating",
+      grid: 32,
+      photosBase: "{{ url_for('static', filename='photos/') }}"
+    };
+  })();
 </script>
-<script src="{{ url_for('static', filename='seating/plan_classe.js') }}"></script>
+
+<script src="{{ url_for('seating.static', filename='plan_classe.js') }}"></script>
 {% endblock %}

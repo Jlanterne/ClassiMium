@@ -3,44 +3,47 @@
 
 {% block content %}
 <div class="actions-classe">
-    <a class="action-button js-mode-link"
-        href="{{ url_for('main.page_classe', classe_id=classe.id, mode='creation_classe') }}">Liste des élèves</a>
+  <a class="action-button js-mode-link"
+    href="{{ url_for('main.page_classe', classe_id=classe.id, mode='creation_classe') }}">Liste des élèves</a>
 
-    <a class="action-button js-mode-link"
-        href="{{ url_for('main.page_classe', classe_id=classe.id, mode='ajout_evaluation') }}">Ajouter une
-        évaluation</a>
+  <a class="action-button js-mode-link"
+    href="{{ url_for('main.page_classe', classe_id=classe.id, mode='ajout_evaluation') }}">Ajouter une
+    évaluation</a>
 
-    <a class="action-button js-mode-link"
-        href="{{ url_for('main.page_classe', classe_id=classe.id, mode='liste_evaluations') }}">Saisir les
-        évaluations</a>
+  <a class="action-button js-mode-link"
+    href="{{ url_for('main.page_classe', classe_id=classe.id, mode='liste_evaluations') }}">Saisir les
+    évaluations</a>
 
-    <a class="action-button js-mode-link"
-        href="{{ url_for('main.page_classe', classe_id=classe.id, mode='ajouter_dictee') }}">Ajouter une dictée</a>
+  <a class="action-button js-mode-link"
+    href="{{ url_for('main.page_classe', classe_id=classe.id, mode='ajouter_dictee') }}">Ajouter une dictée</a>
 
-    <a class="action-button js-mode-link"
-        href="{{ url_for('main.page_classe', classe_id=classe.id, mode='ajouter_rapport') }}">Écrire un rapport</a>
+  <a class="action-button js-mode-link"
+    href="{{ url_for('main.page_classe', classe_id=classe.id, mode='ajouter_rapport') }}">Écrire un rapport</a>
 
-    <a class="action-button js-mode-link"
-        href="{{ url_for('main.page_classe', classe_id=classe.id, mode='plan_classe') }}">Plan de classe</a>
+  <a class="action-button js-mode-link"
+    href="{{ url_for('main.page_classe', classe_id=classe.id, mode='plan_classe') }}">Plan de classe</a>
 
-  
+
 </div>
 
 <section id="mode-panel" class="panel-from-actions panel-card" data-enter="pending">
   {% if mode == 'ajouter_dictee' %}
-    {% include 'partials/ajouter_dictee.html' %}
+  {% include 'partials/ajouter_dictee.html' %}
   {% elif mode == 'ajout_evaluation' %}
-    {% include 'partials/ajout_evaluation.html' %}
+  {% include 'partials/ajout_evaluation.html' %}
   {% elif mode == 'liste_evaluations' %}
-    {% include 'partials/liste_evaluations.html' %}
+  {% include 'partials/liste_evaluations.html' %}
   {% elif mode == 'ajouter_rapport' %}
-    {% include 'partials/ajouter_rapport.html' %}
+  {% include 'partials/ajouter_rapport.html' %}
   {% elif mode == 'saisie_resultats' %}
-    {% include 'partials/saisie_resultats.html' %}
+  {% include 'partials/saisie_resultats.html' %}
   {% elif mode == 'plan_classe' %}
-    {% include 'seating/_plan_embed.html' %}
+  <iframe src="{{ url_for('seating.ui_plan_classe', classe_id=classe.id) }}" style="width:100%; height:80vh; border:0;"
+    title="Plan de classe">
+  </iframe>
   {% else %}
-    {% include 'partials/ajout_eleve.html' %}
+
+  {% include 'partials/ajout_eleve.html' %}
   {% endif %}
 </section>
 

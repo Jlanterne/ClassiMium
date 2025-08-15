@@ -148,6 +148,12 @@
             overflow: hidden;
             text-overflow: ellipsis;
             line-height: 1.2;
+
+            position: relative;
+            top: -32px;
+            transition: none;
+            cursor: move;
+
         }
 
         .user-sub {
@@ -192,12 +198,11 @@
 
         /* Actions SOUS le login (pas sous la photo) */
         .user-quick {
-            display: flex;
-            gap: 6px;
-            margin-top: 8px;
-            flex-wrap: wrap;
-            /* Indentation = largeur avatar (88) + gap (10) → visuel sous le login */
-            margin-left: 98px;
+            transition: none;
+            cursor: move;
+            position: relative;
+            left: 106px;
+            top: -41px;
         }
 
         .icon-btn {
@@ -361,8 +366,16 @@
                             </div>
 
                             <!-- Aide statique (masquée automatiquement après succès) -->
-                            <div id="en-hint-static" style="margin-top:6px;color:#6b7280;font-size:.85em;">
-                                Première utilisation : si rien ne s’ouvre, installe le bouton EN (une seule fois).
+                            <div id="en-hint-static" style="
+    margin-top: 6px;
+    color: rgb(107, 114, 128);
+    font-size: 0.85em;
+    position: relative;
+    top: -29px;
+    transition: none;
+    cursor: move;
+">
+
                                 <a href="{{ url_for('main.download_en_reg') }}">Télécharger l’installeur</a>
                             </div>
                         </div>

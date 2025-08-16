@@ -475,3 +475,157 @@ body {
   overflow: auto;
   /* déjà présent, on confirme */
 }
+
+/* Par défaut: taquets invisibles (évite le flash) */
+.pc_furn .rz {
+  display: none;
+}
+
+/* En mode édition (le JS ajoute .pc_edit_on au <body>) */
+body.pc_edit_on .pc_furn .rz {
+  display: block;
+}
+
+/* Bouton couleur par meuble (petit input color) */
+.pc_furn .pc_col_btn {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .2);
+  border-radius: 2px;
+}
+
+/* Optionnel: un léger indicateur visuel du mode */
+body.pc_edit_on #pc_edit_mode {
+  background: #065f46;
+  color: #fff;
+}
+
+.pc_furn .pc_col_btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* handles invisibles hors mode édition */
+.pc_furn .rz {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s;
+}
+
+.pc_edit_on .pc_furn .rz {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* bouton color picker par meuble */
+.pc_furn .pc_col_btn {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* cacher le picker si pas en mode édition */
+body:not(.pc_edit_on) .pc_furn .pc_col_btn {
+  display: none;
+}
+
+/* petit shake en cas d'impossibilité de placer */
+.pc_shake {
+  animation: pcshake .25s linear;
+}
+
+@keyframes pcshake {
+  0% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-3px);
+  }
+
+  50% {
+    transform: translateX(3px);
+  }
+
+  75% {
+    transform: translateX(-3px);
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
+
+/* Calque SVG pour murs */
+.pc_stage {
+  position: relative;
+}
+
+#pc_svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* on laisse passer les clics à la scène */
+}
+
+#pc_svg .wall {
+  stroke: #111827;
+  stroke-width: 4;
+  fill: none;
+}
+
+#pc_svg .wall-preview {
+  stroke: #60a5fa;
+  stroke-width: 3;
+  fill: none;
+  stroke-dasharray: 6 4;
+}
+
+/* ===== Calque SVG pour murs ===== */
+#pc_svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* laisse passer le drag/drop existant */
+}
+
+#pc_svg .wall {
+  stroke: #111827;
+  stroke-width: 4;
+  fill: none;
+}
+
+#pc_svg .wall-preview {
+  stroke: #60a5fa;
+  stroke-width: 3;
+  fill: none;
+  stroke-dasharray: 6 4;
+}
+
+/* Bouton de suppression */
+.pc_toolbar .danger {
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+  background: #fff;
+}
+
+.pc_toolbar .danger:hover {
+  background: #fee2e2;
+}

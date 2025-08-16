@@ -11,9 +11,13 @@
     <select id="pc_plan_select" aria-label="Sélection du plan"></select>
     <button id="pc_new_plan" type="button">Nouveau plan</button>
     <button id="pc_duplicate" type="button">Dupliquer</button>
+    <button id="pc_delete_plan" type="button" class="danger">Supprimer</button>
+
     <button id="pc_activate" type="button">Activer</button>
     <button id="pc_export_pdf" type="button">Exporter PDF</button>
     <button id="pc_reset_plan" type="button" title="Shift+clic = reset complet">Réinitialiser</button>
+    <button id="pc_edit_mode" class="pc_btn">Édition meubles : OFF</button>
+
   </div>
 
 
@@ -32,8 +36,10 @@
   <!-- Colonne centrale : la scène (plan) -->
   <main class="pc_stage_wrap" aria-label="Surface du plan">
     <div id="pc_stage" class="pc_stage" data-classe-id="{{ classe_id }}" data-grid="32" aria-label="Surface du plan">
+      <svg id="pc_svg" class="pc_svg" aria-hidden="true"></svg>
     </div>
   </main>
+
 
   <!-- Colonne droite : Palette de meubles -->
   <aside class="pc_side" aria-label="Meubles disponibles">
@@ -47,6 +53,7 @@
   var CLASS_ID = JSON.parse('{{ classe_id | tojson | safe }}');
   (function () {
     var basePlans = "{{ url_for('seating.api_get_plans', classe_id=0) }}".replace(/0$/, "");
+
     window.SEATING_URLS = {
       getPlans: basePlans + CLASS_ID,
       createPlan: basePlans,
@@ -54,17 +61,25 @@
       duplicate: function (planId) { return basePlans + planId + "/duplicate"; },
       upsertPositions: function (planId) { return basePlans + planId + "/positions"; },
       upsertFurniture: function (planId) { return basePlans + planId + "/furniture"; },
-      exportPdf: function (planId) { return basePlans + planId + "/export/pdf"; }
+      exportPdf: function (planId) { return basePlans + planId + "/export/pdf"; },
+
+      /* ✅ LIGNE À AVOIR ABSOLUMENT : on dérive l’URL exacte depuis Flask */
+      deletePlan: (function () {
+        // On récupère une URL de référence depuis Flask et on remplace le 0 par l’ID réel
+        var ref = "{{ url_for('seating.api_delete_plan', plan_id=0) }}";
+        return function (planId) { return ref.replace(/0(?!.*0)/, String(planId)); };
+      })()
     };
 
     window.SEATING_CONF = {
       classeId: CLASS_ID,
       apiBase: "/seating",
       grid: 32,
-      photosBase: "{{ url_for('static', filename='photos/') }}"
+      photosBase: "{{ url_for('static', filename='photos/') }}"  /* Vérifie ce chemin (cf. point 4) */
     };
   })();
 </script>
+
 
 <script src="{{ url_for('seating.static', filename='plan_classe.js') }}"></script>
 {% endblock %}

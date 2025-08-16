@@ -132,6 +132,9 @@ def api_get_plans(classe_id: int):
     finally:
         cur.close(); conn.close()
 
+
+
+
 @seating_bp.post("/api/plans")
 def api_create_plan():
     data = request.get_json(force=True)
@@ -363,3 +366,31 @@ def api_export_pdf(plan_id: int):
                      as_attachment=True,
                      download_name=f"plan_classe_{plan_id}.pdf")
 
+# ----- SUPPRESSION D'UN PLAN -----
+@seating_bp.route('/api/plans/<int:plan_id>/delete', methods=['POST', 'DELETE'], endpoint='api_delete_plan')
+def api_delete_plan(plan_id):
+    """
+    Supprime le plan et ses dépendances.
+    Retourne:
+      - 204 si OK
+      - 404 si le plan n'existe pas
+    """
+    db = db_conn()
+    cur = db.execute('SELECT id FROM plans WHERE id = %s', (plan_id,))
+    row = cur.fetchone()
+    if not row:
+        return ('', 404)
+
+    # 💾 Adapte les noms de tables si besoin :
+    db.execute('DELETE FROM positions  WHERE plan_id = %s', (plan_id,))
+    db.execute('DELETE FROM furniture  WHERE plan_id = %s', (plan_id,))
+    db.execute('DELETE FROM plans      WHERE id      = %s', (plan_id,))
+    db.commit()
+    return ('', 204)
+
+
+# Optionnel : accepter DELETE sur /api/plans/<id>
+@seating_bp.route('/api/plans/<int:plan_id>', methods=['DELETE'])
+def api_delete_plan_alt(plan_id):
+    # redirige vers la même logique
+    return api_delete_plan(plan_id)

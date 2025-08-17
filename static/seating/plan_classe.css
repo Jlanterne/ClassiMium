@@ -629,3 +629,187 @@ body:not(.pc_edit_on) .pc_furn .pc_col_btn {
 .pc_toolbar .danger:hover {
   background: #fee2e2;
 }
+
+/* pastille du prénom/nom dans la carte */
+.pc_card .pc_name_in {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 12px;
+  line-height: 1;
+  font-weight: 600;
+  /* couleur de base si sexe inconnu */
+  background: #e5e7eb;
+  /* gris clair */
+  color: #0f172a;
+  /* texte sombre */
+}
+
+/* Fille → rose */
+.pc_card .pc_name_in.sex-fille {
+  background: #ff69b4;
+  /* hotpink */
+  color: #ffffff;
+}
+
+/* Garçon → bleu */
+.pc_card .pc_name_in.sex-garcon {
+  background: #1e90ff;
+  /* dodgerblue */
+  color: #ffffff;
+}
+
+/* avant */
+.pc_card .badge.moy {
+  right: 4px;
+  /* ou 8px… */
+  /* ... */
+}
+
+/* après */
+.pc_card .badge.moy {
+  left: 4px;
+  right: auto;
+}
+
+/* === Élèves (carte) === */
+.pc_card {
+  position: absolute;
+  width: 96px;
+  height: 96px;
+  border-radius: 14px;
+  background: #fff;
+  border: 2px solid #cbd5e1;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, .10);
+  user-select: none;
+  cursor: grab;
+}
+
+/* Le contenu (photo + prénom) reste sous la pastille */
+.pc_card_in {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  transition: transform .12s ease-out;
+  z-index: 1;
+  /* <— sous la pastille */
+}
+
+/* photo (ne bouge pas) */
+.pc_card img {
+  width: 74px;
+  height: 74px;
+  object-fit: cover;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .06);
+}
+
+/* pastille prénom (à l’intérieur de la carte) */
+.pc_name_in {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  max-width: calc(100% - 12px);
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: rgba(17, 24, 39, .85);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* === Badges (sexe / moyenne) — toujours au-dessus de la photo === */
+.pc_card .badge {
+  position: absolute;
+  top: 6px;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .15);
+  z-index: 2;
+  /* <— au-dessus de .pc_card_in */
+  pointer-events: none;
+}
+
+.pc_card .badge.sex {
+  left: 6px;
+  background: #64748b;
+}
+
+/* MOYENNE À GAUCHE (et plus à droite) */
+.pc_card .badge.moy {
+  left: 6px;
+  right: auto;
+}
+
+.pc_card .badge.moy.mAp {
+  background: #16a34a;
+}
+
+.pc_card .badge.moy.mA {
+  background: #22c55e;
+}
+
+.pc_card .badge.moy.mPA {
+  background: #f59e0b;
+}
+
+.pc_card .badge.moy.mNA {
+  background: #ef4444;
+}
+
+/* Boutons (suppr / rotation) au-dessus de tout */
+.pc_delete_btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  background: rgba(15, 23, 42, .9);
+  color: #fff;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  transition: opacity .12s, transform .12s;
+  z-index: 3;
+  /* <— au-dessus des badges */
+}
+
+.pc_card:hover .pc_delete_btn,
+.pc_furn:hover .pc_delete_btn {
+  opacity: 1;
+}
+
+.pc_delete_btn:hover {
+  transform: scale(1.06);
+}
+
+/* L’item Mur (tracer) se clique, il ne se “drag” pas */
+.pc_furn_tpl.wall_tool {
+  cursor: pointer;
+}
+
+.pc_furn_tpl.wall_tool .thumb.wall {
+  background: repeating-linear-gradient(45deg, #111827 0 4px, transparent 4px 8px);
+  border: 1px solid #111827;
+  border-radius: 6px;
+}
+
+/* Les autres items (meubles) restent en drag */
+.pc_furn_tpl:not(.wall_tool) {
+  cursor: grab;
+}

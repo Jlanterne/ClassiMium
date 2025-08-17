@@ -107,225 +107,9 @@
 
   const genUid = () => 'f_' + Math.random().toString(36).slice(2, 10);
 
-  // ====== MURS : dessin en polyligne sur un calque SVG ======
-  (function () {
-    const stage = document.getElementById('pc_stage');
-    const svg = document.getElementById('pc_svg');
-    if (!stage || !svg) return;
 
-    // état local du mode dessin
-    const draw = {
-      mode: null,         // 'wall' | null
-      wall: null,         // { id, type:'wall', points:[{x,y}], color, width }
-      previewEl: null
-    };
 
-    const grid = (window.SEATING_CONF && +window.SEATING_CONF.grid) || +stage.dataset.grid || 32;
 
-    // ===== Helpers
-    function createSvg(tag, attrs) {
-      const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
-      for (const k in attrs) el.setAttribute(k, attrs[k]);
-      return el;
-    }
-    function snap(v, step) { return Math.round(v / step) * step; }
-    function clientToStage(e) {
-      const r = stage.getBoundingClientRect();
-      const x = e.clientX - r.left;
-      const y = e.clientY - r.top;
-      return { x: snap(x, grid), y: snap(y, grid) };
-    }
-    function pointsAttr(points) { return points.map(p => `${p.x},${p.y}`).join(' '); }
-    function updatePreview(extraPt) {
-      if (!draw.previewEl || !draw.wall) return;
-      const pts = extraPt ? [...draw.wall.points, extraPt] : draw.wall.points;
-      draw.previewEl.setAttribute('points', pointsAttr(pts));
-    }
-    function cleanupPreview() {
-      if (draw.previewEl) { draw.previewEl.remove(); draw.previewEl = null; }
-    }
-    function enableWallMode(on = true) {
-      draw.mode = on ? 'wall' : null;
-      if (!on) { draw.wall = null; cleanupPreview(); }
-      document.body.classList.toggle('pc_edit_on', !!on); // visuel facultatif
-    }
-
-    // ===== Persistance (branche sur ton système existant)
-    function saveWallToState(wall) {
-      // On utilise le même tableau que les meubles si présent
-      // Adapte le nom si nécessaire (state.furniture / state.meubles / etc.)
-      window._SEATING_STATE = window._SEATING_STATE || {};
-      const s = window._SEATING_STATE;
-      s.furniture = s.furniture || [];
-      s.furniture.push(wall);
-
-      // Si tu as déjà une fonction d’upsert côté API, appelle-la ici :
-      // fetch(SEATING_URLS.upsertFurniture(planId), { method:'POST', body: JSON.stringify([...]) })
-    }
-
-    // ===== Rendu initial (murs existants)
-    function renderExistingWalls() {
-      const s = window._SEATING_STATE;
-      if (!s || !Array.isArray(s.furniture)) return;
-      s.furniture.filter(it => it.type === 'wall').forEach(wall => {
-        const el = createSvg('polyline', {
-          class: 'wall',
-          'data-id': wall.id,
-          points: pointsAttr(wall.points)
-        });
-        svg.appendChild(el);
-      });
-    }
-    renderExistingWalls();
-
-    // ===== Événements
-    stage.addEventListener('click', (e) => {
-      if (draw.mode !== 'wall') return;
-      const pt = clientToStage(e);
-      if (!draw.wall) {
-        // premier point → créer la prévisualisation
-        draw.wall = {
-          id: 'wall_' + Math.random().toString(36).slice(2, 9),
-          type: 'wall',
-          points: [pt],
-          color: '#111827',
-          width: 4
-        };
-        draw.previewEl = createSvg('polyline', { class: 'wall-preview', points: `${pt.x},${pt.y}` });
-        svg.appendChild(draw.previewEl);
-      } else {
-        draw.wall.points.push(pt);
-        updatePreview();
-      }
-    });
-
-    stage.addEventListener('mousemove', (e) => {
-      if (draw.mode !== 'wall' || !draw.wall) return;
-      const pt = clientToStage(e);
-      updatePreview(pt);
-    });
-
-    stage.addEventListener('dblclick', finalizeWall);
-    document.addEventListener('keydown', (e) => {
-      if (draw.mode !== 'wall') {
-        // Raccourci clavier pour démarrer le mode mur : Shift+W
-        if (e.shiftKey && (e.key === 'w' || e.key === 'W')) enableWallMode(true);
-        return;
-      }
-      if (e.key === 'Escape') {
-        enableWallMode(false);
-      } else if (e.key === 'Enter') {
-        finalizeWall(e);
-      } else if (e.key === 'Backspace') {
-        if (draw.wall && draw.wall.points.length > 0) {
-          draw.wall.points.pop();
-          updatePreview();
-          e.preventDefault();
-        }
-      }
-    });
-
-    function finalizeWall(e) {
-      if (draw.mode !== 'wall' || !draw.wall) return;
-      // besoin d'au moins 2 segments (3 points) ou 2 points si on accepte un seul segment
-      if (draw.wall.points.length < 2) { enableWallMode(false); return; }
-
-      // créer la polyligne définitive
-      const el = createSvg('polyline', {
-        class: 'wall',
-        'data-id': draw.wall.id,
-        points: pointsAttr(draw.wall.points)
-      });
-      svg.appendChild(el);
-
-      // persister dans l’état / API
-      saveWallToState(draw.wall);
-
-      // reset mode
-      enableWallMode(false);
-    }
-
-    // ===== (Optionnel) Bouton si tu veux un déclencheur visuel
-    // Si tu rajoutes un bouton <button id="pc_draw_wall">Tracer un mur</button> dans la palette
-    const btn = document.getElementById('pc_draw_wall');
-    if (btn) btn.addEventListener('click', () => enableWallMode(true));
-  })();
-
-  // ===== Reset des MURS quand on clique sur "Réinitialiser" =====
-  (function () {
-    const stage = document.getElementById('pc_stage');
-    const svg = document.getElementById('pc_svg'); // calque SVG (ajouté pour tracer les murs)
-    const btnReset = document.getElementById('pc_reset_plan');
-
-    if (!stage || !btnReset) return;
-
-    // Récupère l'id du plan actif, en restant tolérant
-    function getActivePlanId() {
-      // 1) via select si présent
-      const sel = document.getElementById('pc_plan_select');
-      if (sel && sel.value) return +sel.value;
-
-      // 2) via un état global si tu en as un
-      if (window._SEATING_STATE && window._SEATING_STATE.active_plan) {
-        return +window._SEATING_STATE.active_plan;
-      }
-      // 3) fallback nul → l’API sera simplement sautée
-      return null;
-    }
-
-    function removeAllWallsFromSVG() {
-      if (!svg) return;
-      svg.querySelectorAll('.wall, .wall-preview').forEach(el => el.remove());
-    }
-
-    function removeWallsFromState() {
-      // Harmonise avec ta structure d’état
-      // Si ton JS utilise un autre nom que _SEATING_STATE, adapte ici.
-      const S = (window._SEATING_STATE = window._SEATING_STATE || {});
-      S.furniture = Array.isArray(S.furniture) ? S.furniture.filter(it => it?.type !== 'wall') : [];
-    }
-
-    async function pushFurnitureToAPI() {
-      if (!window.SEATING_URLS || typeof window.SEATING_URLS.upsertFurniture !== 'function') return;
-      const planId = getActivePlanId();
-      if (!planId) return;
-
-      const S = window._SEATING_STATE || {};
-      const payload = Array.isArray(S.furniture) ? S.furniture : [];
-
-      try {
-        await fetch(window.SEATING_URLS.upsertFurniture(planId), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      } catch (err) {
-        console.warn('Échec upsertFurniture (reset murs) :', err);
-      }
-    }
-
-    // Fonction publique au cas où tu veux l’appeler depuis ton reset global existant
-    async function resetWallsOnly() {
-      removeAllWallsFromSVG();
-      removeWallsFromState();
-      await pushFurnitureToAPI();
-    }
-
-    // On évite d’attacher plusieurs fois si ce fichier est rechargé
-    if (!btnReset.dataset.wallResetBound) {
-      btnReset.addEventListener('click', async (e) => {
-        // Si tu as déjà un “reset complet” côté JS, ce patch ne le remplace pas :
-        // il s’assure juste que les MURS sont reset aussi.
-        // On peut aussi distinguer clic normal vs Shift+clic si tu le veux :
-        // const full = e.shiftKey; // (non utilisé ici)
-        await resetWallsOnly();
-      });
-      btnReset.dataset.wallResetBound = '1';
-    }
-
-    // Rends la fonction accessible si tu veux l’appeler dans TON handler existant
-    window.resetWallsOnly = resetWallsOnly;
-  })();
 
 
 
@@ -394,7 +178,10 @@
   // -------------------------------------------------------------------------
 
   const api = {
-    getAll: () => fetch(`${API_BASE}/plans/${classeId}`).then(r => r.json()),
+    getAll: (planId) => {
+      const q = planId ? `?plan_id=${encodeURIComponent(planId)}` : '';
+      return fetch(`${API_BASE}/plans/${classeId}${q}`, { credentials: 'same-origin' }).then(r => r.json());
+    },
     create: (payload) => fetch(`${API_BASE}/plans`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json()),
     activate: (plan_id) => fetch(`${API_BASE}/plans/${plan_id}/activate`, { method: 'PUT' }).then(r => r.json()),
     duplicate: (plan_id) => fetch(`${API_BASE}/plans/${plan_id}/duplicate`, { method: 'POST' }).then(r => r.json()),
@@ -513,6 +300,7 @@
     // SVG overlay (murs)
     if (!$svg) {
       $svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      $svg.setAttribute('id', 'pc_svg');
       $svg.setAttribute('class', 'pc_svg_overlay');
       $svg.style.position = 'absolute';
       $svg.style.left = '0'; $svg.style.top = '0'; $svg.style.width = '100%'; $svg.style.height = '100%';
@@ -689,20 +477,26 @@
     img.addEventListener('dragstart', ev => ev.preventDefault());
     card.addEventListener('dragstart', ev => ev.preventDefault());
 
-    const name = document.createElement('div'); name.className = 'pc_name_in'; name.textContent = eleve.prenom || '';
-    {
-      const abs = parseFloat(card.dataset.rotAbs || '0') || 0; const d = ((abs % 360) + 360) % 360;
-      name.style.transform = (d > 135 && d < 225) ? 'rotate(180deg)' : 'rotate(0deg)';
-    }
+    const name = document.createElement('div');
+    name.className = 'pc_name_in';
+    name.textContent = eleve.prenom || '';
 
-    const bSex = document.createElement('div'); bSex.className = 'badge sex';
-    bSex.textContent = (eleve.sexe === 'MASCULIN' ? '♂' : eleve.sexe === 'FEMININ' ? '♀' : '?');
+    // → ajoute une classe selon le sexe (F = rose, M = bleu)
+    const sexCls = (eleve.sexe === 'FEMININ' || eleve.sexe === 'F')
+      ? 'sex-fille'
+      : (eleve.sexe === 'MASCULIN' || eleve.sexe === 'M')
+        ? 'sex-garcon'
+        : '';
+    if (sexCls) name.classList.add(sexCls);
 
-    const bM = document.createElement('div'); bM.className = `badge moy ${moyClass(eleve.moyenne_20)}`;
+    const bM = document.createElement('div');
+    bM.className = `badge moy ${moyClass(eleve.moyenne_20)}`;
     bM.textContent = (eleve.moyenne_20 != null) ? Math.round(eleve.moyenne_20) : '—';
 
     inner.append(img, name);
-    card.append(inner, bSex, bM);
+    // ❌ on ne met plus la pastille de sexe
+    card.append(bM, inner);
+
     addDeleteButton(card);
     addRotateButton(card);
     card.addEventListener('pointerdown', startDragCard);
@@ -873,20 +667,7 @@
     }
   }
 
-  function renderWalls() {
-    if (!$svg) return;
-    // murs = polylines hachurées
-    for (const w of state.walls) {
-      if (!w.points || w.points.length < 2) continue;
-      const pl = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-      pl.setAttribute('fill', 'none');
-      pl.setAttribute('stroke', 'url(#hatch)');
-      pl.setAttribute('stroke-width', Math.max(3, unitPx * 0.12));
-      const pts = w.points.map(p => `${toPx(p.x)},${toPx(p.y)}`).join(' ');
-      pl.setAttribute('points', pts);
-      $svg.appendChild(pl);
-    }
-  }
+
 
   function renderEleveList() {
     if (!$elist) return; $elist.innerHTML = '';
@@ -931,44 +712,106 @@
     { type: 'plant', label: 'Plante', w: 1, h: 1 },
   ];
   function ensureFurniturePalette() {
+    // palette absente → rien à faire
     if (!$palette) return;
+
+    // Empêche la duplication des items et des listeners
     if ($palette.dataset.built === '1') return;
+
+    // helpers DOM simples (JS pur, pas de TS)
+    function el(tag, className, attrs) {
+      const n = document.createElement(tag);
+      if (className) n.className = className;
+      if (attrs) for (const k in attrs) n.setAttribute(k, attrs[k]);
+      return n;
+    }
+
+    // Nettoie et reconstruit
     $palette.innerHTML = '';
 
-    // Item: Tracer un mur
-    const wallItem = document.createElement('div');
-    wallItem.className = 'pc_furn_tpl wall_tool';
-    wallItem.innerHTML = `
-      <div class="thumb wall"></div>
-      <div class="info"><div class="name">Mur (tracer)</div><div class="dims">clics successifs</div></div>
-    `;
-    wallItem.addEventListener('pointerdown', startWallTool);
-    $palette.appendChild(wallItem);
+    // ---------- Item spécial : Mur (tracer)
+    (function buildWallTool() {
+      const item = el('div', 'pc_furn_tpl wall_tool');
+      // Thumb visuelle “mur”
+      const thumb = el('div', 'thumb');
+      thumb.style.height = '12px';
+      thumb.style.borderRadius = '6px';
+      thumb.style.background = '#111827';
+      const info = el('div', 'info');
+      const name = el('div', 'name'); name.textContent = 'Mur (tracer)';
+      const dims = el('div', 'dims'); dims.textContent = 'clics successifs – Entrée pour finir';
+      info.append(name, dims);
+      // pas de color picker pour un mur
+      item.append(thumb, info);
 
-    // Items meubles
-    FURN_DEFS.forEach(d => {
-      const item = document.createElement('div');
-      item.className = 'pc_furn_tpl';
-      const color = FURN_COLORS[d.type] || FURN_DEF_COLORS[d.type] || '#ffffff';
-      item.innerHTML = `
-        <div class="thumb ${d.type === 'table_round' ? 'round' : ''}" style="background:${color};border-color:${color}"></div>
-        <div class="info">
-          <div class="name">${d.label}</div>
-          <div class="dims">${d.w}×${d.h}</div>
-        </div>
-        <input class="colpick" type="color" value="${color}" title="Couleur ${d.label}" />
-      `;
-      item.addEventListener('pointerdown', (ev) => startCreateFurnitureDrag(ev, d));
-      const cp = item.querySelector('.colpick');
+      // Important : on veut un CLIC simple qui démarre l’outil.
+      // On ne met PAS de cursor: grab ici pour éviter les confusions avec le drag de meuble.
+      item.style.cursor = 'pointer';
+
+      // On évite que des handlers globaux de drag prennent la main
+      const start = (ev) => {
+        ev.preventDefault();         // empêche un “drag” natif
+        ev.stopPropagation();
+        startWallTool(ev);           // ta fonction de tracé
+      };
+      item.addEventListener('click', start);
+      // Double sécurité : si l’utilisateur maintient et relâche (pointer), on démarre pareil
+      item.addEventListener('pointerdown', (ev) => { ev.preventDefault(); ev.stopPropagation(); });
+      item.addEventListener('pointerup', start);
+
+      $palette.appendChild(item);
+    })();
+
+    // ---------- Items "meubles" depuis FURN_DEFS
+    FURN_DEFS.forEach((def) => {
+      const item = el('div', 'pc_furn_tpl');
+      item.style.cursor = 'grab';
+
+      // Couleur courante pour ce type (fallback sur défauts)
+      const baseColor = (FURN_COLORS[def.type] || FURN_DEF_COLORS[def.type] || '#ffffff');
+
+      // Thumb
+      const thumb = el('div', 'thumb' + (def.type === 'table_round' ? ' round' : ''));
+      thumb.style.background = baseColor;
+      thumb.style.borderColor = baseColor;
+
+      // Info
+      const info = el('div', 'info');
+      const name = el('div', 'name'); name.textContent = def.label || def.type;
+      const dims = el('div', 'dims'); dims.textContent = `${def.w}×${def.h}`;
+      info.append(name, dims);
+
+      // Color picker (met à jour la couleur par défaut du TYPE)
+      const cp = el('input', '');
+      cp.type = 'color';
+      cp.value = baseColor;
+      cp.title = `Couleur ${def.label || def.type}`;
+      // Important : un color picker ne doit jamais déclencher le drag
+      ['pointerdown', 'mousedown', 'click'].forEach(evt =>
+        cp.addEventListener(evt, (e) => { e.stopPropagation(); })
+      );
       cp.addEventListener('input', () => {
-        FURN_COLORS[d.type] = cp.value;
-        const thumb = item.querySelector('.thumb');
-        if (thumb) { thumb.style.background = cp.value; thumb.style.borderColor = cp.value; }
+        FURN_COLORS[def.type] = cp.value;
+        thumb.style.background = cp.value;
+        thumb.style.borderColor = cp.value;
       });
+
+      // Drag pour créer un meuble
+      const onPointerDown = (ev) => {
+        // Si on a cliqué le color picker, on ne drag pas
+        if (ev.target === cp) return;
+        startCreateFurnitureDrag(ev, def);
+      };
+      item.addEventListener('pointerdown', onPointerDown);
+
+      item.append(thumb, info, cp);
       $palette.appendChild(item);
     });
+
+    // Marqueur de construction (évite de rebinder en double)
     $palette.dataset.built = '1';
   }
+
 
   // [7] ----------------------------------------------------------------------
   // DRAG & DROP
@@ -1243,74 +1086,150 @@
   let wallToolActive = false;
   let currentWall = null;
 
+
+  // Rend tous les murs présents dans state.walls
+  function renderWalls() {
+    if (!$svg) return;
+    // nettoie le SVG en conservant <defs> (hachures)
+    const defs = $svg.querySelector('defs');
+    $svg.innerHTML = '';
+    if (defs) $svg.appendChild(defs);
+
+    for (const w of (state.walls || [])) {
+      if (!w.points || w.points.length < 2) continue;
+      const pl = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      pl.setAttribute('fill', 'none');
+      pl.setAttribute('stroke', 'url(#hatch)');
+      pl.setAttribute('stroke-width', Math.max(3, unitPx * 0.12));
+      const pts = w.points.map(p => `${toPx(p.x)},${toPx(p.y)}`).join(' ');
+      pl.setAttribute('points', pts);
+      pl.classList.add('wall');
+      $svg.appendChild(pl);
+    }
+  }
+
+  // Démarre l’outil de tracé avec prévisualisation live + persistance
   function startWallTool(ev) {
-    ev.preventDefault();
-    wallToolActive = true;
-    currentWall = { id: genUid(), points: [] };
+    ev?.preventDefault?.();
+
+    if (!$svg || !$stage || !state.active_plan) return;
+    const planId = state.active_plan.id;
+    let currentWall = { id: genUid(), points: [] };
+
+    // polyline de preview (point courant -> curseur)
+    const preview = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    preview.setAttribute('fill', 'none');
+    preview.setAttribute('stroke', '#60a5fa');
+    preview.setAttribute('stroke-width', Math.max(2, unitPx * 0.10));
+    preview.setAttribute('stroke-dasharray', '6 4');
+    preview.classList.add('wall-preview');
+    $svg.appendChild(preview);
+
     $stage.style.cursor = 'crosshair';
+    document.body.classList.add('pc_wall_mode');
 
-    const onStageClick = (e) => {
-      const box = stageInnerBox();
-      const x = snapUnits((e.clientX - box.left) / unitPx);
-      const y = snapUnits((e.clientY - box.top) / unitPx);
-      currentWall.points.push({ x, y });
-      render(); // montre la polyline en cours (2 points min pour voir qqch)
+    const box = stageInnerBox();
+
+    const ptToUnits = (cx, cy) => ({
+      x: snapUnits((cx - box.left) / unitPx),
+      y: snapUnits((cy - box.top) / unitPx),
+    });
+
+    const updatePreview = (clientX, clientY) => {
+      if (!currentWall.points.length) {
+        preview.setAttribute('points', '');
+        return;
+      }
+      const last = currentWall.points[currentWall.points.length - 1];
+      const cur = ptToUnits(clientX, clientY);
+      const pts = [last, cur].map(p => `${toPx(p.x)},${toPx(p.y)}`).join(' ');
+      preview.setAttribute('points', pts);
     };
-    const onKey = (e) => {
-      if (!wallToolActive) return;
-      if (e.key === 'Escape') {
-        wallToolActive = false; currentWall = null;
-        $stage.removeEventListener('click', onStageClick);
-        window.removeEventListener('keydown', onKey);
-        $stage.style.cursor = '';
-        render();
-      }
-      if (e.key === 'Enter') {
-        finishWall();
-      }
+
+    const onMove = (e) => updatePreview(e.clientX, e.clientY);
+
+    const onClick = (e) => {
+      const u = ptToUnits(e.clientX, e.clientY);
+      currentWall.points.push(u);
+      // dès qu’on a deux points, on rerend pour donner le feedback immédiat
+      renderWalls();
+      // et on garde la preview "dernier point -> curseur"
+      updatePreview(e.clientX, e.clientY);
     };
-    const finishWall = () => {
-      if (currentWall && currentWall.points.length >= 2) {
-        state.walls.push(currentWall);
-        // (optionnel) persist
-        try { api.saveWalls?.(state.active_plan.id, state.walls).catch(() => { }); } catch { }
-      }
-      wallToolActive = false; currentWall = null;
-      $stage.removeEventListener('click', onStageClick);
+
+    const finish = async () => {
+      // nettoyages listeners
+      $stage.removeEventListener('click', onClick);
+      window.removeEventListener('mousemove', onMove);
       window.removeEventListener('keydown', onKey);
+      $stage.removeEventListener('dblclick', onDbl);
+      preview.remove();
       $stage.style.cursor = '';
-      render();
+      document.body.classList.remove('pc_wall_mode');
+
+      if (currentWall.points.length >= 2) {
+        state.walls.push(currentWall);
+        renderWalls();
+        // 1) API si dispo
+        try { await api.saveWalls?.(planId, state.walls); } catch (e) { console.warn('saveWalls API KO', e); }
+        // 2) fallback localStorage PAR PLAN
+        try { localStorage.setItem(`pc_walls_${planId}`, JSON.stringify(state.walls)); } catch { }
+      }
+      currentWall = null;
     };
 
-    $stage.addEventListener('click', onStageClick);
+    const cancel = () => {
+      $stage.removeEventListener('click', onClick);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('keydown', onKey);
+      $stage.removeEventListener('dblclick', onDbl);
+      preview.remove();
+      $stage.style.cursor = '';
+      document.body.classList.remove('pc_wall_mode');
+      currentWall = null;
+      // pas de persistance si annulation
+    };
+
+    const onKey = (e) => {
+      if (e.key === 'Escape') { cancel(); }
+      if (e.key === 'Enter') { finish(); }
+    };
+
+    const onDbl = () => finish();
+
+    // bind
+    $stage.addEventListener('click', onClick);
+    window.addEventListener('mousemove', onMove);
     window.addEventListener('keydown', onKey);
-    // double-clic = terminer
-    const onDbl = () => { /* simul Enter */ const evKey = new KeyboardEvent('keydown', { key: 'Enter' }); window.dispatchEvent(evKey); };
     $stage.addEventListener('dblclick', onDbl, { once: true });
   }
 
-  // Snap point (x,y) sur le segment de mur le plus proche (seuil 0.5u)
-  function snapToNearestWall(x, y) {
-    if (!state.walls.length) return null;
-    let best = null, bestD = Infinity;
-    for (const w of state.walls) {
-      for (let i = 0; i < w.points.length - 1; i++) {
-        const a = w.points[i], b = w.points[i + 1];
-        const proj = projectPointOnSegment({ x, y }, a, b);
-        if (!proj) continue;
-        const d = Math.hypot(proj.x - x, proj.y - y);
-        if (d < bestD) { bestD = d; best = proj; }
-      }
+  // À appeler après boot() et à chaque changement de plan (dans render() ou juste après boot)
+  function restoreWallsForPlan() {
+    if (!state.active_plan) return;
+    const planId = state.active_plan.id;
+
+    // 1) si l’API a renvoyé des murs (boot l’a mis dans state.walls), on garde
+    if (Array.isArray(state.walls) && state.walls.length) {
+      renderWalls();
+      return;
     }
-    if (bestD <= 0.5) return best; // à ≤ 0.5 unité
-    return null;
-  }
-  function projectPointOnSegment(p, a, b) {
-    const abx = b.x - a.x, aby = b.y - a.y;
-    const ab2 = abx * abx + aby * aby; if (ab2 < EPS) return null;
-    const apx = p.x - a.x, apy = p.y - a.y;
-    let t = (apx * abx + apy * aby) / ab2; t = Math.max(0, Math.min(1, t));
-    return { x: a.x + t * abx, y: a.y + t * aby };
+
+    // 2) sinon fallback localStorage scindé par plan
+    try {
+      const raw = localStorage.getItem(`pc_walls_${planId}`);
+      const walls = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(walls) && walls.length) {
+        state.walls = walls;
+        renderWalls();
+      } else {
+        state.walls = [];
+        renderWalls();
+      }
+    } catch {
+      state.walls = [];
+      renderWalls();
+    }
   }
 
   // [8] ----------------------------------------------------------------------
@@ -1469,10 +1388,10 @@
     return { ...p, x: (+p.x || 0) / PLAN_SUBDIV, y: (+p.y || 0) / PLAN_SUBDIV, rot, rotAbs: rot };
   }
 
-  async function boot() {
+  async function boot(planIdToShow = null) {
     try {
       document.body.classList.add('pc_loading');
-      const data = await api.getAll();
+      const data = await api.getAll(planIdToShow);
       const plans = Array.isArray(data.plans) ? data.plans : [];
       const eleves = Array.isArray(data.eleves) ? data.eleves : [];
       const seats = Array.isArray(data.seats) ? data.seats : [];
@@ -1532,17 +1451,114 @@
       document.body.classList.remove('pc_loading');
     }
   }
+  // Suppression d’un plan
+  document.getElementById('pc_delete_plan').addEventListener('click', async () => {
+    if (!state.active_plan) {
+      alert("Aucun plan sélectionné !");
+      return;
+    }
+    if (!confirm("Voulez-vous vraiment supprimer ce plan ?")) return;
+
+    try {
+      const url = SEATING_URLS.deletePlan(state.active_plan.id);
+      const resp = await fetch(url, { method: "DELETE" });
+      if (!resp.ok && resp.status !== 204) throw new Error("Échec suppression");
+
+      // 🔄 On recharge tout l’état et la liste déroulante
+      await boot();
+
+      alert("Plan supprimé.");
+    } catch (err) {
+      console.error("[delete plan]", err);
+      alert("Impossible de supprimer le plan.");
+    }
+  });
+  // ===== Plein écran : garder exactement le même cadrage, juste plus grand =====
+  function setupFullscreenExact($wrap, fitStageToWrap, render) {
+    const $btn = document.getElementById('pc_fullscreen');
+    if (!$btn || !$wrap || typeof fitStageToWrap !== 'function' || typeof render !== 'function') {
+      console.warn('[FullScreen] Pré-requis manquants.');
+      return;
+    }
+
+    // On mémorise la position de scroll de façon relative (pour la restaurer ensuite)
+    let saved = { px: 0, py: 0 };
+
+    function snapshotScroll() {
+      // combien d'unités visibles dans le viewport, et où commence-t-on ?
+      const uLeft = $wrap.scrollLeft / unitPx;
+      const uTop = $wrap.scrollTop / unitPx;
+
+      // combien d'unités tient l'écran actuellement ?
+      const uViewportW = $wrap.clientWidth / unitPx;
+      const uViewportH = $wrap.clientHeight / unitPx;
+
+      saved = { uLeft, uTop, uViewportW, uViewportH };
+    }
+
+    function restoreScroll() {
+      // Ici, unitPx a été recalculé par fitStageToWrap() puis render()
+      // → on remet le scroll au même cadrage en unités.
+      const leftPx = Math.round(saved.uLeft * unitPx);
+      const topPx = Math.round(saved.uTop * unitPx);
+
+      // Clamp au nouveau scroll max (au cas où l'échelle ait changé l'espace scrollable)
+      const maxX = Math.max(0, $wrap.scrollWidth - $wrap.clientWidth);
+      const maxY = Math.max(0, $wrap.scrollHeight - $wrap.clientHeight);
+
+      $wrap.scrollLeft = Math.min(Math.max(0, leftPx), maxX);
+      $wrap.scrollTop = Math.min(Math.max(0, topPx), maxY);
+    }
+
+    async function enterOrExitFullscreen() {
+      snapshotScroll();
+      if (!document.fullscreenElement) {
+        if ($wrap.requestFullscreen) {
+          await $wrap.requestFullscreen();
+        } else {
+          return; // navigateur sans Fullscreen API
+        }
+      } else {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else {
+          return;
+        }
+      }
+    }
+
+    // Bouton
+    $btn.addEventListener('click', () => {
+      enterOrExitFullscreen().catch(() => { });
+    });
+
+    // Quand l’état de plein écran change → recalculer l’échelle + restaurer le cadrage
+    document.addEventListener('fullscreenchange', () => {
+      // Laisse le layout s’appliquer, puis ajuste
+      requestAnimationFrame(() => {
+        try {
+          fitStageToWrap();   // recalcule unitPx d'après la nouvelle place
+          render();           // re-render complet
+        } finally {
+          // Un 2e frame pour être sûr que les tailles finales sont en place
+          requestAnimationFrame(() => restoreScroll());
+        }
+      });
+    });
+  }
 
   // [11] ---------------------------------------------------------------------
   // Listeners globaux & Toolbar
   // -------------------------------------------------------------------------
 
   // Toolbar
-  $sel?.addEventListener('change', () => {
+  $sel?.addEventListener('change', async () => {
     const id = parseInt($sel.value, 10);
-    state.active_plan = state.plans.find(p => p.id === id) || state.active_plan;
-    PLAN_SUBDIV = 32; UI_SUBDIV = 32; render();
+    if (!Number.isFinite(id)) return;
+    await api.activate(id);  // modifie is_active en BDD
+    await boot(id);          // recharge l’affichage
   });
+
   $new?.addEventListener('click', async () => {
     const name = prompt("Nom du plan :", "Rentrée"); if (!name) return;
     const r = await api.create({ classe_id: classeId, name, width: 30, height: 20, grid_size: unitPx });
@@ -1557,7 +1573,7 @@
     if (!confirm(`Réinitialiser le plan actif (${label}) ?`)) return;
     try { await api.reset(state.active_plan.id, hard); await boot(); } catch (e) { console.error(e); alert("Reset impossible."); }
   });
-  $full?.addEventListener('click', () => { const el = $wrap; if (!document.fullscreenElement) el.requestFullscreen?.(); else document.exitFullscreen?.(); });
+
   $edit?.addEventListener('click', () => { editMode = !editMode; refreshFurnitureEditability(); });
 
   // Clavier global : suppression, déplacements, alignements, distributions
@@ -1593,259 +1609,8 @@
   // Resize
   window.addEventListener('resize', () => render());
 
-  // ====== MURS : dessin en polyligne sur un calque SVG ======
-  (function () {
-    const stage = document.getElementById('pc_stage');
-    const svg = document.getElementById('pc_svg');
-    if (!stage || !svg) return;
 
-    const draw = { mode: null, wall: null, previewEl: null };
-    const grid = (window.SEATING_CONF && +window.SEATING_CONF.grid) || +stage.dataset.grid || 32;
 
-    // Helpers
-    const NS = 'http://www.w3.org/2000/svg';
-    const el = (t, a) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
-    const snap = (v, s) => Math.round(v / s) * s;
-    function clientToStage(e) { const r = stage.getBoundingClientRect(); return { x: snap(e.clientX - r.left, grid), y: snap(e.clientY - r.top, grid) }; }
-    const ptsAttr = pts => pts.map(p => `${p.x},${p.y}`).join(' ');
-    function updPreview(extra) { if (!draw.previewEl || !draw.wall) return; const pts = extra ? [...draw.wall.points, extra] : draw.wall.points; draw.previewEl.setAttribute('points', ptsAttr(pts)); }
-    function cleanPreview() { if (draw.previewEl) { draw.previewEl.remove(); draw.previewEl = null; } }
-    function setMode(on) { draw.mode = on ? 'wall' : null; if (!on) { draw.wall = null; cleanPreview(); } }
-
-    // Rendu des murs déjà présents (si restaurés ailleurs)
-    function renderExistingWalls() {
-      const els = (window._SEATING_STATE && window._SEATING_STATE.furniture) || [];
-      els.filter(x => x && x.type === 'wall').forEach(w => {
-        svg.appendChild(el('polyline', { class: 'wall', 'data-id': w.id, points: ptsAttr(w.points || []) }));
-      });
-    }
-    renderExistingWalls();
-
-    // Events
-    stage.addEventListener('click', (e) => {
-      if (draw.mode !== 'wall') return;
-      const p = clientToStage(e);
-      if (!draw.wall) {
-        draw.wall = { id: 'wall_' + Math.random().toString(36).slice(2, 9), type: 'wall', points: [p] };
-        draw.previewEl = el('polyline', { class: 'wall-preview', points: `${p.x},${p.y}` });
-        svg.appendChild(draw.previewEl);
-      } else {
-        draw.wall.points.push(p);
-        updPreview();
-      }
-    });
-    stage.addEventListener('mousemove', (e) => {
-      if (draw.mode !== 'wall' || !draw.wall) return;
-      updPreview(clientToStage(e));
-    });
-    stage.addEventListener('dblclick', finalize);
-    document.addEventListener('keydown', (e) => {
-      if (draw.mode !== 'wall') {
-        if (e.shiftKey && (e.key === 'w' || e.key === 'W')) setMode(true);
-        return;
-      }
-      if (e.key === 'Escape') { setMode(false); }
-      else if (e.key === 'Enter') { finalize(e); }
-      else if (e.key === 'Backspace') { if (draw.wall?.points?.length) { draw.wall.points.pop(); updPreview(); e.preventDefault(); } }
-    });
-
-    function finalize() {
-      if (draw.mode !== 'wall' || !draw.wall || draw.wall.points.length < 2) { setMode(false); return; }
-      svg.appendChild(el('polyline', { class: 'wall', 'data-id': draw.wall.id, points: ptsAttr(draw.wall.points) }));
-      // Notifie la persistance (bloc 3.2 ci-dessous)
-      if (window.__walls_onAdd) window.__walls_onAdd(draw.wall);
-      setMode(false);
-    }
-  })();
-  // ===== MURS — Persistance (localStorage + API) & Reset & Restore =====
-  (function () {
-    const stage = document.getElementById('pc_stage');
-    const svg = document.getElementById('pc_svg');
-    const btnReset = document.getElementById('pc_reset_plan');
-    if (!stage || !svg) return;
-
-    // --- helpers planId ---
-    function getActivePlanId() {
-      const sel = document.getElementById('pc_plan_select');
-      if (sel && sel.value) return String(sel.value);
-      if (window._SEATING_STATE?.active_plan) return String(window._SEATING_STATE.active_plan);
-      const cId = (window.SEATING_CONF?.classeId) || stage.dataset.classeId || 'class';
-      return `${cId}:default`;
-    }
-
-    // --- état mobilier ---
-    function furn() { const S = (window._SEATING_STATE = window._SEATING_STATE || {}); if (!Array.isArray(S.furniture)) S.furniture = []; return S.furniture; }
-
-    // --- localStorage ---
-    const key = id => `pc_walls_${id}`;
-    const loadLocal = id => { try { const r = localStorage.getItem(key(id)); return r ? JSON.parse(r) : []; } catch { return []; } };
-    const saveLocal = (id, walls) => { try { localStorage.setItem(key(id), JSON.stringify(walls)); } catch { } };
-
-    // --- API (optionnelle) ---
-    async function pushAPI() {
-      if (!window.SEATING_URLS || typeof window.SEATING_URLS.upsertFurniture !== 'function') return;
-      const planId = getActivePlanId();
-      try {
-        await fetch(window.SEATING_URLS.upsertFurniture(planId), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(furn())
-        });
-      } catch (err) { console.warn('upsertFurniture (murs) KO :', err); }
-    }
-
-    // --- rendu svg ---
-    const NS = 'http://www.w3.org/2000/svg';
-    function el(t, a) { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; }
-    const ptsAttr = pts => pts.map(p => `${p.x},${p.y}`).join(' ');
-    function renderWall(w) { svg.appendChild(el('polyline', { class: 'wall', 'data-id': w.id, points: ptsAttr(w.points || []) })); }
-    function clearWalls() { svg.querySelectorAll('.wall, .wall-preview').forEach(n => n.remove()); }
-
-    // --- hooks appelés par le module dessin (3.1) ---
-    window.__walls_onAdd = async function (wall) {
-      const F = furn(); F.push(wall);
-      const planId = getActivePlanId();
-      saveLocal(planId, F.filter(x => x?.type === 'wall'));
-      await pushAPI();
-    };
-
-    window.__walls_onReset = async function () {
-      clearWalls();
-      const planId = getActivePlanId();
-      saveLocal(planId, []);
-      const F = furn(); window._SEATING_STATE.furniture = F.filter(x => x?.type !== 'wall');
-      await pushAPI();
-    };
-
-    // --- restauration au chargement et quand on change de plan ---
-    async function restore() {
-      const planId = getActivePlanId();
-      let F = furn();
-      let walls = F.filter(x => x?.type === 'wall');
-      if (!walls.length) {
-        const loc = loadLocal(planId);
-        if (loc.length) { window._SEATING_STATE.furniture = F = [...F, ...loc]; walls = loc; }
-      }
-      clearWalls();
-      walls.forEach(renderWall);
-    }
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', restore); else restore();
-
-    const sel = document.getElementById('pc_plan_select');
-    if (sel && !sel.dataset.wallsBound) { sel.addEventListener('change', restore); sel.dataset.wallsBound = '1'; }
-
-    // --- bouton Réinitialiser ---
-    if (btnReset && !btnReset.dataset.wallResetBound) {
-      btnReset.addEventListener('click', async () => { if (window.__walls_onReset) await window.__walls_onReset(); });
-      btnReset.dataset.wallResetBound = '1';
-    }
-  })();
-  // ===== MURS — Persist, Restore & Auto-repaint même après hydratation du plan =====
-  (function () {
-    const stage = document.getElementById('pc_stage');
-    const svg = document.getElementById('pc_svg');
-    if (!stage || !svg) return;
-
-    // ------------ helpers identifiant de plan
-    function getActivePlanId() {
-      const sel = document.getElementById('pc_plan_select');
-      if (sel && sel.value) return String(sel.value);
-      if (window._SEATING_STATE?.active_plan) return String(window._SEATING_STATE.active_plan);
-      const cId = (window.SEATING_CONF?.classeId) || stage.dataset.classeId || 'class';
-      return `${cId}:default`;
-    }
-
-    // ------------ état / storage / api
-    function furn() {
-      const S = (window._SEATING_STATE = window._SEATING_STATE || {});
-      if (!Array.isArray(S.furniture)) S.furniture = [];
-      return S.furniture;
-    }
-    const k = id => `pc_walls_${id}`;
-    const loadLocal = id => { try { const r = localStorage.getItem(k(id)); return r ? JSON.parse(r) : []; } catch { return []; } };
-    const saveLocal = (id, walls) => { try { localStorage.setItem(k(id), JSON.stringify(walls)); } catch { } };
-
-    async function pushAPI() {
-      if (!window.SEATING_URLS || typeof window.SEATING_URLS.upsertFurniture !== 'function') return;
-      const planId = getActivePlanId();
-      try {
-        await fetch(window.SEATING_URLS.upsertFurniture(planId), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(furn())
-        });
-      } catch (e) { console.warn('upsertFurniture(walls) KO', e); }
-    }
-
-    // ------------ rendu svg
-    const NS = 'http://www.w3.org/2000/svg';
-    const mk = (t, a) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); return e; };
-    const ptsAttr = pts => (pts || []).map(p => `${p.x},${p.y}`).join(' ');
-    function clearRender() { svg.querySelectorAll('.wall, .wall-preview').forEach(n => n.remove()); }
-    function renderWalls(walls) { walls.forEach(w => svg.appendChild(mk('polyline', { class: 'wall', 'data-id': w.id, points: ptsAttr(w.points) }))); }
-
-    // ------------ fonctions globales (appelées par le module dessin et le reset)
-    window.__walls_onAdd = async function (wall) {
-      const F = furn(); F.push(wall);
-      const id = getActivePlanId();
-      saveLocal(id, F.filter(x => x?.type === 'wall'));
-      renderWalls([wall]); // instantané même si pas d’API
-      await pushAPI();
-    };
-    window.__walls_onReset = async function () {
-      clearRender();
-      const id = getActivePlanId();
-      saveLocal(id, []);
-      const F = furn(); window._SEATING_STATE.furniture = F.filter(x => x?.type !== 'wall');
-      await pushAPI();
-    };
-
-    // ------------ routine de restauration robuste
-    function restoreNow() {
-      const id = getActivePlanId();
-      let F = furn();
-      let walls = F.filter(x => x?.type === 'wall');
-      if (!walls.length) {
-        const loc = loadLocal(id);
-        if (loc.length) {
-          window._SEATING_STATE.furniture = F = [...F, ...loc];
-          walls = loc;
-        }
-      }
-      clearRender();
-      if (walls.length) renderWalls(walls);
-    }
-
-    // (A) au chargement
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', restoreNow);
-    } else {
-      restoreNow();
-    }
-
-    // (B) quand on change de plan avec le select
-    const sel = document.getElementById('pc_plan_select');
-    if (sel && !sel.dataset.wallsBound) {
-      sel.addEventListener('change', restoreNow);
-      sel.dataset.wallsBound = '1';
-    }
-
-    // (C) si ton JS émet des événements custom après hydratation/rendu, on s’y branche.
-    // Tu peux déclencher window.dispatchEvent(new Event('seating:plan:rendered')) dans ton code quand le plan est prêt.
-    window.addEventListener('seating:plan:rendered', restoreNow);
-    window.addEventListener('seating:furniture:loaded', restoreNow);
-
-    // (D) filet de sécurité : si après X ms le SVG a été vidé/rerendu → on re-peint.
-    let tries = 0;
-    const watchdog = setInterval(() => {
-      tries++;
-      // si pas de mur dans le DOM alors qu’on en a en state/local → re-render
-      const hasDomWalls = !!svg.querySelector('.wall');
-      const id = getActivePlanId();
-      const F = furn();
-      const hasWallsSomewhere = F.some(x => x?.type === 'wall') || loadLocal(id).length > 0;
-      if (!hasDomWalls && hasWallsSomewhere) restoreNow();
-      if (tries > 25) clearInterval(watchdog); // ~2.5s si 100ms
-    }, 100);
-  })();
 
   // ===== Supprimer un plan =====
   // ===== Supprimer un plan (utilise SEATING_URLS.deletePlan) =====
@@ -1913,15 +1678,16 @@
       if (!confirm(`Supprimer le plan « ${name} »${isActive ? " (actif)" : ""} ?\nCette action est irréversible.`)) return;
 
       const serverOK = await callDeleteAPI(planId);
-
-      // Nettoyage local garanti (UX d'abord)
-      clearWallsDOM();
-      clearWallsState(planId);
-      clearStageDOM();
-      removeSelectedOption();
-
+      // ✅ Recharge propre depuis le serveur pour rafraîchir la <select> et l’état complet
+      await boot();                                // <-- re-fetch plans/active_plan/seats/...
+      // optionnel : repositionner le select sur le premier plan dispo
+      if (sel && state.active_plan) {
+        sel.value = String(state.active_plan.id);
+        sel.dispatchEvent(new Event('change'));
+      }
       window.dispatchEvent(new CustomEvent('seating:plan:deleted', { detail: { planId, serverOK } }));
-      if (!serverOK) console.warn('[Plan] Suppression : serveur non confirmé — nettoyage local appliqué.');
+      if (!serverOK) console.warn('[Plan] Suppression : serveur non confirmé (mais état rechargé).');
+
     });
   })();
 
@@ -1940,10 +1706,36 @@
     }
   })();
 
+  async function onClickDeletePlan() {
+    const planId = state.active_plan?.id;
+    if (!planId) return;
+
+    await callDeleteAPI(planId); // 204
+
+    await refreshPlansFromServer(); // ← re-fetch
+    renderPlansDropdown();
+    render();
+  }
+
+  async function refreshPlansFromServer() {
+    const url = `${API_BASE}/plans/${conf.classeId}`; // ex: /seating/api/plans/123
+    const r = await fetch(url, { credentials: 'same-origin' });
+    if (!r.ok) throw new Error(`GET plans failed: ${r.status}`);
+    const data = await r.json();
+
+    state.plans = data.plans || [];
+    state.active_plan = data.active_plan || null;
+    state.seats = data.seats || [];
+    state.furniture = data.furniture || [];
+    state.positions = data.positions || [];
+    state.eleves = data.eleves || [];
+  }
 
 
 
   // INIT
   boot().catch(console.error);
+  setupFullscreenExact($wrap, fitStageToWrap, render);
+
 
 })();

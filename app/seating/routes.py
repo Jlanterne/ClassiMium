@@ -19,6 +19,8 @@
 from flask import render_template, request, jsonify, abort, current_app, send_file
 from psycopg2.extras import RealDictCursor
 from io import BytesIO
+import json
+
 
 from . import seating_bp
 from .mview import refresh_moyennes_if_needed
@@ -97,10 +99,11 @@ def api_get_plans(classe_id: int):
       "seats": [...],
       "furniture": [...],
       "positions": [...],
-      "eleves": [...]
+      "eleves": [...],
+      "walls": [...]             # [{ "id": "...", "points": [{"x":..,"y":..}, ...] }, ...]
     }
     """
-    # Ne bloque pas l'API si la MV des moyennes n'est pas dispo
+    # 0) Matérialisation éventuelle des moyennes (ne doit pas casser l'API si indispo)
     try:
         refresh_moyennes_if_needed(db_conn)
     except Exception:
@@ -128,19 +131,42 @@ def api_get_plans(classe_id: int):
             # Sinon : plan actif, ou à défaut le plus récent
             active_plan = next((p for p in plans if p.get("is_active")), plans[0] if plans else None)
 
+        # Valeurs par défaut si aucun plan à afficher
+        seats, furniture, positions, api_walls = [], [], [], []
+
         # 3) Charger le contenu du plan sélectionné (si présent)
-        seats, furniture, positions = [], [], []
         if active_plan:
-            cur.execute("SELECT * FROM seats WHERE plan_id=%s ORDER BY z, id", (active_plan["id"],))
+            pid = active_plan["id"]
+
+            # Seats
+            cur.execute("SELECT * FROM seats WHERE plan_id=%s ORDER BY z, id", (pid,))
             seats = cur.fetchall()
 
-            cur.execute("SELECT * FROM furniture_items WHERE plan_id=%s ORDER BY z, id", (active_plan["id"],))
+            # Furniture
+            cur.execute("SELECT * FROM furniture_items WHERE plan_id=%s ORDER BY z, id", (pid,))
             furniture = cur.fetchall()
 
-            cur.execute("SELECT * FROM seating_positions WHERE plan_id=%s", (active_plan["id"],))
+            # Positions élèves
+            cur.execute("SELECT * FROM seating_positions WHERE plan_id=%s", (pid,))
             positions = cur.fetchall()
 
-        # 4) Élèves de la classe (+ niveau si dispo, sinon niveau de la classe)
+            # Walls (JSONB par plan)
+            try:
+                cur.execute("SELECT walls_json FROM seating_plan_walls WHERE plan_id=%s", (pid,))
+                r = cur.fetchone()
+                if r:
+                    # RealDictCursor -> r est un dict
+                    api_walls = r.get("walls_json") or []
+                    # Sécurise le type
+                    if not isinstance(api_walls, list):
+                        api_walls = []
+            except Exception:
+                # On tolère l'absence de table en environnement où elle n'existe pas encore
+                conn.rollback()
+                api_walls = []
+
+        # 4) Élèves de la classe (niveau si dispo)
+        eleves = []
         classe_niveau = None
         try:
             cur.execute("""
@@ -157,6 +183,7 @@ def api_get_plans(classe_id: int):
                 cur.execute("SELECT niveau FROM classes WHERE id=%s", (classe_id,))
                 r = cur.fetchone()
                 if r:
+                    # r peut être dict (RealDictCursor) ou tuple
                     classe_niveau = r["niveau"] if isinstance(r, dict) else r[0]
             except Exception:
                 conn.rollback()
@@ -168,19 +195,20 @@ def api_get_plans(classe_id: int):
             """, (classe_id,))
             eleves = cur.fetchall()
 
-        # 5) Moyennes (si la vue/materialized view existe)
+        # 5) Moyennes (si la vue existe)
         moyennes_map = {}
         try:
             cur.execute("SELECT eleve_id, moyenne_20 FROM eleve_moyennes")
             for row in cur.fetchall():
+                # row est un dict via RealDictCursor
                 moyennes_map[row["eleve_id"]] = row["moyenne_20"]
         except Exception:
             conn.rollback()
 
-        # 6) Réponse
+        # 6) Payload final
         return jsonify({
             "plans": plans,
-            "active_plan": active_plan,   # ← c'est le plan dont on renvoie seats/furniture/positions
+            "active_plan": active_plan,   # ← c'est le plan dont on renvoie seats/furniture/positions/walls
             "seats": seats,
             "furniture": furniture,
             "positions": positions,
@@ -192,12 +220,62 @@ def api_get_plans(classe_id: int):
                     "niveau": (dict(e).get("niveau") if "niveau" in dict(e) else classe_niveau)
                 }
                 for e in eleves
-            ]
+            ],
+            "walls": api_walls  # ✅ murs renvoyés au front
         })
     finally:
         cur.close()
         conn.close()
 
+from psycopg2.extras import RealDictCursor, Json
+
+
+@seating_bp.put("/api/plans/<int:plan_id>/walls")
+def api_upsert_walls(plan_id: int):
+    """
+    Upsert des murs pour un plan.
+    Le front envoie: { "walls": [ { "id": "...", "points": [ { "x": int, "y": int }, ... ] }, ... ] }
+    Les x,y sont des ENTiers encodés (× PLAN_SUBDIV). On stocke tels quels en JSONB.
+    """
+    data = request.get_json(force=True) or {}
+    walls = data.get("walls", [])
+
+    if not isinstance(walls, list):
+        return jsonify({"ok": False, "error": "walls must be a list"}), 400
+
+    # Validation minimale de structure
+    for w in walls:
+        if not isinstance(w, dict) or "points" not in w:
+            return jsonify({"ok": False, "error": "invalid wall structure"}), 400
+        pts = w.get("points", [])
+        if not isinstance(pts, list):
+            return jsonify({"ok": False, "error": "invalid points"}), 400
+
+    conn = db_conn()
+    cur = conn.cursor()
+    try:
+        # Vérifier existence plan
+        cur.execute("SELECT 1 FROM seating_plans WHERE id=%s", (plan_id,))
+        if not cur.fetchone():
+            cur.close(); conn.close()
+            return jsonify({"ok": False, "error": "Plan not found"}), 404
+
+        # Upsert JSONB
+        cur.execute("""
+            INSERT INTO seating_plan_walls (plan_id, walls_json, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (plan_id)
+            DO UPDATE SET walls_json = EXCLUDED.walls_json,
+                          updated_at = NOW()
+        """, (plan_id, Json(walls)))
+        conn.commit()
+        return jsonify({"ok": True})
+    except Exception as e:
+        conn.rollback()
+        current_app.logger.exception("api_upsert_walls failed for plan %s", plan_id)
+        return jsonify({"ok": False, "error": str(e)}), 500
+    finally:
+        cur.close(); conn.close()
 
 
 @seating_bp.post("/api/plans")

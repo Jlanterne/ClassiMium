@@ -23,7 +23,7 @@
 
   <button id="pc_fullscreen" type="button">Plein écran</button>
 </div>
-</div>
+
 
 <!-- ===== Layout à 3 colonnes : Élèves | Plan | Meubles ===== -->
 <div class="pc_layout">
@@ -51,35 +51,42 @@
 
 <script>
   var CLASS_ID = JSON.parse('{{ classe_id | tojson | safe }}');
-  (function () {
-    var basePlans = "{{ url_for('seating.api_get_plans', classe_id=0) }}".replace(/0$/, "");
 
-    window.SEATING_URLS = {
-      getPlans: basePlans + CLASS_ID,
-      createPlan: basePlans,
-      activate: function (planId) { return basePlans + planId + "/activate"; },
-      duplicate: function (planId) { return basePlans + planId + "/duplicate"; },
-      upsertPositions: function (planId) { return basePlans + planId + "/positions"; },
-      upsertFurniture: function (planId) { return basePlans + planId + "/furniture"; },
-      exportPdf: function (planId) { return basePlans + planId + "/export/pdf"; },
+  // Base API robuste, dérivée d'une route réelle:
+  var _plans0 = "{{ url_for('seating.api_get_plans', classe_id=0) }}"; // ex: /seating/api/plans/0
+  var API_BASE_ROOT = _plans0.replace(/\/api\/plans\/0$/, "");          // ex: /seating
 
-      /* ✅ LIGNE À AVOIR ABSOLUMENT : on dérive l’URL exacte depuis Flask */
-      deletePlan: (function () {
-        // On récupère une URL de référence depuis Flask et on remplace le 0 par l’ID réel
-        var ref = "{{ url_for('seating.api_delete_plan', plan_id=0) }}";
-        return function (planId) { return ref.replace(/0(?!.*0)/, String(planId)); };
-      })()
-    };
+  window.SEATING_URLS = {
+    // si tu veux t'en servir ailleurs
+    getPlans: _plans0.replace(/0$/, String(CLASS_ID)),
+    createPlan: API_BASE_ROOT + "/api/plans",
+    activate: (id) => API_BASE_ROOT + "/api/plans/" + id + "/activate",
+    duplicate: (id) => API_BASE_ROOT + "/api/plans/" + id + "/duplicate",
+    upsertPositions: (id) => API_BASE_ROOT + "/api/plans/" + id + "/positions",
+    upsertFurniture: (id) => API_BASE_ROOT + "/api/plans/" + id + "/furniture",
+    exportPdf: (id) => API_BASE_ROOT + "/api/plans/" + id + "/export/pdf",
+    deletePlan: (function () {
+      var ref = "{{ url_for('seating.api_delete_plan', plan_id=0) }}";  // ex: /seating/api/plans/0/delete
+      return function (id) { return ref.replace(/0$/, String(id)); };
+    })()
+  };
 
-    window.SEATING_CONF = {
-      classeId: CLASS_ID,
-      apiBase: "/seating",
-      grid: 32,
-      photosBase: "{{ url_for('static', filename='photos/') }}"  /* Vérifie ce chemin (cf. point 4) */
-    };
-  })();
+  window.SEATING_CONF = {
+    classeId: CLASS_ID,
+    apiBase: API_BASE_ROOT,                              // << clé pour le JS
+    grid: 32,
+    photosBase: "{{ url_for('static', filename='photos/') }}" // garde bien le / final
+  };
+</script>
+<script>
+  console.log("[pc] stage:", !!document.getElementById('pc_stage'));
+  fetch(window.SEATING_CONF.apiBase + "/api/plans/" + window.SEATING_CONF.classeId, { credentials: "same-origin" })
+    .then(r => (console.log("[pc] GET", r.status, r.url), r.json()))
+    .then(j => console.log("[pc] payload keys:", Object.keys(j || {})))
+    .catch(e => console.error("[pc] fetch error:", e));
 </script>
 
 
-<script src="{{ url_for('seating.static', filename='plan_classe.js') }}"></script>
+
+<script src="{{ url_for('seating.static', filename='plan_classe.js') }}" defer></script>
 {% endblock %}

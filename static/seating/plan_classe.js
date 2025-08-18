@@ -51,6 +51,33 @@
   // ids temporaires (meubles) & mode édition
   let tempIdSeq = -1;
   let editMode = false;
+  // ---- Échelle réelle pour les élèves (1 unité = 10 cm par défaut)
+  const CM_PER_UNIT = 25;                 // adapte si chez toi 1 unité ≠ 10 cm
+  const STUDENT_W_CM = 70;                // largeur réelle
+  const STUDENT_H_CM = 50;                // hauteur réelle
+  const cmToUnits = (cm) => cm / CM_PER_UNIT;
+
+  const CARD_ROT_STATES = [0, 90, 270]; // 270 = -90
+  function normCardRotToIdx(deg) {
+    // mappe n'importe quel angle vers {0,90,270} — 180 devient 270
+    let d = ((deg % 360) + 360) % 360;
+    if (d >= 315 || d < 45) return 0;      // ~0
+    if (d >= 45 && d < 135) return 1;      // ~90
+    // 135–225 (≈180) et 225–315 (≈270) => 270
+    return 2;
+  }
+
+
+
+
+
+
+  // Taille élève en unités (arrondie au “tick” UI pour coller à l’aimantation)
+  function studentFootprintUnits() {
+    const w = Math.max(TICK, Math.round(cmToUnits(STUDENT_W_CM) * UI_SUBDIV) / UI_SUBDIV);
+    const h = Math.max(TICK, Math.round(cmToUnits(STUDENT_H_CM) * UI_SUBDIV) / UI_SUBDIV);
+    return { w, h };
+  }
 
   // anti-duplications autosave (nouveaux meubles)
   const sentNewFurniture = new Set(); // uid client déjà envoyé durant un debounce
@@ -91,7 +118,8 @@
   try { $subdiv?.closest('label')?.style && ($subdiv.closest('label').style.display = 'none'); } catch { }
 
   // conteneur SVG (murs)
-  let $svg = null;
+  let $svg = document.getElementById('pc_svg') || null;
+
 
   // [1] ----------------------------------------------------------------------
   // Utilities : unités/px, géométrie, couleurs, localStorage
@@ -106,9 +134,104 @@
   const snapUnits = v => Math.round(v * UI_SUBDIV) / UI_SUBDIV;
 
   const genUid = () => 'f_' + Math.random().toString(36).slice(2, 10);
+  // helpers LS (mets-les avec tes autres helpers LS)
+  const posRotKey = pid => `pc_posrot_${pid}`;
+  function lsGetPosRots(pid) { try { return JSON.parse(localStorage.getItem(posRotKey(pid)) || '{}'); } catch { return {}; } }
+  function lsSetPosRot(pid, eleveId, rot) {
+    try { const m = lsGetPosRots(pid); m[eleveId] = rot; localStorage.setItem(posRotKey(pid), JSON.stringify(m)); } catch { }
+  }
 
+  // --- Helpers murs: encode (→ stockage) / decode (← lecture) en base PLAN_SUBDIV ---
+  function encodeWallsForStorage(walls) {
+    // walls: [{id, points:[{x,y}]}] en UNITÉS DE PLAN
+    // -> [{id, points:[{x,y}]}] x,y entiers en sous-unités (× PLAN_SUBDIV)
+    return (walls || []).map(w => ({
+      id: w.id || genUid(),
+      points: (w.points || []).map(p => ({
+        x: Math.round((+p.x || 0) * PLAN_SUBDIV),
+        y: Math.round((+p.y || 0) * PLAN_SUBDIV),
+      }))
+    }));
+  }
 
+  function decodeWallsFromStorage(stored) {
+    // stored: [{id, points:[{x,y}]}] x,y entiers en sous-unités
+    // -> [{id, points:[{x,y}]}] x,y en UNITÉS DE PLAN
+    return (stored || []).map(w => ({
+      id: w.id || genUid(),
+      points: (w.points || []).map(p => ({
+        x: (+p.x || 0) / PLAN_SUBDIV,
+        y: (+p.y || 0) / PLAN_SUBDIV,
+      }))
+    }));
+  }
 
+  // place ça avant l'INIT (avant boot().catch(...))
+  function setupFullscreenExact($wrap, onFit, onRender) {
+    const btn = document.getElementById('pc_fullscreen');
+    if (!$wrap || !btn) return;
+
+    function enter() { if ($wrap.requestFullscreen) $wrap.requestFullscreen(); }
+    function exit() { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); }
+
+    btn.addEventListener('click', () => {
+      if (document.fullscreenElement) exit(); else enter();
+    });
+
+    // quand on entre/sort du plein écran -> recalcul (fit + render)
+    document.addEventListener('fullscreenchange', () => {
+      try { onFit && onFit(); } catch { }
+      try { onRender && onRender(); } catch { }
+    });
+  }
+
+  const rotLockKey = (pid, eleveId) => `pc_rotlock_${pid}_${eleveId}`;
+  const lsGetRotLock = (pid, eid) => { try { return localStorage.getItem(rotLockKey(pid, eid)) === '1'; } catch { return false; } };
+  const lsSetRotLock = (pid, eid) => { try { localStorage.setItem(rotLockKey(pid, eid), '1'); } catch { } };
+
+  function maybeLockRotation(card, eleveId) {
+    if (!state.active_plan) return;
+    const pid = state.active_plan.id;
+    if (lsGetRotLock(pid, eleveId)) return;        // déjà locké
+
+    // → première rotation qu’on constate : on verrouille
+    lsSetRotLock(pid, eleveId);
+
+    // retirer/masquer les boutons et désactiver la molette Alt
+    card.querySelectorAll('.pc_rot_btn').forEach(b => b.remove());
+    card.removeEventListener('wheel', onCardAltWheel, { passive: false }); // cf. handler ci-dessous
+  }
+
+  // --- Snap élèves: 0 / 90 / 270 (on évite 180 pour garder le nom lisible)
+  // --- Snap élèves: 0 / 90 / 270 (on évite 180 pour garder le nom lisible)
+  function snapRotStudent(deg) {
+    const d = ((deg % 360) + 360) % 360;
+    if (d < 45 || d >= 315) return 0;   // proche de 0
+    if (d < 135) return 90;             // proche de 90
+    return 270;                         // 135–315 => 270
+  }
+
+  // Récupère l’angle visuel (libre) et l’angle snap (modèle)
+  function getCardAngles(card) {
+    const visu = parseFloat(card.dataset.rotVisuAbs || card.dataset.rotAbs || card.dataset.rot || '0') || 0;
+    const snap = snapRotStudent(visu);
+    return { visu, snap };
+  }
+
+  function onCardAltWheel(e) {
+    if (!e.altKey) return;
+    e.preventDefault();
+    const card = e.currentTarget;
+    setCardRotation(card, (e.deltaY > 0 ? -1 : 1), { snap: false });
+  }
+
+  // remplace le snap neutre par un snap directionnel selon le signe du décalage
+  function snapUnitsDir(v, dir /* dx ou dy */) {
+    const s = v * UI_SUBDIV;
+    if (dir > 0) return Math.ceil(s) / UI_SUBDIV;   // on pousse vers + (droite/haut)
+    if (dir < 0) return Math.floor(s) / UI_SUBDIV;   // on pousse vers - (gauche/bas)
+    return Math.round(s) / UI_SUBDIV;                 // cas neutre
+  }
 
 
 
@@ -150,10 +273,55 @@
   }
 
   function footprintCardUnits() {
-    const units = Math.ceil((96 / unitPx) * UI_SUBDIV) / UI_SUBDIV;
-    const u = Math.max(TICK, units);
-    return { w: u, h: u };
+    // désormais basé sur 70x50 cm, pas sur 96 px
+    return studentFootprintUnits();
   }
+
+  function buildRotateControls(card) {
+    const nameEl = card.querySelector('.pc_name_in');
+    if (!nameEl) return;
+    if (nameEl.querySelector('.pc_rot_btn')) return; // évite les doublons
+
+    const mk = (cls, title, delta) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `pc_rot_btn ${cls}`;
+      b.textContent = (delta < 0 ? '↺' : '↻');
+      b.title = title;
+      b.addEventListener('pointerdown', e => e.stopPropagation());
+      b.addEventListener('mousedown', e => e.stopPropagation());
+      b.addEventListener('click', e => e.stopPropagation());
+      // passive: true pour touchstart (pas de preventDefault)
+      b.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+      b.addEventListener('click', () => setCardRotation(card, delta, { snap: true }));
+      return b;
+    };
+
+    nameEl.prepend(mk('rot-left', 'Pivoter -90°', -90));
+    nameEl.append(mk('rot-right', 'Pivoter +90°', +90));
+
+    // Alt + molette = rotation fine
+    if (!card._wheelBound) {
+      card.addEventListener('wheel', (e) => {
+        if (!e.altKey) return;
+        e.preventDefault();
+        setCardRotation(card, (e.deltaY > 0 ? -1 : 1), { snap: false });
+      }, { passive: false });
+      card._wheelBound = true;
+    }
+  }
+
+
+
+  // Optionnel : garde l’API existante, mais ne supprime plus les boutons
+  function refreshCardRotationUI(card /*, nameEl */) {
+    // On ne masque plus/retire rien : les deux flèches restent toujours accessibles
+    // Laisse la molette Alt active (liée dans buildRotateControls)
+  }
+
+
+
+
 
   function hexToRgb(hex) {
     const x = hex.replace('#', '');
@@ -180,7 +348,8 @@
   const api = {
     getAll: (planId) => {
       const q = planId ? `?plan_id=${encodeURIComponent(planId)}` : '';
-      return fetch(`${API_BASE}/plans/${classeId}${q}`, { credentials: 'same-origin' }).then(r => r.json());
+      return fetch(`${API_BASE}/plans/${classeId}${q}`, { credentials: 'same-origin', cache: 'no-store' })
+        .then(r => r.json());
     },
     create: (payload) => fetch(`${API_BASE}/plans`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json()),
     activate: (plan_id) => fetch(`${API_BASE}/plans/${plan_id}/activate`, { method: 'PUT' }).then(r => r.json()),
@@ -202,44 +371,82 @@
 
   const autosavePositions = debounce(() => {
     if (!state.active_plan) return;
-    const payload = state.positions.map(p => ({
-      eleve_id: p.eleve_id,
-      x: Math.round(p.x * PLAN_SUBDIV),
-      y: Math.round(p.y * PLAN_SUBDIV),
-      seat_id: p.seat_id ?? null,
-      rot: Math.round((p.rotAbs ?? p.rot ?? 0) % 360)
-    }));
+    const payload = state.positions.map(p => {
+      const r = Math.round((p.rotAbs ?? p.rot ?? 0) % 360);
+      return {
+        eleve_id: p.eleve_id,
+        x: Math.round(p.x * PLAN_SUBDIV),
+        y: Math.round(p.y * PLAN_SUBDIV),
+        seat_id: p.seat_id ?? null,
+        rotation: r,   // ← clé "rotation" alignée sur les meubles / backend
+        rot: r         // ← optionnel, pour compat si l’API accepte encore "rot"
+      };
+    });
     api.savePositions(state.active_plan.id, payload).catch(console.error);
   }, 500);
 
-  const autosaveFurniture = debounce(() => {
+
+  // ---- AUTOSAVE meubles avec resync APRES succès API ----
+  const autosaveFurniture = (() => {
+    let timer = null;
+
+    return () => {
+      if (!state.active_plan) return;
+      clearTimeout(timer);
+
+      timer = setTimeout(async () => {
+        try {
+          const payload = state.furniture
+            .filter(f => (f.id > 0) || (f.id <= 0 && !sentNewFurniture.has(f.uid)))
+            .map(f => ({
+              id: (f.id && f.id > 0) ? f.id : undefined,
+              client_uid: f.uid ?? null,
+              type: f.type,
+              label: f.label,
+              color: f.color || FURN_COLORS[f.type] || null,
+              x: Math.round(f.x * PLAN_SUBDIV),
+              y: Math.round(f.y * PLAN_SUBDIV),
+              w: Math.round(f.w * PLAN_SUBDIV),
+              h: Math.round(f.h * PLAN_SUBDIV),
+              rotation: Math.round((f.rotAbs ?? f.rotation ?? 0) % 360),
+              z: f.z || 0,
+              radius: !!f.radius
+            }));
+
+          if (!payload.length) return;
+
+          const justSentUids = new Set(
+            payload.filter(p => !p.id && p.client_uid).map(p => p.client_uid)
+          );
+          justSentUids.forEach(uid => sentNewFurniture.add(uid));
+
+          // ⬇️ on ATTEND le retour serveur
+          await api.saveFurniture(state.active_plan.id, payload);
+
+          // ✅ et seulement maintenant on resynchronise (immédiatement)
+          resyncSoon(0);
+        } catch (err) {
+          console.error('[autosaveFurniture] PUT failed', err);
+          // on réautorise un renvoi pour les nouveaux qui ont échoué
+          sentNewFurniture.forEach(uid => {
+            // si ce uid était dans le lot échoué, on le retire
+            // (simple : on reset tout le set)
+          });
+          sentNewFurniture.clear();
+        }
+      }, 500); // même debounce que chez toi
+    };
+  })();
+
+  // ---- AUTOSAVE murs (déplacés au clavier) ----
+  const autosaveWalls = debounce(async () => {
     if (!state.active_plan) return;
-    const payload = state.furniture
-      .filter(f => (f.id > 0) || (f.id <= 0 && !sentNewFurniture.has(f.uid)))
-      .map(f => ({
-        id: (f.id && f.id > 0) ? f.id : undefined,
-        client_uid: f.uid ?? null,
-        type: f.type,
-        label: f.label,
-        color: f.color || FURN_COLORS[f.type] || null,
-        x: Math.round(f.x * PLAN_SUBDIV),
-        y: Math.round(f.y * PLAN_SUBDIV),
-        w: Math.round(f.w * PLAN_SUBDIV),
-        h: Math.round(f.h * PLAN_SUBDIV),
-        rotation: Math.round((f.rotAbs ?? f.rotation ?? 0) % 360),
-        z: f.z || 0,
-        radius: !!f.radius
-      }));
-    if (!payload.length) return;
-
-    const justSentUids = new Set(payload.filter(p => !p.id && p.client_uid).map(p => p.client_uid));
-    justSentUids.forEach(uid => sentNewFurniture.add(uid));
-
-    api.saveFurniture(state.active_plan.id, payload).catch(err => {
-      console.error(err);
-      justSentUids.forEach(uid => sentNewFurniture.delete(uid));
-    });
+    const planId = state.active_plan.id;
+    const payloadWalls = encodeWallsForStorage(state.walls);
+    try { await api.saveWalls?.(planId, payloadWalls); } catch (e) { console.warn('saveWalls API KO', e); }
+    try { localStorage.setItem(`pc_walls_${planId}`, JSON.stringify(payloadWalls)); } catch { }
   }, 500);
+
 
   // Sauvegarde immédiate, un meuble, PAS de boot() (pour ne pas écraser la couleur locale)
   async function saveFurnitureItemImmediate(f) {
@@ -298,16 +505,23 @@
       `${sub}px ${sub}px, ${sub}px ${sub}px, ${unitPx}px ${unitPx}px, ${unitPx}px ${unitPx}px`;
 
     // SVG overlay (murs)
+    // SVG overlay (murs)
     if (!$svg) {
       $svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       $svg.setAttribute('id', 'pc_svg');
-      $svg.setAttribute('class', 'pc_svg_overlay');
-      $svg.style.position = 'absolute';
-      $svg.style.left = '0'; $svg.style.top = '0'; $svg.style.width = '100%'; $svg.style.height = '100%';
-      $svg.style.pointerEvents = 'none';
+      $svg.classList.add('pc_svg');
       $stage.appendChild($svg);
-      ensureHatchPattern();
     }
+    // s'assure de sa position/tailles
+    $svg.style.position = 'absolute';
+    $svg.style.left = '0';
+    $svg.style.top = '0';
+    $svg.style.width = '100%';
+    $svg.style.height = '100%';
+    $svg.style.pointerEvents = 'none';
+
+    ensureHatchPattern();
+
   }
 
   function ensureHatchPattern() {
@@ -337,20 +551,26 @@
   function rectsInPlan(exclude = {}) {
     const rects = [];
     const fp = footprintCardUnits();
+
+    // élèves
     for (const p of state.positions) {
       if (exclude.eleveId && p.eleve_id === exclude.eleveId) continue;
-      rects.push({ x: p.x, y: p.y, w: fp.w, h: fp.h, kind: 'eleve', id: p.eleve_id });
+      const rot = (p.rotAbs ?? p.rot ?? 0);
+      const r = rectFromTopLeftWithRotation(p.x, p.y, fp.w, fp.h, rot);
+      rects.push({ ...r, kind: 'eleve', id: p.eleve_id });
     }
+
+    // meubles
     for (const f of state.furniture) {
       if (exclude.furnitureId && f.id === exclude.furnitureId) continue;
       const rot = (f.rotAbs ?? f.rotation ?? 0);
-      const swap = isQuarterTurnSwap(rot);
-      const wEff = swap ? f.h : f.w;
-      const hEff = swap ? f.w : f.h;
-      rects.push({ x: f.x, y: f.y, w: wEff, h: hEff, kind: 'furniture', id: f.id });
+      const r = rectFromTopLeftWithRotation(f.x, f.y, f.w, f.h, rot);
+      rects.push({ ...r, kind: 'furniture', id: f.id });
     }
+
     return rects;
   }
+
 
   const notOverlap = (a, b) =>
     (a.x + a.w) <= b.x + EPS || (b.x + b.w) <= a.x + EPS ||
@@ -359,35 +579,55 @@
 
   function snapCollapse(r, others) {
     const margin = TICK + 1e-9;
-    const overlap1D = (a0, a1, b0, b1) => !(a1 <= b0 + EPS || b1 <= a0 + EPS);
-    let best = null;
-    for (const o of others) {
-      if (overlap1D(r.y, r.y + r.h, o.y, o.y + o.h)) {
-        const dx1 = o.x - (r.x + r.w);      // droite r -> gauche o
-        const dx2 = (o.x + o.w) - r.x;      // gauche r <- droite o
-        if (Math.abs(dx1) <= margin) best = chooseBest(best, { dx: dx1, dy: 0 });
-        if (Math.abs(dx2) <= margin) best = chooseBest(best, { dx: dx2, dy: 0 });
-      }
-      if (overlap1D(r.x, r.x + r.w, o.x, o.x + o.w)) {
-        const dy1 = o.y - (r.y + r.h);      // bas r -> haut o
-        const dy2 = (o.y + o.h) - r.y;      // haut r <- bas o
-        if (Math.abs(dy1) <= margin) best = chooseBest(best, { dx: 0, dy: dy1 });
-        if (Math.abs(dy2) <= margin) best = chooseBest(best, { dx: 0, dy: dy2 });
-      }
-    }
-    if (!best) return r;
-    const cand = { x: snapUnits(r.x + best.dx), y: snapUnits(r.y + best.dy), w: r.w, h: r.h };
-    const c = clampToStage(cand.x, cand.y, r.w, r.h);
-    const snapped = { x: c.gx, y: c.gy, w: r.w, h: r.h };
-    return collides(snapped, others) ? r : snapped;
+    const tol = TICK * 0.5; // tolérance d'overlap orthogonal
+    const onTick = v => Math.round(v * UI_SUBDIV) / UI_SUBDIV; // arrondi neutre (ne dépasse pas si v est déjà sur la grille)
+    const overlap1D = (a0, a1, b0, b1) => !(a1 <= b0 + tol || b1 <= a0 + tol);
 
-    function chooseBest(cur, nxt) {
-      if (!cur) return nxt;
-      const cd = Math.abs(cur.dx) + Math.abs(cur.dy);
-      const nd = Math.abs(nxt.dx) + Math.abs(nxt.dy);
-      return (nd < cd) ? nxt : cur;
+    let best = null; // {x,y,d}
+    const consider = (nx, ny) => {
+      // positions cibles calculées par ARÊTE (déjà sur la grille)
+      const cand = { x: onTick(nx), y: onTick(ny), w: r.w, h: r.h };
+      // restreint au plan
+      const c = clampToStage(cand.x, cand.y, r.w, r.h);
+      const snapped = { x: c.gx, y: c.gy, w: r.w, h: r.h };
+      if (collides(snapped, others)) return;
+      const d = Math.abs(snapped.x - r.x) + Math.abs(snapped.y - r.y);
+      if (!best || d < best.d) best = { ...snapped, d };
+    };
+
+    for (const o of others) {
+      // alignement horizontal (arêtes verticales) si recouvrement Y
+      if (overlap1D(r.y, r.y + r.h, o.y, o.y + o.h)) {
+        const gapRight = o.x - (r.x + r.w);          // r à gauche de o
+        const gapLeft = (o.x + o.w) - r.x;          // r à droite de o
+        if (Math.abs(gapRight) <= margin) consider(o.x - r.w, r.y);     // colle r.x + r.w = o.x
+        if (Math.abs(gapLeft) <= margin) consider(o.x + o.w, r.y);     // colle r.x = o.x + o.w
+      }
+      // alignement vertical (arêtes horizontales) si recouvrement X
+      if (overlap1D(r.x, r.x + r.w, o.x, o.x + o.w)) {
+        const gapBottom = o.y - (r.y + r.h);         // r au-dessus de o
+        const gapTop = (o.y + o.h) - r.y;         // r en dessous de o
+        if (Math.abs(gapBottom) <= margin) consider(r.x, o.y - r.h);    // colle r.y + r.h = o.y
+        if (Math.abs(gapTop) <= margin) consider(r.x, o.y + o.h);    // colle r.y = o.y + o.h
+      }
     }
+
+    // aimantation aux bords du plan
+    if (state.active_plan) {
+      const W = state.active_plan.width, H = state.active_plan.height;
+      const dLeft = 0 - r.x;
+      const dRight = (W - (r.x + r.w));
+      const dTop = 0 - r.y;
+      const dBottom = (H - (r.y + r.h));
+      if (Math.abs(dLeft) <= margin) consider(0, r.y);
+      if (Math.abs(dRight) <= margin) consider(W - r.w, r.y);
+      if (Math.abs(dTop) <= margin) consider(r.x, 0);
+      if (Math.abs(dBottom) <= margin) consider(r.x, H - r.h);
+    }
+
+    return best ? { x: best.x, y: best.y, w: r.w, h: r.h } : r;
   }
+
 
   function findNearestFreeSpot(gx, gy, wUnits, hUnits, exclude = {}) {
     const others = rectsInPlan(exclude);
@@ -434,54 +674,141 @@
   function moyClass(m20) { if (m20 == null) return ''; if (m20 >= 16) return 'mAp'; if (m20 >= 13) return 'mA'; if (m20 >= 8) return 'mPA'; return 'mNA'; }
 
   // -- élèves
-  function setCardRotation(card, deltaDeg) {
-    const abs = (parseFloat(card.dataset.rotAbs || card.dataset.rot || '0') || 0) + deltaDeg;
-    card.dataset.rotAbs = String(abs);
-    const inner = card.querySelector('.pc_card_in');
-    const name = card.querySelector('.pc_name_in');
-    if (inner) inner.style.transform = `rotate(${abs}deg)`;
-    if (name) {
-      const d = ((abs % 360) + 360) % 360;
-      name.style.transform = (d > 135 && d < 225) ? 'rotate(180deg)' : 'rotate(0deg)';
+  // -- élèves
+  function setCardRotation(card, delta, { snap = false } = {}) {
+    // angle visuel courant (pour l'affichage)
+    let visu = parseFloat(card.dataset.rotVisuAbs || card.dataset.rotAbs || card.dataset.rot || '0') || 0;
+
+    // applique l'incrément
+    visu += delta;
+
+    // si clic boutons: on borne à [-90, 90] pour éviter 180 (lisibilité du nom)
+    if (snap) {
+      if (visu > 90) visu = 90;
+      if (visu < -90) visu = -90;
     }
-    const id = parseInt(card.dataset.eleveId, 10);
-    const p = state.positions.find(p => p.eleve_id === id);
-    if (p) { p.rotAbs = abs; p.rot = abs % 360; autosavePositions(); }
+
+    // angle snap (modèle) = 0 / 90 / 270
+    const snapAbs = snapRotStudent(visu);
+
+    // maj datasets + rendu
+    card.dataset.rotVisuAbs = String(visu);
+    card.dataset.rotAbs = String(snapAbs);
+    card.dataset.rot = String(snapAbs);           // pour compat avec anciens usages
+    card.style.transformOrigin = 'center center';
+    card.style.transform = `rotate(${visu}deg)`;  // on affiche l'angle fin
+
+    // pousse dans le state + autosave
+    const eleveId = parseInt(card.dataset.eleveId, 10);
+    const p = state.positions.find(x => x.eleve_id === eleveId);
+    if (p) {
+      p.rotAbs = snapAbs;
+      p.rot = snapAbs;
+      if (state.active_plan) lsSetPosRot(state.active_plan.id, eleveId, snapAbs); // NEW
+      autosavePositions();
+    }
+
+
+    // gestion visibilité boutons (comme chez toi)
+    const leftBtn = card.querySelector('.pc_rot_btn.rot-left');
+    const rightBtn = card.querySelector('.pc_rot_btn.rot-right');
+    if (leftBtn && rightBtn && snap) {
+      if (visu === 0) {
+        leftBtn.style.display = "inline-block";
+        rightBtn.style.display = "inline-block";
+      } else if (visu === -90) {
+        leftBtn.style.display = "none";
+        rightBtn.style.display = "inline-block";
+      } else if (visu === 90) {
+        rightBtn.style.display = "none";
+        leftBtn.style.display = "inline-block";
+      }
+    }
   }
+
+
+
+
+
+
+
+
   function addRotateButton(card) {
-    const btn = document.createElement('div');
-    btn.className = 'pc_delete_btn'; btn.style.right = '26px';
-    btn.title = 'Pivoter (90°) — Alt+molette: rotation fine'; btn.textContent = '↻';
-    btn.addEventListener('click', (e) => { e.stopPropagation(); setCardRotation(card, 90); });
-    card.addEventListener('wheel', (e) => { if (!e.altKey) return; e.preventDefault(); setCardRotation(card, (e.deltaY > 0 ? -5 : 5)); }, { passive: false });
-    card.appendChild(btn);
+    // ↺ bouton
+    const btnL = document.createElement('div');
+    btnL.className = 'pc_delete_btn';
+    btnL.style.right = '46px';
+    btnL.title = 'Pivoter -90°';
+    btnL.textContent = '↺';
+    btnL.addEventListener('click', (e) => { e.stopPropagation(); setCardRotation(card, -90, { snap: true }); });
+
+    // ↻ bouton
+    const btnR = document.createElement('div');
+    btnR.className = 'pc_delete_btn';
+    btnR.style.right = '26px';
+    btnR.title = 'Pivoter +90°';
+    btnR.textContent = '↻';
+    btnR.addEventListener('click', (e) => { e.stopPropagation(); setCardRotation(card, +90, { snap: true }); });
+
+    // Alt+molette = rotation fine ±1°
+    card.addEventListener('wheel', (e) => {
+      if (!e.altKey) return;
+      e.preventDefault();
+      setCardRotation(card, (e.deltaY > 0 ? -1 : 1), { snap: false }); // visuel libre, modèle = snap
+    }, { passive: false });
+
+
+    card.append(btnL, btnR);
   }
+
+
   function addCard(eleve, pos) {
+    // === conteneur carte
     const card = document.createElement('div');
-    card.className = 'pc_card'; card.dataset.type = 'eleve';
-    card.dataset.id = eleve.id; card.dataset.eleveId = eleve.id;
+    card.className = 'pc_card';
+    card.dataset.type = 'eleve';
+    card.dataset.id = eleve.id;
+    card.dataset.eleveId = eleve.id;
+
     if (eleve.sexe) card.dataset.sexe = eleve.sexe;
     if (eleve.niveau) card.dataset.niveau = eleve.niveau;
     card.dataset.prenom = eleve.prenom || '';
-    if (pos.rot != null) { card.dataset.rot = String(pos.rot); card.dataset.rotAbs = String(pos.rot); }
 
-    card.style.left = `${toPx(pos.x)}px`; card.style.top = `${toPx(pos.y)}px`;
-    card.title = `${eleve.prenom || ''} ${eleve.nom || ''}`;
+    // position (en px) depuis les unités
+    card.style.left = `${toPx(pos.x)}px`;
+    card.style.top = `${toPx(pos.y)}px`;
+    card.title = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim();
 
-    const inner = document.createElement('div'); inner.className = 'pc_card_in';
-    inner.style.transform = `rotate(${card.dataset.rotAbs || card.dataset.rot || 0}deg)`;
+    // dimension élève en unités (footprint réel 70x50 cm), converti en px
+    const fp = studentFootprintUnits();
+    card.style.width = `${toPx(fp.w)}px`;
+    card.style.height = `${toPx(fp.h)}px`;
 
+    // === contenu interne (photo + ruban prénom)
+    const inner = document.createElement('div');
+    inner.className = 'pc_card_in';
+
+    // rotation initiale (visuelle & snap)
+    const initRot = Number.isFinite(pos.rotAbs ?? pos.rot)
+      ? (pos.rotAbs ?? pos.rot)
+      : 0;
+    card.dataset.rotAbs = String(initRot);
+    card.dataset.rotVisuAbs = String(initRot);
+    card.dataset.rot = String(initRot);
+    card.style.transformOrigin = 'center center';
+    card.style.transform = `rotate(${initRot}deg)`;
+
+    // photo
     const img = document.createElement('img');
     img.src = PHOTOS_BASE + (eleve.photo_filename || 'default.jpg');
     img.draggable = card.draggable = false;
     img.addEventListener('dragstart', ev => ev.preventDefault());
     card.addEventListener('dragstart', ev => ev.preventDefault());
 
+    // ruban prénom (reste sous les boutons)
     const name = document.createElement('div');
     name.className = 'pc_name_in';
     name.textContent = eleve.prenom || '';
-
-    // → ajoute une classe selon le sexe (F = rose, M = bleu)
     const sexCls = (eleve.sexe === 'FEMININ' || eleve.sexe === 'F')
       ? 'sex-fille'
       : (eleve.sexe === 'MASCULIN' || eleve.sexe === 'M')
@@ -489,22 +816,33 @@
         : '';
     if (sexCls) name.classList.add(sexCls);
 
+    // badge moyenne (gauche)
     const bM = document.createElement('div');
     bM.className = `badge moy ${moyClass(eleve.moyenne_20)}`;
-    bM.textContent = (eleve.moyenne_20 != null) ? Math.round(eleve.moyenne_20) : '—';
+    bM.textContent = (eleve.moyenne_20 != null)
+      ? Math.round(eleve.moyenne_20)
+      : '—';
 
+    // assemble
     inner.append(img, name);
-    // ❌ on ne met plus la pastille de sexe
     card.append(bM, inner);
 
-    addDeleteButton(card);
-    addRotateButton(card);
-    card.addEventListener('pointerdown', startDragCard);
+    // === boutons de rotation (au niveau .pc_card, au-dessus du ruban)
+    // -> NE PAS les mettre dans name; on veut qu’ils dépassent et restent au-dessus
+    buildRotateControls(card);
 
-    // sélection (MAJ+clic)
+    // === autres contrôles / interactions
+    addDeleteButton(card);                    // croix de suppression (z-index déjà haut)
+    card.addEventListener('pointerdown', startDragCard);
     card.addEventListener('click', handleSelectableClick);
+
+    // Alt+molette pour rotation fine est branché dans buildRotateControls
+    // On ne masque plus les boutons selon l’angle, donc pas d’appel à refreshCardRotationUI
+
     $stage.appendChild(card);
   }
+
+
 
   // -- meubles
   function applyFurnitureColor(el, type, color) {
@@ -605,17 +943,41 @@
   }
 
   function makeStudentGhost(eleve) {
-    // copie visuelle proche de la carte finale (sans badges pour légèreté)
     const ghost = document.createElement('div');
     ghost.className = 'pc_card';
-    ghost.style.position = 'fixed'; ghost.style.pointerEvents = 'none'; ghost.style.opacity = '0.8'; ghost.style.zIndex = '9999';
-    ghost.style.width = '96px'; ghost.style.height = '96px';
-    const inner = document.createElement('div'); inner.className = 'pc_card_in';
-    const img = document.createElement('img'); img.src = PHOTOS_BASE + (eleve.photo_filename || 'default.jpg');
-    const name = document.createElement('div'); name.className = 'pc_name_in'; name.textContent = eleve.prenom || '';
-    inner.append(img, name); ghost.append(inner);
+    ghost.style.position = 'fixed';
+    ghost.style.pointerEvents = 'none';
+    ghost.style.opacity = '0.8';
+    ghost.style.zIndex = '9999';
+
+    const fp = studentFootprintUnits();
+    ghost.style.width = `${toPx(fp.w)}px`;
+    ghost.style.height = `${toPx(fp.h)}px`;
+
+    const inner = document.createElement('div');
+    inner.className = 'pc_card_in';
+
+    const img = document.createElement('img');
+    img.src = PHOTOS_BASE + (eleve.photo_filename || 'default.jpg');
+
+    const name = document.createElement('div');
+    name.className = 'pc_name_in';
+    name.textContent = eleve.prenom || '';
+
+    // garde les couleurs fille/garçon aussi dans le fantôme (optionnel)
+    const sexCls = (eleve.sexe === 'FEMININ' || eleve.sexe === 'F')
+      ? 'sex-fille'
+      : (eleve.sexe === 'MASCULIN' || eleve.sexe === 'M')
+        ? 'sex-garcon'
+        : '';
+    if (sexCls) name.classList.add(sexCls);
+
+    inner.append(img, name);
+    ghost.append(inner);
     return ghost;
   }
+
+
   function makeFurnitureGhost(type, wUnits, hUnits) {
     const t = (type || 'autre').toLowerCase().replace(/[^a-z0-9_ -]/g, '').replace(/\s+/g, '_');
     const ghost = document.createElement('div');
@@ -877,6 +1239,7 @@
     card.style.left = (dragData.startLeft + (ev.clientX - dragData.sx)) + 'px';
     card.style.top = (dragData.startTop + (ev.clientY - dragData.sy)) + 'px';
   }
+
   function endDragCard(ev) {
     const card = ev.currentTarget;
     card.releasePointerCapture(ev.pointerId);
@@ -885,21 +1248,71 @@
     const lx = parseFloat(card.style.left || '0');
     const ly = parseFloat(card.style.top || '0');
     const fp = footprintCardUnits();
+    const rot = parseFloat(card.dataset.rotAbs || card.dataset.rot || '0') || 0;
 
+    // correction px si carte tournée (90/270) + dims effectives en unités
     const box = stageInnerBox();
-    const gxgy = clientToUnitsClamped(box.left + lx, box.top + ly, fp.w, fp.h);
+    const pxAdj = adjustClientPxForSwap(box.left + lx, box.top + ly, fp.w, fp.h, rot);
 
-    let spot = findNearestFreeSpot(gxgy.x, gxgy.y, fp.w, fp.h, { eleveId: dragData.eleveId });
+    // clamp/snap dans le stage avec les dimensions effectives
+    const gxgy = clientToUnitsClamped(pxAdj.leftPx, pxAdj.topPx, pxAdj.wEff, pxAdj.hEff);
+
+    // cherche le spot libre
+    let spot = findNearestFreeSpot(gxgy.x, gxgy.y, pxAdj.wEff, pxAdj.hEff, { eleveId: dragData.eleveId });
     if (spot) {
       spot = snapCollapse(spot, rectsInPlan({ eleveId: dragData.eleveId }));
       const p = state.positions.find(p => p.eleve_id === dragData.eleveId);
-      if (p) { p.x = spot.x; p.y = spot.y; }
-      else { state.positions.push({ eleve_id: dragData.eleveId, x: spot.x, y: spot.y, seat_id: null, rot: 0, rotAbs: 0 }); }
+      if (p) {
+        // reconversion vers le coin haut-gauche stocké (non tourné)
+        p.x = snapUnits(spot.x - pxAdj.dx);
+        p.y = snapUnits(spot.y - pxAdj.dy);
+      } else {
+        state.positions.push({
+          eleve_id: dragData.eleveId,
+          x: snapUnits(spot.x - pxAdj.dx),
+          y: snapUnits(spot.y - pxAdj.dy),
+          seat_id: null,
+          rot: 0, rotAbs: 0
+        });
+      }
       autosavePositions();
-    } else shake(card);
+    } else {
+      shake(card);
+    }
 
-    dragData = null; render();
+    dragData = null;
+    render();
   }
+
+
+  // Projette (x,y) sur le segment de mur le plus proche si assez proche.
+  // Retourne {x,y} en UNITÉS, ou null si trop loin.
+  function snapToNearestWall(x, y, maxDist = 0.6) {
+    if (!Array.isArray(state.walls) || !state.walls.length) return null;
+
+    let best = null;
+    const pt = { x, y };
+
+    function dist2(a, b) { const dx = a.x - b.x, dy = a.y - b.y; return dx * dx + dy * dy; }
+    function clamp01(t) { return Math.max(0, Math.min(1, t)); }
+
+    for (const w of state.walls) {
+      const pts = (w.points || []);
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i], b = pts[i + 1];
+        const vx = b.x - a.x, vy = b.y - a.y;
+        const len2 = vx * vx + vy * vy || 1e-9;
+        // projection scalaire t dans [0,1]
+        const t = clamp01(((pt.x - a.x) * vx + (pt.y - a.y) * vy) / len2);
+        const proj = { x: a.x + t * vx, y: a.y + t * vy };
+        const d2 = dist2(pt, proj);
+        if (!best || d2 < best.d2) best = { d2, p: proj };
+      }
+    }
+    if (!best) return null;
+    return (Math.sqrt(best.d2) <= maxDist) ? best.p : null;
+  }
+
 
   // 7.3 Création meuble depuis palette (ghost final)
   function startCreateFurnitureDrag(ev, def) {
@@ -956,7 +1369,7 @@
       });
 
       autosaveFurniture();
-      resyncSoon(500); // obtenir rapidement l'id serveur, sans écraser les couleurs locales
+
       render();
     };
     window.addEventListener('pointermove', onMove);
@@ -994,6 +1407,7 @@
       el.style.top = (dragData.startTop + (ev.clientY - dragData.sy)) + 'px';
     }
   }
+
   function endDragFurniture(ev) {
     const el = ev.currentTarget;
     el.releasePointerCapture(ev.pointerId);
@@ -1007,27 +1421,35 @@
       const T = parseFloat(node.style.top || '0');
       const W = parseFloat(node.style.width || '0');
       const H = parseFloat(node.style.height || '0');
+
       const gw = Math.max(TICK, Math.ceil((W / unitPx) * UI_SUBDIV) / UI_SUBDIV);
       const gh = Math.max(TICK, Math.ceil((H / unitPx) * UI_SUBDIV) / UI_SUBDIV);
-      const rotNow = parseFloat(node.dataset.rotAbs || node.dataset.rot || '0') || 0;
-      const swapNow = isQuarterTurnSwap(rotNow), wEff = swapNow ? gh : gw, hEff = swapNow ? gw : gh;
 
+      const rotNow = parseFloat(node.dataset.rotAbs || node.dataset.rot || '0') || 0;
       const box = stageInnerBox();
-      const { x: gx, y: gy } = clientToUnitsClamped(box.left + L, box.top + T, wEff, hEff);
+      const pxAdj = adjustClientPxForSwap(box.left + L, box.top + T, gw, gh, rotNow);
+
+      let { x: gx, y: gy } = clientToUnitsClamped(pxAdj.leftPx, pxAdj.topPx, pxAdj.wEff, pxAdj.hEff);
+      let spot = findNearestFreeSpot(gx, gy, pxAdj.wEff, pxAdj.hEff, {
+        furnitureId: node.dataset.id ? parseInt(node.dataset.id, 10) : -1
+      });
+      if (!spot) { shake(node); return; }
+      spot = snapCollapse(spot, rectsInPlan({ furnitureId: node.dataset.id ? parseInt(node.dataset.id, 10) : -1 }));
+
       const id = node.dataset.id ? parseInt(node.dataset.id, 10) : null;
       const fRef = (id != null) ? state.furniture.find(x => x.id === id) : null;
-
-      let spot = findNearestFreeSpot(gx, gy, wEff, hEff, { furnitureId: id ?? -1 });
-      if (!spot) { shake(node); return; }
-      spot = snapCollapse(spot, rectsInPlan({ furnitureId: id ?? -1 }));
-
-      if (fRef) { fRef.x = spot.x; fRef.y = spot.y; fRef.w = gw; fRef.h = gh; }
+      if (fRef) {
+        fRef.w = gw; fRef.h = gh;
+        fRef.x = snapUnits(spot.x - pxAdj.dx);
+        fRef.y = snapUnits(spot.y - pxAdj.dy);
+      }
     });
 
     autosaveFurniture();
     dragData = null;
     render();
   }
+
 
   function startResizeFurniture(ev) {
     const el = ev.currentTarget.parentElement;
@@ -1090,147 +1512,126 @@
   // Rend tous les murs présents dans state.walls
   function renderWalls() {
     if (!$svg) return;
-    // nettoie le SVG en conservant <defs> (hachures)
-    const defs = $svg.querySelector('defs');
-    $svg.innerHTML = '';
-    if (defs) $svg.appendChild(defs);
+    ensureHatchPattern(); // garde <defs>#hatch
+
+    // on nettoie seulement les murs finalisés (pas la preview de l'outil)
+    $svg.querySelectorAll('.wall').forEach(n => n.remove());
 
     for (const w of (state.walls || [])) {
       if (!w.points || w.points.length < 2) continue;
-      const pl = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-      pl.setAttribute('fill', 'none');
-      pl.setAttribute('stroke', 'url(#hatch)');
-      pl.setAttribute('stroke-width', Math.max(3, unitPx * 0.12));
+
+      const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      poly.classList.add('wall');
+      poly.dataset.wallId = String(w.id);
+      poly.setAttribute('fill', 'none');
+      poly.setAttribute('stroke', 'url(#hatch)');
+      poly.setAttribute('stroke-width', Math.max(3, unitPx * 0.12));
+      poly.style.pointerEvents = 'stroke';           // ← cliquable uniquement sur le trait
+      poly.addEventListener('click', handleSelectableClick);
+
       const pts = w.points.map(p => `${toPx(p.x)},${toPx(p.y)}`).join(' ');
-      pl.setAttribute('points', pts);
-      pl.classList.add('wall');
-      $svg.appendChild(pl);
+      poly.setAttribute('points', pts);
+      $svg.appendChild(poly);
     }
   }
+
+
+
 
   // Démarre l’outil de tracé avec prévisualisation live + persistance
   function startWallTool(ev) {
     ev?.preventDefault?.();
-
     if (!$svg || !$stage || !state.active_plan) return;
+
     const planId = state.active_plan.id;
     let currentWall = { id: genUid(), points: [] };
 
-    // polyline de preview (point courant -> curseur)
+    // 1) Segments confirmés
+    const progress = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    progress.classList.add('wall');
+    progress.setAttribute('fill', 'none');
+    progress.setAttribute('stroke', 'url(#hatch)');
+    progress.setAttribute('stroke-width', Math.max(3, unitPx * 0.12));
+    $svg.appendChild(progress);
+
+    // 2) Jambe dynamique
     const preview = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    preview.classList.add('wall-preview');
     preview.setAttribute('fill', 'none');
     preview.setAttribute('stroke', '#60a5fa');
     preview.setAttribute('stroke-width', Math.max(2, unitPx * 0.10));
     preview.setAttribute('stroke-dasharray', '6 4');
-    preview.classList.add('wall-preview');
     $svg.appendChild(preview);
 
     $stage.style.cursor = 'crosshair';
     document.body.classList.add('pc_wall_mode');
 
     const box = stageInnerBox();
-
     const ptToUnits = (cx, cy) => ({
       x: snapUnits((cx - box.left) / unitPx),
       y: snapUnits((cy - box.top) / unitPx),
     });
 
+    const updateProgress = () => {
+      if (currentWall.points.length < 2) { progress.setAttribute('points', ''); return; }
+      const pts = currentWall.points.map(p => `${toPx(p.x)},${toPx(p.y)}`).join(' ');
+      progress.setAttribute('points', pts);
+    };
+
     const updatePreview = (clientX, clientY) => {
-      if (!currentWall.points.length) {
-        preview.setAttribute('points', '');
-        return;
-      }
+      if (!currentWall.points.length) { preview.setAttribute('points', ''); return; }
       const last = currentWall.points[currentWall.points.length - 1];
       const cur = ptToUnits(clientX, clientY);
-      const pts = [last, cur].map(p => `${toPx(p.x)},${toPx(p.y)}`).join(' ');
-      preview.setAttribute('points', pts);
+      preview.setAttribute('points', [last, cur].map(p => `${toPx(p.x)},${toPx(p.y)}`).join(' '));
     };
 
     const onMove = (e) => updatePreview(e.clientX, e.clientY);
-
     const onClick = (e) => {
-      const u = ptToUnits(e.clientX, e.clientY);
-      currentWall.points.push(u);
-      // dès qu’on a deux points, on rerend pour donner le feedback immédiat
-      renderWalls();
-      // et on garde la preview "dernier point -> curseur"
+      currentWall.points.push(ptToUnits(e.clientX, e.clientY)); // ← UNITÉS DE PLAN
+      updateProgress();
       updatePreview(e.clientX, e.clientY);
     };
 
+    async function persistWalls() {
+      // ENCODE pour persister (x,y entiers en sous-unités)
+      const payloadWalls = encodeWallsForStorage(state.walls);
+
+      // 1) Serveur (si endpoint dispo)
+      try { await api.saveWalls?.(planId, payloadWalls); } catch (e) { console.warn('saveWalls API KO', e); }
+
+      // 2) LocalStorage (même format encodé)
+      try { localStorage.setItem(`pc_walls_${planId}`, JSON.stringify(payloadWalls)); } catch { }
+    }
+
     const finish = async () => {
-      // nettoyages listeners
-      $stage.removeEventListener('click', onClick);
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('keydown', onKey);
-      $stage.removeEventListener('dblclick', onDbl);
-      preview.remove();
-      $stage.style.cursor = '';
-      document.body.classList.remove('pc_wall_mode');
-
+      teardown();
       if (currentWall.points.length >= 2) {
-        state.walls.push(currentWall);
+        state.walls.push(currentWall);  // ← on garde en UNITÉS dans le state
         renderWalls();
-        // 1) API si dispo
-        try { await api.saveWalls?.(planId, state.walls); } catch (e) { console.warn('saveWalls API KO', e); }
-        // 2) fallback localStorage PAR PLAN
-        try { localStorage.setItem(`pc_walls_${planId}`, JSON.stringify(state.walls)); } catch { }
+        await persistWalls();
       }
-      currentWall = null;
     };
 
-    const cancel = () => {
-      $stage.removeEventListener('click', onClick);
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('keydown', onKey);
-      $stage.removeEventListener('dblclick', onDbl);
-      preview.remove();
-      $stage.style.cursor = '';
-      document.body.classList.remove('pc_wall_mode');
-      currentWall = null;
-      // pas de persistance si annulation
-    };
-
-    const onKey = (e) => {
-      if (e.key === 'Escape') { cancel(); }
-      if (e.key === 'Enter') { finish(); }
-    };
-
+    const cancel = () => teardown();
+    const onKey = (e) => { if (e.key === 'Escape') cancel(); if (e.key === 'Enter') finish(); };
     const onDbl = () => finish();
 
-    // bind
+    function teardown() {
+      $stage.removeEventListener('click', onClick);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('keydown', onKey);
+      $stage.removeEventListener('dblclick', onDbl);
+      progress.remove(); preview.remove();
+      $stage.style.cursor = ''; document.body.classList.remove('pc_wall_mode');
+    }
+
     $stage.addEventListener('click', onClick);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('keydown', onKey);
     $stage.addEventListener('dblclick', onDbl, { once: true });
   }
 
-  // À appeler après boot() et à chaque changement de plan (dans render() ou juste après boot)
-  function restoreWallsForPlan() {
-    if (!state.active_plan) return;
-    const planId = state.active_plan.id;
 
-    // 1) si l’API a renvoyé des murs (boot l’a mis dans state.walls), on garde
-    if (Array.isArray(state.walls) && state.walls.length) {
-      renderWalls();
-      return;
-    }
-
-    // 2) sinon fallback localStorage scindé par plan
-    try {
-      const raw = localStorage.getItem(`pc_walls_${planId}`);
-      const walls = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(walls) && walls.length) {
-        state.walls = walls;
-        renderWalls();
-      } else {
-        state.walls = [];
-        renderWalls();
-      }
-    } catch {
-      state.walls = [];
-      renderWalls();
-    }
-  }
 
   // [8] ----------------------------------------------------------------------
   // Sélection multiple, clavier, alignements & répartitions
@@ -1257,45 +1658,141 @@
       refreshSelectionStyling();
     }
   }
+
   function refreshSelectionStyling() {
-    $stage.querySelectorAll('.pc_card, .pc_furn').forEach(n => {
+    // purge les références mortes (ex: re-render des murs)
+    Array.from(selection).forEach(n => { if (!n.isConnected) selection.delete(n); });
+
+    // applique le style sélectionné à tout : cartes, meubles et murs
+    $stage.querySelectorAll('.pc_card, .pc_furn, #pc_svg .wall').forEach(n => {
       n.classList.toggle('pc_selected', selection.has(n));
     });
   }
 
+
   function nudgeSelection(dxPx, dyPx) {
     if (!selection.size) return;
+
+    let movedWall = false;
+
     selection.forEach(n => {
-      const L = parseFloat(n.style.left || '0');
-      const T = parseFloat(n.style.top || '0');
-      n.style.left = (L + dxPx) + 'px';
-      n.style.top = (T + dyPx) + 'px';
-      // commit en unités
-      if (n.classList.contains('pc_card')) {
+      // déplacement visuel si élément HTML (cartes/meubles)
+      const isCard = n.classList.contains('pc_card');
+      const isFurn = n.classList.contains('pc_furn');
+      const isWall = n.tagName === 'polyline' && n.classList.contains('wall');
+
+      if (isCard || isFurn) {
+        const L = parseFloat(n.style.left || '0');
+        const T = parseFloat(n.style.top || '0');
+        n.style.left = (L + dxPx) + 'px';
+        n.style.top = (T + dyPx) + 'px';
+      }
+
+      if (isCard) {
+        // --- élève
         const id = parseInt(n.dataset.eleveId, 10);
         const fp = footprintCardUnits();
+        const rot = parseFloat(n.dataset.rotAbs || n.dataset.rot || '0') || 0;
+
         const box = stageInnerBox();
-        const { x: gx, y: gy } = clientToUnitsClamped(box.left + L + dxPx, box.top + T + dyPx, fp.w, fp.h);
+        const pxAdj = adjustClientPxForSwap(
+          box.left + parseFloat(n.style.left || '0'),
+          box.top + parseFloat(n.style.top || '0'),
+          fp.w, fp.h, rot
+        );
+        const { x: gx, y: gy } = clientToUnitsClamped(pxAdj.leftPx, pxAdj.topPx, pxAdj.wEff, pxAdj.hEff);
+
         const p = state.positions.find(p => p.eleve_id === id);
-        if (p) { p.x = gx; p.y = gy; }
-      } else {
+        if (p) { p.x = snapUnits(gx - pxAdj.dx); p.y = snapUnits(gy - pxAdj.dy); }
+      } else if (isFurn) {
+        // --- meuble
         const id = parseInt(n.dataset.id, 10);
         const f = state.furniture.find(x => x.id === id);
         if (f) {
-          const W = parseFloat(n.style.width || '0'), H = parseFloat(n.style.height || '0');
+          const W = parseFloat(n.style.width || '0');
+          const H = parseFloat(n.style.height || '0');
           const gw = Math.max(TICK, Math.ceil((W / unitPx) * UI_SUBDIV) / UI_SUBDIV);
           const gh = Math.max(TICK, Math.ceil((H / unitPx) * UI_SUBDIV) / UI_SUBDIV);
           const rotNow = parseFloat(n.dataset.rotAbs || n.dataset.rot || '0') || 0;
-          const swapNow = isQuarterTurnSwap(rotNow);
-          const wEff = swapNow ? gh : gw, hEff = swapNow ? gw : gh;
+
           const box = stageInnerBox();
-          const { x: gx, y: gy } = clientToUnitsClamped(box.left + L + dxPx, box.top + T + dyPx, wEff, hEff);
-          f.x = gx; f.y = gy; f.w = gw; f.h = gh;
+          const pxAdj = adjustClientPxForSwap(
+            box.left + parseFloat(n.style.left || '0'),
+            box.top + parseFloat(n.style.top || '0'),
+            gw, gh, rotNow
+          );
+          const { x: gx, y: gy } = clientToUnitsClamped(pxAdj.leftPx, pxAdj.topPx, pxAdj.wEff, pxAdj.hEff);
+
+          f.x = snapUnits(gx - pxAdj.dx);
+          f.y = snapUnits(gy - pxAdj.dy);
+          f.w = gw; f.h = gh;
+        }
+      } else if (isWall) {
+        // --- mur (polyline SVG) : translation des points
+        const wallId = n.dataset.wallId;
+        const w = state.walls.find(W => String(W.id) === String(wallId));
+        if (!w || !Array.isArray(w.points)) return;
+
+        // conversion px -> unités
+        let du = dxPx / unitPx;
+        let dv = dyPx / unitPx;
+
+        // clamp pour rester dans le plan
+        if (state.active_plan) {
+          const Wp = state.active_plan.width, Hp = state.active_plan.height;
+          const xs = w.points.map(p => p.x), ys = w.points.map(p => p.y);
+          const minX = Math.min(...xs), maxX = Math.max(...xs);
+          const minY = Math.min(...ys), maxY = Math.max(...ys);
+          du = Math.max(-minX, Math.min(du, Wp - maxX));
+          dv = Math.max(-minY, Math.min(dv, Hp - maxY));
+        }
+
+        if (du !== 0 || dv !== 0) {
+          w.points = w.points.map(p => ({ x: snapUnits(p.x + du), y: snapUnits(p.y + dv) }));
+          // MAJ DOM immédiate
+          n.setAttribute('points', w.points.map(p => `${toPx(p.x)},${toPx(p.y)}`).join(' '));
+          movedWall = true;
         }
       }
     });
-    autosavePositions(); autosaveFurniture();
+
+    autosavePositions();
+    autosaveFurniture();
+    if (movedWall) autosaveWalls();
   }
+
+
+  // Construit le rectangle "effectif" d'un objet stocké par son coin haut-gauche
+  // quand il est potentiellement tourné à 90°/270° : on recentre pour garder le centre.
+  function rectFromTopLeftWithRotation(x, y, w, h, rot) {
+    const swap = isQuarterTurnSwap(rot);
+    const wEff = swap ? h : w;
+    const hEff = swap ? w : h;
+    const dx = swap ? (w - wEff) / 2 : 0;   // en unités
+    const dy = swap ? (h - hEff) / 2 : 0;   // en unités
+    return { x: snapUnits(x + dx), y: snapUnits(y + dy), w: wEff, h: hEff };
+  }
+
+  // Corrige un (left/top) exprimé en PIXELS si l'objet est à 90°/270°.
+  // - leftPx/topPx : position coin haut-gauche en px (comme dans le style CSS)
+  // - w/h : dimensions stockées en unités (non tournées)
+  // Retourne aussi dx/dy en unités (offset appliqué) pour reconvertir au stockage.
+  function adjustClientPxForSwap(leftPx, topPx, w, h, rot) {
+    const swap = isQuarterTurnSwap(rot);
+    if (!swap) return { leftPx, topPx, wEff: w, hEff: h, dx: 0, dy: 0 };
+    const wEff = h, hEff = w;               // dimensions effectives en unités
+    const dx = (w - wEff) / 2;
+    const dy = (h - hEff) / 2;
+    return {
+      leftPx: leftPx + toPx(dx),
+      topPx: topPx + toPx(dy),
+      wEff, hEff, dx, dy
+    };
+  }
+
+
+
+
 
   function alignSelection(side) { // 'left'|'right'|'top'|'bottom'
     if (selection.size < 2) return;
@@ -1336,6 +1833,28 @@
     // commit
     nudgeSelection(0, 0);
   }
+
+  function restoreWallsForPlan() {
+    if (!state.active_plan) return;
+    const planId = state.active_plan.id;
+
+    // 1) Si l’API a déjà rempli state.walls → OK
+    if (Array.isArray(state.walls) && state.walls.length) {
+      renderWalls();
+      return;
+    }
+
+    // 2) Fallback localStorage (format ENCODÉ) → DECODE
+    try {
+      const raw = localStorage.getItem(`pc_walls_${planId}`);
+      const stored = raw ? JSON.parse(raw) : [];
+      state.walls = decodeWallsFromStorage(stored);
+    } catch {
+      state.walls = [];
+    }
+    renderWalls();
+  }
+
 
   // [9] ----------------------------------------------------------------------
   // Suppression, delete button, etc.
@@ -1384,38 +1903,63 @@
   // -------------------------------------------------------------------------
 
   function fromDBPosition(p) {
-    const rot = Number(p.rot || 0);
-    return { ...p, x: (+p.x || 0) / PLAN_SUBDIV, y: (+p.y || 0) / PLAN_SUBDIV, rot, rotAbs: rot };
+    const pid = state.active_plan?.id || p.plan_id;
+    const ls = pid ? lsGetPosRots(pid) : {};
+    const raw = (p.rot ?? p.rotation);
+    const rotRaw = Number.isFinite(raw) ? Number(raw)
+      : (Number.isFinite(ls?.[p.eleve_id]) ? Number(ls[p.eleve_id]) : 0);
+    const rot = snapRotStudent(rotRaw);
+    return {
+      ...p,
+      x: (+p.x || 0) / PLAN_SUBDIV,
+      y: (+p.y || 0) / PLAN_SUBDIV,
+      rot, rotAbs: rot
+    };
   }
+
+
+
 
   async function boot(planIdToShow = null) {
     try {
       document.body.classList.add('pc_loading');
+
+      // 1) Récupération API (le plan demandé, sinon actif / plus récent)
       const data = await api.getAll(planIdToShow);
+      console.log('[API positions sample]', (data.positions || [])[0]);
+
       const plans = Array.isArray(data.plans) ? data.plans : [];
       const eleves = Array.isArray(data.eleves) ? data.eleves : [];
       const seats = Array.isArray(data.seats) ? data.seats : [];
-      const apiWalls = Array.isArray(data.walls) ? data.walls : []; // si dispo
+      const apiWallsEnc = Array.isArray(data.walls) ? data.walls : []; // murs encodés côté serveur
 
+      // 2) Sélection du plan à afficher (conservateur : garde si possible l'actuel)
       const pickActivePlan = (plans, currentActive, apiActive) => {
         if (apiActive) return apiActive;
-        if (currentActive) { const keep = plans.find(p => p.id === currentActive.id); if (keep) return keep; }
+        if (currentActive) {
+          const keep = plans.find(p => p.id === currentActive.id);
+          if (keep) return keep;
+        }
         return plans[0] || null;
       };
       const active_plan = pickActivePlan(plans, state.active_plan, data.active_plan);
 
-      state.active_plan = active_plan;
-      PLAN_SUBDIV = 32; UI_SUBDIV = 32;
+      // 3) Réinitialise les subdivisions (cohérence avec le reste de ton code)
+      PLAN_SUBDIV = 32;
+      UI_SUBDIV = 32;
 
+      // 4) Positions élèves (→ unités)
       const positions = Array.isArray(data.positions) ? data.positions.map(fromDBPosition) : [];
 
-      // Snapshot tmp -> pour color merge si id change
+      // 5) Meubles : préserver les couleurs locales si l’API n’en renvoie pas
+      //    + remapper rotation/coords en unités
       const prevTmpByUid = new Map((state.furniture || []).filter(ff => ff && ff.id < 0 && ff.uid).map(ff => [ff.uid, ff]));
       const prevColorById = new Map((state.furniture || []).filter(ff => ff && ff.id > 0).map(ff => [ff.id, ff.color]));
 
-      // mapping meubles serveur => conserver couleur locale si API ne renvoie rien
       const furniture = (Array.isArray(data.furniture) ? data.furniture : []).map(f => {
         const rot = Number(f.rotation || 0);
+
+        // couleur: priorité = API > localStorage > ancien tmp (client_uid) > palette type > null
         let color = (f.color != null ? f.color : null);
         if (color == null && active_plan && f.id > 0) {
           color = lsGetColor(active_plan.id, f.id) || prevColorById.get(f.id) || null;
@@ -1429,21 +1973,27 @@
 
         return {
           ...f,
-          x: (+f.x || 0) / PLAN_SUBDIV, y: (+f.y || 0) / PLAN_SUBDIV,
-          w: (+f.w || 1) / PLAN_SUBDIV, h: (+f.h || 1) / PLAN_SUBDIV,
-          rotation: rot, rotAbs: rot, color, radius: !!f.radius
+          x: (+f.x || 0) / PLAN_SUBDIV,
+          y: (+f.y || 0) / PLAN_SUBDIV,
+          w: (+f.w || 1) / PLAN_SUBDIV,
+          h: (+f.h || 1) / PLAN_SUBDIV,
+          rotation: rot,
+          rotAbs: rot,
+          color,
+          radius: !!f.radius
         };
       });
 
-      // murs
-      const walls = apiWalls.map(w => {
-        const pts = Array.isArray(w.points) ? w.points.map(p => ({ x: (+p.x || 0) / PLAN_SUBDIV, y: (+p.y || 0) / PLAN_SUBDIV })) : [];
-        return { id: w.id || genUid(), points: pts };
-      });
+      // 6) Murs : **decode** depuis l’API (on garde le state en unités)
+      const walls = decodeWallsFromStorage(apiWallsEnc);
 
+      // 7) Commit état
       state = { ...state, plans, active_plan, eleves, positions, furniture, seats, walls };
       sentNewFurniture.clear();
+
+      // 8) Rendu + fallback murs localStorage si l’API n’a rien renvoyé
       render();
+      restoreWallsForPlan(); // si API vide, on recharge pc_walls_<planId> (encodé) puis decode
     } catch (err) {
       console.error('[boot] fail', err);
       alert("Impossible de charger les plans de classe pour le moment.");
@@ -1451,101 +2001,7 @@
       document.body.classList.remove('pc_loading');
     }
   }
-  // Suppression d’un plan
-  document.getElementById('pc_delete_plan').addEventListener('click', async () => {
-    if (!state.active_plan) {
-      alert("Aucun plan sélectionné !");
-      return;
-    }
-    if (!confirm("Voulez-vous vraiment supprimer ce plan ?")) return;
 
-    try {
-      const url = SEATING_URLS.deletePlan(state.active_plan.id);
-      const resp = await fetch(url, { method: "DELETE" });
-      if (!resp.ok && resp.status !== 204) throw new Error("Échec suppression");
-
-      // 🔄 On recharge tout l’état et la liste déroulante
-      await boot();
-
-      alert("Plan supprimé.");
-    } catch (err) {
-      console.error("[delete plan]", err);
-      alert("Impossible de supprimer le plan.");
-    }
-  });
-  // ===== Plein écran : garder exactement le même cadrage, juste plus grand =====
-  function setupFullscreenExact($wrap, fitStageToWrap, render) {
-    const $btn = document.getElementById('pc_fullscreen');
-    if (!$btn || !$wrap || typeof fitStageToWrap !== 'function' || typeof render !== 'function') {
-      console.warn('[FullScreen] Pré-requis manquants.');
-      return;
-    }
-
-    // On mémorise la position de scroll de façon relative (pour la restaurer ensuite)
-    let saved = { px: 0, py: 0 };
-
-    function snapshotScroll() {
-      // combien d'unités visibles dans le viewport, et où commence-t-on ?
-      const uLeft = $wrap.scrollLeft / unitPx;
-      const uTop = $wrap.scrollTop / unitPx;
-
-      // combien d'unités tient l'écran actuellement ?
-      const uViewportW = $wrap.clientWidth / unitPx;
-      const uViewportH = $wrap.clientHeight / unitPx;
-
-      saved = { uLeft, uTop, uViewportW, uViewportH };
-    }
-
-    function restoreScroll() {
-      // Ici, unitPx a été recalculé par fitStageToWrap() puis render()
-      // → on remet le scroll au même cadrage en unités.
-      const leftPx = Math.round(saved.uLeft * unitPx);
-      const topPx = Math.round(saved.uTop * unitPx);
-
-      // Clamp au nouveau scroll max (au cas où l'échelle ait changé l'espace scrollable)
-      const maxX = Math.max(0, $wrap.scrollWidth - $wrap.clientWidth);
-      const maxY = Math.max(0, $wrap.scrollHeight - $wrap.clientHeight);
-
-      $wrap.scrollLeft = Math.min(Math.max(0, leftPx), maxX);
-      $wrap.scrollTop = Math.min(Math.max(0, topPx), maxY);
-    }
-
-    async function enterOrExitFullscreen() {
-      snapshotScroll();
-      if (!document.fullscreenElement) {
-        if ($wrap.requestFullscreen) {
-          await $wrap.requestFullscreen();
-        } else {
-          return; // navigateur sans Fullscreen API
-        }
-      } else {
-        if (document.exitFullscreen) {
-          await document.exitFullscreen();
-        } else {
-          return;
-        }
-      }
-    }
-
-    // Bouton
-    $btn.addEventListener('click', () => {
-      enterOrExitFullscreen().catch(() => { });
-    });
-
-    // Quand l’état de plein écran change → recalculer l’échelle + restaurer le cadrage
-    document.addEventListener('fullscreenchange', () => {
-      // Laisse le layout s’appliquer, puis ajuste
-      requestAnimationFrame(() => {
-        try {
-          fitStageToWrap();   // recalcule unitPx d'après la nouvelle place
-          render();           // re-render complet
-        } finally {
-          // Un 2e frame pour être sûr que les tailles finales sont en place
-          requestAnimationFrame(() => restoreScroll());
-        }
-      });
-    });
-  }
 
   // [11] ---------------------------------------------------------------------
   // Listeners globaux & Toolbar
@@ -1706,15 +2162,12 @@
     }
   })();
 
+  // SUPPRIMER ce bloc inutile, ou corriger ainsi si tu veux t’en servir :
   async function onClickDeletePlan() {
-    const planId = state.active_plan?.id;
-    if (!planId) return;
-
-    await callDeleteAPI(planId); // 204
-
-    await refreshPlansFromServer(); // ← re-fetch
-    renderPlansDropdown();
-    render();
+    if (!state.active_plan) return;
+    // Réutilise l’API existante qui marche déjà :
+    await api.reset(state.active_plan.id, true); // ou api.delete si tu en as un
+    await boot();
   }
 
   async function refreshPlansFromServer() {

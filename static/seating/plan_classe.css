@@ -19,7 +19,8 @@
   --right-w: 300px;
 
   /* contours par niveau (exemples) */
-  --niv-6: #60a5fa;
+  --niv-0: #fa6060;
+  --niv-6: #fa6060;
   --niv-5: #34d399;
   --niv-4: #f59e0b;
   --niv-3: #f472b6;
@@ -208,31 +209,31 @@ body.pc_edit_on #pc_edit_mode {
 }
 
 /* Contours par niveau (exemples) */
-.pc_card[data-niveau*="6"] {
+.pc_card[data-niveau*="CP"] {
   border-color: var(--niv-6);
 }
 
-.pc_card[data-niveau*="5"] {
+.pc_card[data-niveau*="CE1"] {
   border-color: var(--niv-5);
 }
 
-.pc_card[data-niveau*="4"] {
+.pc_card[data-niveau*="CE2"] {
   border-color: var(--niv-4);
 }
 
-.pc_card[data-niveau*="3"] {
+.pc_card[data-niveau*="CM1"] {
   border-color: var(--niv-3);
 }
 
-.pc_card[data-niveau*="2"] {
+.pc_card[data-niveau*="CM2"] {
   border-color: var(--niv-2);
 }
 
-.pc_card[data-niveau*="1"] {
+.pc_card[data-niveau*="6"] {
   border-color: var(--niv-1);
 }
 
-.pc_card[data-niveau*="T"] {
+.pc_card[data-niveau*="5"] {
   border-color: var(--niv-t);
 }
 
@@ -1073,4 +1074,67 @@ body:not(.pc_edit_on) .pc_furn .pc_col_btn {
 #pc_svg .wall.pc_selected {
   stroke: #38bdf8 !important;
   filter: drop-shadow(0 0 2px #38bdf8);
+}
+
+/* le stage doit être le conteneur de positionnement */
+.pc_stage {
+  position: relative;
+}
+
+/* cartes élèves + meubles = absolument positionnés */
+.pc_card,
+.pc_furn {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 10;
+  user-select: none;
+  touch-action: none;
+  /* empêche les gestures de bloquer le drag */
+  cursor: grab;
+}
+
+.pc_card:active,
+.pc_furn:active {
+  cursor: grabbing;
+}
+
+/* l’overlay SVG ne doit pas bloquer les clics/drag */
+#pc_svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* visibilité de la sélection (clavier + multi) */
+.pc_selected {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* empêche le navigateur d'intercepter le geste (pincement/scroll) → drag fiable */
+.pc_card,
+.pc_furn {
+  touch-action: none;
+}
+
+/* feedback visuel de la sélection (clavier + multi) */
+.pc_selected {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* le calque SVG ne doit JAMAIS bloquer les events */
+#pc_svg {
+  pointer-events: none;
+}
+
+body.pc_dragging .pc_card,
+body.pc_dragging .pc_furn {
+  transition: none !important;
+  outline: none !important;
 }

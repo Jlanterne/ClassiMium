@@ -16,14 +16,11 @@
     <button id="pc_activate" type="button">Activer</button>
     <button id="pc_export_pdf" type="button">Exporter PDF</button>
     <button id="pc_reset_plan" type="button" title="Shift+clic = reset complet">Réinitialiser</button>
-    <button id="pc_edit_mode" class="pc_btn">Édition meubles : OFF</button>
-
+    <button id="pc_edit_mode" class="pc_btn" type="button">Édition meubles : OFF</button>
   </div>
-
 
   <button id="pc_fullscreen" type="button">Plein écran</button>
 </div>
-
 
 <!-- ===== Layout à 3 colonnes : Élèves | Plan | Meubles ===== -->
 <div class="pc_layout">
@@ -40,7 +37,6 @@
     </div>
   </main>
 
-
   <!-- Colonne droite : Palette de meubles -->
   <aside class="pc_side" aria-label="Meubles disponibles">
     <h4 class="pc_head">Meubles</h4>
@@ -49,15 +45,31 @@
   </aside>
 </div>
 
+<!-- ===== Bootstrapping JS (URLs & config) ===== -->
 <script>
+  // ID de classe (JSON-safe)
   var CLASS_ID = JSON.parse('{{ classe_id | tojson | safe }}');
 
-  // Base API robuste, dérivée d'une route réelle:
-  var _plans0 = "{{ url_for('seating.api_get_plans', classe_id=0) }}"; // ex: /seating/api/plans/0
-  var API_BASE_ROOT = _plans0.replace(/\/api\/plans\/0$/, "");          // ex: /seating
+  // On part d'une URL réelle pour dériver la racine API
+  // ex: /seating/api/plans/0  -> racine: /seating
+  var _plans0 = "{{ url_for('seating.api_get_plans', classe_id=0) }}";
+  var API_BASE_ROOT = _plans0.replace(/\/api\/plans\/0$/, "");
+
+  // Si ton backend n'accepte QUE /api/plans/<id>/delete, mets ceci à true :
+  var USE_DELETE_SUFFIX = false;
+
+  // URL potentielle de type ".../delete" si tu as une route dédiée
+  var _deleteWithSuffix = "{{ url_for('seating.api_delete_plan', plan_id=0) }}"; // ex: /seating/api/plans/0/delete
+
+  function deletePlanUrl(id) {
+    if (USE_DELETE_SUFFIX) {
+      return _deleteWithSuffix.replace(/0$/, String(id));
+    }
+    // Par défaut, on privilégie l'endpoint REST standard
+    return API_BASE_ROOT + "/api/plans/" + id;
+  }
 
   window.SEATING_URLS = {
-    // si tu veux t'en servir ailleurs
     getPlans: _plans0.replace(/0$/, String(CLASS_ID)),
     createPlan: API_BASE_ROOT + "/api/plans",
     activate: (id) => API_BASE_ROOT + "/api/plans/" + id + "/activate",
@@ -65,28 +77,27 @@
     upsertPositions: (id) => API_BASE_ROOT + "/api/plans/" + id + "/positions",
     upsertFurniture: (id) => API_BASE_ROOT + "/api/plans/" + id + "/furniture",
     exportPdf: (id) => API_BASE_ROOT + "/api/plans/" + id + "/export/pdf",
-    deletePlan: (function () {
-      var ref = "{{ url_for('seating.api_delete_plan', plan_id=0) }}";  // ex: /seating/api/plans/0/delete
-      return function (id) { return ref.replace(/0$/, String(id)); };
-    })()
+    deletePlan: (id) => deletePlanUrl(id) // <— utilisé par plan_classe.js
   };
 
   window.SEATING_CONF = {
     classeId: CLASS_ID,
-    apiBase: API_BASE_ROOT,                              // << clé pour le JS
+    apiBase: API_BASE_ROOT,
     grid: 32,
-    photosBase: "{{ url_for('static', filename='photos/') }}" // garde bien le / final
+    // Garde bien le slash final
+    photosBase: "{{ url_for('static', filename='photos/') }}"
   };
 </script>
+
+<!-- Petit log de vérif côté client (facultatif) -->
 <script>
-  console.log("[pc] stage:", !!document.getElementById('pc_stage'));
+  console.log("[pc] stage present:", !!document.getElementById('pc_stage'));
   fetch(window.SEATING_CONF.apiBase + "/api/plans/" + window.SEATING_CONF.classeId, { credentials: "same-origin" })
     .then(r => (console.log("[pc] GET", r.status, r.url), r.json()))
     .then(j => console.log("[pc] payload keys:", Object.keys(j || {})))
     .catch(e => console.error("[pc] fetch error:", e));
 </script>
 
-
-
+<!-- Ton script principal (refactor) -->
 <script src="{{ url_for('seating.static', filename='plan_classe.js') }}" defer></script>
 {% endblock %}

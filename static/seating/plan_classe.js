@@ -1,34 +1,39 @@
 ﻿/* ============================================================================
-   plan_classe.js — ÉDITEUR DE PLAN DE CLASSE
+   plan_classe.js — ÉDITEUR DE PLAN DE CLASSE (version refactor)
    ============================================================================
 
    SOMMAIRE
    --------
    [0]  Bootstrap & Constants
-   [1]  Utilities (unités/px, géométrie, couleurs, localStorage)
+   [1]  Utils (unités/px, géométrie, couleurs, localStorage)
    [2]  API client (fetch)
-   [3]  Autosave (positions, meubles) & resync contrôlé
-   [4]  Stage fit + Grille
+   [3]  Autosave (positions, meubles, murs) & resync contrôlé
+   [4]  Stage fit + Grille + Fullscreen
    [5]  Collisions & "collapse" (aimantation bord à bord)
    [6]  Rendu: élèves, meubles, murs (SVG), palette
    [7]  Drag & Drop:
         7.1 Élève depuis la liste (ghost final)
         7.2 Déplacement carte élève
         7.3 Création meuble depuis palette (ghost final)
-        7.4 Déplacement / redimension meuble (4 coins) + rotation
+        7.4 Déplacement / redimension meuble + rotation
         7.5 Tracé de murs (polyline SVG)
    [8]  Sélection multiple, clavier, alignements & répartitions
-   [9]  Suppression (élève / meuble), édition couleur & coins arrondis
+   [9]  Suppression (élève / meuble / mur), couleur & coins arrondis
    [10] Boot (chargement, mapping id temp -> id serveur, persistance couleurs)
-   [11] Listeners globaux (resize/keypress) & init
+   [11] Toolbar (actions de plan) & Listeners globaux
 
    Points clés
    ----------
-   • Couleur PAR MEUBLE => sauvegarde immédiate unitaire ; boot() n’écrase pas.
-   • Anti-duplication => Set(uid) lors des PUT, mapping client_uid sur boot.
-   • Murs en SVG (hachures) ; portes/fenêtres -> placement forcé sur mur.
+   • Couleur PAR MEUBLE => sauvegarde unitaire immédiate ; boot() ne les écrase pas.
+   • Anti-duplication => Set(uid) lors des PUT, mapping client_uid sur boot().
+   • Murs en SVG (hachures) + portes/fenêtres forcement sur mur (snap).
    • Fantômes (élèves/meubles) identiques à l’objet final pendant le drag.
-   • Sélection multiple + déplacements clavier + alignements/distrib à la Word.
+   • Sélection multiple, déplacements clavier, alignements/distrib à la Word.
+
+   Échelle
+   -------
+   • 1 unité = 25 cm (CM_PER_UNIT = 25).
+   • Empreinte élève ≈ 70x50 cm, aimantée aux ticks UI.
 ============================================================================ */
 
 (() => {
@@ -44,40 +49,23 @@
   const API_BASE = (conf.apiBase || "/seating") + "/api";
   const PHOTOS_BASE = conf.photosBase || "/static/photos/";
 
-  let UI_SUBDIV = 32;      // précision UI
-  let PLAN_SUBDIV = 32;    // précision stockage API
-  let unitPx = 32;         // dimension d'une unité en pixels (calculée par autofit)
+  let UI_SUBDIV = 32;   // précision UI (ticks aimantation)
+  let PLAN_SUBDIV = 32;  // précision stockage API
+  let unitPx = 32;   // dimension d'une unité en pixels (calculée par autofit)
 
   // ids temporaires (meubles) & mode édition
   let tempIdSeq = -1;
   let editMode = false;
-  // ---- Échelle réelle pour les élèves (1 unité = 10 cm par défaut)
-  const CM_PER_UNIT = 25;                 // adapte si chez toi 1 unité ≠ 10 cm
-  const STUDENT_W_CM = 70;                // largeur réelle
-  const STUDENT_H_CM = 50;                // hauteur réelle
+
+  // ---- Échelle réelle pour les élèves
+  const CM_PER_UNIT = 25;  // 1 unité = 25 cm
+  const STUDENT_W_CM = 70;
+  const STUDENT_H_CM = 50;
   const cmToUnits = (cm) => cm / CM_PER_UNIT;
 
-  const CARD_ROT_STATES = [0, 90, 270]; // 270 = -90
-  function normCardRotToIdx(deg) {
-    // mappe n'importe quel angle vers {0,90,270} — 180 devient 270
-    let d = ((deg % 360) + 360) % 360;
-    if (d >= 315 || d < 45) return 0;      // ~0
-    if (d >= 45 && d < 135) return 1;      // ~90
-    // 135–225 (≈180) et 225–315 (≈270) => 270
-    return 2;
-  }
-
-
-
-
-
-
-  // Taille élève en unités (arrondie au “tick” UI pour coller à l’aimantation)
-  function studentFootprintUnits() {
-    const w = Math.max(TICK, Math.round(cmToUnits(STUDENT_W_CM) * UI_SUBDIV) / UI_SUBDIV);
-    const h = Math.max(TICK, Math.round(cmToUnits(STUDENT_H_CM) * UI_SUBDIV) / UI_SUBDIV);
-    return { w, h };
-  }
+  // évite les resync pendant un drag et permet de restaurer la sélection après boot()
+  let isDraggingNow = false;
+  let pendingSelSnap = null;
 
   // anti-duplications autosave (nouveaux meubles)
   const sentNewFurniture = new Set(); // uid client déjà envoyé durant un debounce
@@ -88,7 +76,7 @@
     active_plan: null,
     furniture: [],
     positions: [],
-    walls: [],          // [{ id, points:[{x,y}...]}]
+    walls: [],     // [{ id, points:[{x,y}...] }] en UNITÉS
     seats: [],
     eleves: []
   };
@@ -107,44 +95,52 @@
   const $dup = document.getElementById('pc_duplicate');
   const $act = document.getElementById('pc_activate');
   const $pdf = document.getElementById('pc_export_pdf');
-  const $full = document.getElementById('pc_fullscreen');
+
   const $elist = document.getElementById('pc_eleve_list');
   const $wrap = $stage.parentElement;
   const $reset = document.getElementById('pc_reset_plan');
   const $palette = document.getElementById('pc_furn_palette');
   const $edit = document.getElementById('pc_edit_mode');
-
-  const $subdiv = document.getElementById('pc_subdiv');
-  try { $subdiv?.closest('label')?.style && ($subdiv.closest('label').style.display = 'none'); } catch { }
+  const $delPlan = document.getElementById('pc_delete_plan');
 
   // conteneur SVG (murs)
   let $svg = document.getElementById('pc_svg') || null;
 
 
   // [1] ----------------------------------------------------------------------
-  // Utilities : unités/px, géométrie, couleurs, localStorage
+  // Utils (unités/px, géométrie, couleurs, localStorage)
   // -------------------------------------------------------------------------
 
   const EPS = 1e-6;
-  const TICK = 1 / UI_SUBDIV;          // “pas” d'aimantation
-  const DRAG_THRESHOLD = 6;            // px (distinction clic / drag)
+  const TICK = 1 / UI_SUBDIV;
+  const DRAG_THRESHOLD = 2; // px
 
   const toPx = u => u * unitPx;
-  const fromPxU = px => px / unitPx;
+
   const snapUnits = v => Math.round(v * UI_SUBDIV) / UI_SUBDIV;
+  const snapUnitsDir = (v, dir) => {
+    const s = v * UI_SUBDIV;
+    if (dir > 0) return Math.ceil(s) / UI_SUBDIV;
+    if (dir < 0) return Math.floor(s) / UI_SUBDIV;
+    return Math.round(s) / UI_SUBDIV;
+  };
+  const norm360 = a => ((a % 360) + 360) % 360;
 
   const genUid = () => 'f_' + Math.random().toString(36).slice(2, 10);
-  // helpers LS (mets-les avec tes autres helpers LS)
-  const posRotKey = pid => `pc_posrot_${pid}`;
-  function lsGetPosRots(pid) { try { return JSON.parse(localStorage.getItem(posRotKey(pid)) || '{}'); } catch { return {}; } }
-  function lsSetPosRot(pid, eleveId, rot) {
-    try { const m = lsGetPosRots(pid); m[eleveId] = rot; localStorage.setItem(posRotKey(pid), JSON.stringify(m)); } catch { }
-  }
 
-  // --- Helpers murs: encode (→ stockage) / decode (← lecture) en base PLAN_SUBDIV ---
+  // localStorage: rotations élève par plan/élève
+  const posRotKey = pid => `pc_posrot_${pid}`;
+  const lsGetPosRots = pid => { try { return JSON.parse(localStorage.getItem(posRotKey(pid)) || '{}'); } catch { return {}; } };
+  const lsSetPosRot = (pid, eleveId, rot) => { try { const m = lsGetPosRots(pid); m[eleveId] = rot; localStorage.setItem(posRotKey(pid), JSON.stringify(m)); } catch { } };
+
+  // localStorage: couleur par plan+meuble
+  const colorKey = (pid, id) => `pc_color_${pid}_${id}`;
+  const lsGetColor = (pid, id) => { try { return localStorage.getItem(colorKey(pid, id)); } catch { return null; } };
+  const lsSetColor = (pid, id, val) => { try { localStorage.setItem(colorKey(pid, id), val); } catch { } };
+  const lsDelColor = (pid, id) => { try { localStorage.removeItem(colorKey(pid, id)); } catch { } };
+
+  // walls: encode <-> decode en base PLAN_SUBDIV (stockage en entiers)
   function encodeWallsForStorage(walls) {
-    // walls: [{id, points:[{x,y}]}] en UNITÉS DE PLAN
-    // -> [{id, points:[{x,y}]}] x,y entiers en sous-unités (× PLAN_SUBDIV)
     return (walls || []).map(w => ({
       id: w.id || genUid(),
       points: (w.points || []).map(p => ({
@@ -153,10 +149,7 @@
       }))
     }));
   }
-
   function decodeWallsFromStorage(stored) {
-    // stored: [{id, points:[{x,y}]}] x,y entiers en sous-unités
-    // -> [{id, points:[{x,y}]}] x,y en UNITÉS DE PLAN
     return (stored || []).map(w => ({
       id: w.id || genUid(),
       points: (w.points || []).map(p => ({
@@ -166,77 +159,7 @@
     }));
   }
 
-  // place ça avant l'INIT (avant boot().catch(...))
-  function setupFullscreenExact($wrap, onFit, onRender) {
-    const btn = document.getElementById('pc_fullscreen');
-    if (!$wrap || !btn) return;
-
-    function enter() { if ($wrap.requestFullscreen) $wrap.requestFullscreen(); }
-    function exit() { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); }
-
-    btn.addEventListener('click', () => {
-      if (document.fullscreenElement) exit(); else enter();
-    });
-
-    // quand on entre/sort du plein écran -> recalcul (fit + render)
-    document.addEventListener('fullscreenchange', () => {
-      try { onFit && onFit(); } catch { }
-      try { onRender && onRender(); } catch { }
-    });
-  }
-
-  const rotLockKey = (pid, eleveId) => `pc_rotlock_${pid}_${eleveId}`;
-  const lsGetRotLock = (pid, eid) => { try { return localStorage.getItem(rotLockKey(pid, eid)) === '1'; } catch { return false; } };
-  const lsSetRotLock = (pid, eid) => { try { localStorage.setItem(rotLockKey(pid, eid), '1'); } catch { } };
-
-  function maybeLockRotation(card, eleveId) {
-    if (!state.active_plan) return;
-    const pid = state.active_plan.id;
-    if (lsGetRotLock(pid, eleveId)) return;        // déjà locké
-
-    // → première rotation qu’on constate : on verrouille
-    lsSetRotLock(pid, eleveId);
-
-    // retirer/masquer les boutons et désactiver la molette Alt
-    card.querySelectorAll('.pc_rot_btn').forEach(b => b.remove());
-    card.removeEventListener('wheel', onCardAltWheel, { passive: false }); // cf. handler ci-dessous
-  }
-
-  // --- Snap élèves: 0 / 90 / 270 (on évite 180 pour garder le nom lisible)
-  // --- Snap élèves: 0 / 90 / 270 (on évite 180 pour garder le nom lisible)
-  function snapRotStudent(deg) {
-    const d = ((deg % 360) + 360) % 360;
-    if (d < 45 || d >= 315) return 0;   // proche de 0
-    if (d < 135) return 90;             // proche de 90
-    return 270;                         // 135–315 => 270
-  }
-
-  // Récupère l’angle visuel (libre) et l’angle snap (modèle)
-  function getCardAngles(card) {
-    const visu = parseFloat(card.dataset.rotVisuAbs || card.dataset.rotAbs || card.dataset.rot || '0') || 0;
-    const snap = snapRotStudent(visu);
-    return { visu, snap };
-  }
-
-  function onCardAltWheel(e) {
-    if (!e.altKey) return;
-    e.preventDefault();
-    const card = e.currentTarget;
-    setCardRotation(card, (e.deltaY > 0 ? -1 : 1), { snap: false });
-  }
-
-  // remplace le snap neutre par un snap directionnel selon le signe du décalage
-  function snapUnitsDir(v, dir /* dx ou dy */) {
-    const s = v * UI_SUBDIV;
-    if (dir > 0) return Math.ceil(s) / UI_SUBDIV;   // on pousse vers + (droite/haut)
-    if (dir < 0) return Math.floor(s) / UI_SUBDIV;   // on pousse vers - (gauche/bas)
-    return Math.round(s) / UI_SUBDIV;                 // cas neutre
-  }
-
-
-
-
-
+  // stage box
   function stageInnerBox() {
     const r = $stage.getBoundingClientRect();
     const cs = getComputedStyle($stage);
@@ -256,73 +179,65 @@
   const normDeg = a => { let d = a % 360; if (d < 0) d += 360; return d; };
   const isQuarterTurnSwap = deg => (Math.round(normDeg(deg) / 90) % 4) % 2 === 1;
 
-  function clientToUnitsClamped(clientX, clientY, wUnits = 0, hUnits = 0) {
-    const box = stageInnerBox();
-    const xpx = Math.min(box.left + box.width - 0.001, Math.max(box.left, clientX));
-    const ypx = Math.min(box.top + box.height - 0.001, Math.max(box.top, clientY));
-    let ux = snapUnits((xpx - box.left) / unitPx);
-    let uy = snapUnits((ypx - box.top) / unitPx);
-    if (state.active_plan) {
-      const W = state.active_plan.width, H = state.active_plan.height;
-      const minX = Math.max(TICK, wUnits || 0);
-      const minY = Math.max(TICK, hUnits || 0);
-      ux = Math.max(0, Math.min(ux, W - minX));
-      uy = Math.max(0, Math.min(uy, H - minY));
+  // empreinte élève (en unités), aimantée aux ticks
+  function studentFootprintUnits() {
+    // Alias pour compat rétro : certains appels utilisent footprintCardUnits()
+
+
+    const w = Math.max(TICK, Math.round(cmToUnits(STUDENT_W_CM) * UI_SUBDIV) / UI_SUBDIV);
+    const h = Math.max(TICK, Math.round(cmToUnits(STUDENT_H_CM) * UI_SUBDIV) / UI_SUBDIV);
+    return { w, h };
+  }
+  // ✅ Alias global pour compat rétro (utilisé par ton code existant)
+  const footprintCardUnits = studentFootprintUnits;
+
+  // helpers sélection
+  const selection = new Set();
+  function selectionSnapshot() {
+    return Array.from(selection).map(n => {
+      if (n.classList.contains('pc_card')) return { kind: 'card', id: n.dataset.eleveId };
+      if (n.classList.contains('pc_furn')) return { kind: 'furn', id: n.dataset.id };
+      if (n.tagName === 'polyline' && n.classList.contains('wall')) return { kind: 'wall', id: n.dataset.wallId };
+      return null;
+    }).filter(Boolean);
+  }
+  function restoreSelectionFromSnapshot(snap) {
+    selection.clear();
+    snap.forEach(s => {
+      let node = null;
+      if (s.kind === 'card') node = $stage.querySelector(`.pc_card[data-eleve-id="${s.id}"]`);
+      else if (s.kind === 'furn') node = $stage.querySelector(`.pc_furn[data-id="${s.id}"]`);
+      else if (s.kind === 'wall') node = $svg?.querySelector(`.wall[data-wall-id="${s.id}"]`);
+      if (node) selection.add(node);
+    });
+    refreshSelectionStyling();
+  }
+
+  function selectNodeOnPointerDown(node, e) {
+    if (e.shiftKey) {
+      if (selection.has(node)) selection.delete(node); else selection.add(node);
+    } else {
+      selection.clear(); selection.add(node);
     }
-    return { x: ux, y: uy };
+    refreshSelectionStyling();
+    // mémoriser les positions de départ pour le drag groupé
+    selection.forEach(n => {
+      n.dataset._startL = n.style.left;
+      n.dataset._startT = n.style.top;
+    });
   }
 
-  function footprintCardUnits() {
-    // désormais basé sur 70x50 cm, pas sur 96 px
-    return studentFootprintUnits();
+  function limitSelectionToKind(node) {
+    const keepCard = node.classList.contains('pc_card');
+    const keepFurn = node.classList.contains('pc_furn');
+    if (!keepCard && !keepFurn) return;
+    selection.forEach(n => {
+      if (keepCard && !n.classList.contains('pc_card')) selection.delete(n);
+      if (keepFurn && !n.classList.contains('pc_furn')) selection.delete(n);
+    });
   }
 
-  function buildRotateControls(card) {
-    const nameEl = card.querySelector('.pc_name_in');
-    if (!nameEl) return;
-    if (nameEl.querySelector('.pc_rot_btn')) return; // évite les doublons
-
-    const mk = (cls, title, delta) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = `pc_rot_btn ${cls}`;
-      b.textContent = (delta < 0 ? '↺' : '↻');
-      b.title = title;
-      b.addEventListener('pointerdown', e => e.stopPropagation());
-      b.addEventListener('mousedown', e => e.stopPropagation());
-      b.addEventListener('click', e => e.stopPropagation());
-      // passive: true pour touchstart (pas de preventDefault)
-      b.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
-      b.addEventListener('click', () => setCardRotation(card, delta, { snap: true }));
-      return b;
-    };
-
-    nameEl.prepend(mk('rot-left', 'Pivoter -90°', -90));
-    nameEl.append(mk('rot-right', 'Pivoter +90°', +90));
-
-    // Alt + molette = rotation fine
-    if (!card._wheelBound) {
-      card.addEventListener('wheel', (e) => {
-        if (!e.altKey) return;
-        e.preventDefault();
-        setCardRotation(card, (e.deltaY > 0 ? -1 : 1), { snap: false });
-      }, { passive: false });
-      card._wheelBound = true;
-    }
-  }
-
-
-
-  // Optionnel : garde l’API existante, mais ne supprime plus les boutons
-  function refreshCardRotationUI(card /*, nameEl */) {
-    // On ne masque plus/retire rien : les deux flèches restent toujours accessibles
-    // Laisse la molette Alt active (liée dans buildRotateControls)
-  }
-
-
-
-
-
+  // couleurs
   function hexToRgb(hex) {
     const x = hex.replace('#', '');
     const n = parseInt(x.length === 3 ? x.split('').map(c => c + c).join('') : x, 16);
@@ -335,11 +250,40 @@
     return `#${h(d(r))}${h(d(g))}${h(d(b))}`;
   }
 
-  // localStorage: couleur par plan+meuble (fallback si API omet la couleur)
-  const colorKey = (pid, id) => `pc_color_${pid}_${id}`;
-  const lsGetColor = (pid, id) => { try { return localStorage.getItem(colorKey(pid, id)); } catch { return null; } };
-  const lsSetColor = (pid, id, val) => { try { localStorage.setItem(colorKey(pid, id), val); } catch { } };
-  const lsDelColor = (pid, id) => { try { localStorage.removeItem(colorKey(pid, id)); } catch { } };
+  // --- Helpers pour POST/PUT/DELETE avec cookie + CSRF ------------------------
+  function getCsrfToken() {
+    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    if (m) return decodeURIComponent(m[1]);
+    const meta = document.querySelector('meta[name="csrf-token"], meta[name="csrfmiddlewaretoken"]');
+    return meta?.getAttribute('content') || '';
+  }
+
+  async function fetchWithCsrf(url, opts = {}) {
+    const headers = new Headers(opts.headers || {});
+    const method = (opts.method || 'GET').toUpperCase();
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+      const token = getCsrfToken();
+      if (token && !headers.has('X-CSRFToken')) headers.set('X-CSRFToken', token);
+    }
+    return fetch(url, { credentials: 'same-origin', ...opts, headers });
+  }
+
+  // Retourne {} si 204/no JSON, sinon parse le JSON. Lance une erreur si !r.ok
+  const jsonIfAny = async (r) => {
+    if (!r.ok) {
+      let msg = '';
+      try { msg = await r.text(); } catch { }
+      throw new Error(`HTTP ${r.status} ${r.statusText}${msg ? ' – ' + msg.slice(0, 200) : ''}`);
+    }
+    if (r.status === 204) return {};
+    const ct = r.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) return {};
+    const txt = await r.text();
+    return txt ? JSON.parse(txt) : {};
+  };
+
+
+
 
   // [2] ----------------------------------------------------------------------
   // API Client
@@ -348,20 +292,112 @@
   const api = {
     getAll: (planId) => {
       const q = planId ? `?plan_id=${encodeURIComponent(planId)}` : '';
-      return fetch(`${API_BASE}/plans/${classeId}${q}`, { credentials: 'same-origin', cache: 'no-store' })
-        .then(r => r.json());
+      return fetch(`${API_BASE}/plans/${classeId}${q}`, {
+        credentials: 'same-origin',
+        cache: 'no-store'
+      }).then(jsonIfAny);
     },
-    create: (payload) => fetch(`${API_BASE}/plans`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json()),
-    activate: (plan_id) => fetch(`${API_BASE}/plans/${plan_id}/activate`, { method: 'PUT' }).then(r => r.json()),
-    duplicate: (plan_id) => fetch(`${API_BASE}/plans/${plan_id}/duplicate`, { method: 'POST' }).then(r => r.json()),
-    reset: (plan_id, full = false) => fetch(`${API_BASE}/plans/${plan_id}/reset`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ full: !!full }) }).then(r => r.json()),
-    savePositions: (plan_id, items) => fetch(`${API_BASE}/plans/${plan_id}/positions`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ positions: items }) }).then(r => r.json()),
-    deletePosition: (plan_id, eleve_id) => fetch(`${API_BASE}/plans/${plan_id}/positions`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ eleve_id }) }).then(r => r.json()),
-    saveFurniture: (plan_id, items) => fetch(`${API_BASE}/plans/${plan_id}/furniture`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ furniture: items }) }).then(r => r.json()),
-    deleteFurniture: (plan_id, item_id) => fetch(`${API_BASE}/plans/${plan_id}/furniture/${item_id}`, { method: 'DELETE' }).then(r => r.json()),
-    // (optionnel) murs si tu exposes l’API
-    saveWalls: (plan_id, walls) => fetch(`${API_BASE}/plans/${plan_id}/walls`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ walls }) }).then(r => r.json())
+
+    create: (payload) =>
+      fetchWithCsrf(`${API_BASE}/plans`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(jsonIfAny),
+
+    activate: (plan_id) =>
+      fetchWithCsrf(`${API_BASE}/plans/${plan_id}/activate`, {
+        method: 'PUT'
+      }).then(jsonIfAny),
+
+    duplicate: (plan_id) =>
+      fetchWithCsrf(`${API_BASE}/plans/${plan_id}/duplicate`, {
+        method: 'POST'
+      }).then(jsonIfAny),
+
+    reset: (plan_id, full = false) =>
+      fetchWithCsrf(`${API_BASE}/plans/${plan_id}/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ full: !!full })
+      }).then(jsonIfAny),
+
+    savePositions: (plan_id, items) =>
+      fetchWithCsrf(`${API_BASE}/plans/${plan_id}/positions`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ positions: items })
+      }).then(jsonIfAny),
+
+    deletePosition: (plan_id, eleve_id) =>
+      fetchWithCsrf(`${API_BASE}/plans/${plan_id}/positions`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eleve_id })
+      }).then(jsonIfAny),
+
+    saveFurniture: (plan_id, items) =>
+      fetchWithCsrf(`${API_BASE}/plans/${plan_id}/furniture`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ furniture: items })
+      }).then(jsonIfAny),
+
+    deleteFurniture: (plan_id, item_id) =>
+      fetchWithCsrf(`${API_BASE}/plans/${plan_id}/furniture/${item_id}`, {
+        method: 'DELETE'
+      }).then(jsonIfAny),
+
+    saveWalls: (plan_id, walls) =>
+      fetchWithCsrf(`${API_BASE}/plans/${plan_id}/walls`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walls })
+      }).then(jsonIfAny),
+
+    // facultatif : delete plan via SEATING_URLS.deletePlan si présent
+    deletePlan: async (planId) => {
+      if (!Number.isFinite(+planId) || +planId <= 0) return false;
+
+      if (window.SEATING_URLS?.deletePlan) {
+        const url = window.SEATING_URLS.deletePlan(planId);
+
+        // a) Essai POST (souvent protégé CSRF)
+        let r = await fetchWithCsrf(url, {
+          method: 'POST',
+          headers: { 'Accept': 'application/json' }
+        });
+        if (r.ok) return true;
+
+        // b) Method override
+        r = await fetchWithCsrf(url, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: '_method=DELETE'
+        });
+        if (r.ok) return true;
+
+        // c) DELETE direct
+        r = await fetchWithCsrf(url, {
+          method: 'DELETE',
+          headers: { 'Accept': 'application/json' }
+        });
+        return r.ok;
+      }
+
+      // 2) Fallback API REST
+      const r = await fetchWithCsrf(`${API_BASE}/plans/${planId}`, {
+        method: 'DELETE',
+        headers: { 'Accept': 'application/json' }
+      });
+      return r.ok;
+    }
   };
+
+
 
   // [3] ----------------------------------------------------------------------
   // Autosave (debounce) & resync contrôlé
@@ -372,28 +408,26 @@
   const autosavePositions = debounce(() => {
     if (!state.active_plan) return;
     const payload = state.positions.map(p => {
-      const r = Math.round((p.rotAbs ?? p.rot ?? 0) % 360);
+      const raw = p.rotAbs ?? p.rot ?? 0;
+      const r = norm360(Math.round(raw));
       return {
         eleve_id: p.eleve_id,
         x: Math.round(p.x * PLAN_SUBDIV),
         y: Math.round(p.y * PLAN_SUBDIV),
         seat_id: p.seat_id ?? null,
-        rotation: r,   // ← clé "rotation" alignée sur les meubles / backend
-        rot: r         // ← optionnel, pour compat si l’API accepte encore "rot"
+        rotation: r,
+        rot: r
       };
     });
     api.savePositions(state.active_plan.id, payload).catch(console.error);
   }, 500);
 
-
-  // ---- AUTOSAVE meubles avec resync APRES succès API ----
+  // autosave meubles (resync uniquement si création, jamais pendant un drag)
   const autosaveFurniture = (() => {
     let timer = null;
-
     return () => {
       if (!state.active_plan) return;
       clearTimeout(timer);
-
       timer = setTimeout(async () => {
         try {
           const payload = state.furniture
@@ -408,47 +442,41 @@
               y: Math.round(f.y * PLAN_SUBDIV),
               w: Math.round(f.w * PLAN_SUBDIV),
               h: Math.round(f.h * PLAN_SUBDIV),
-              rotation: Math.round((f.rotAbs ?? f.rotation ?? 0) % 360),
+              rotation: norm360(Math.round((f.rotAbs ?? f.rotation ?? 0))),
               z: f.z || 0,
               radius: !!f.radius
             }));
 
           if (!payload.length) return;
 
-          const justSentUids = new Set(
-            payload.filter(p => !p.id && p.client_uid).map(p => p.client_uid)
-          );
-          justSentUids.forEach(uid => sentNewFurniture.add(uid));
+          const createdUIDs = payload.filter(p => !p.id && p.client_uid).map(p => p.client_uid);
+          createdUIDs.forEach(uid => sentNewFurniture.add(uid));
 
-          // ⬇️ on ATTEND le retour serveur
           await api.saveFurniture(state.active_plan.id, payload);
 
-          // ✅ et seulement maintenant on resynchronise (immédiatement)
-          resyncSoon(0);
+          if (createdUIDs.length && !isDraggingNow) {
+            pendingSelSnap = selectionSnapshot();
+            resyncSoon(0);
+          }
         } catch (err) {
           console.error('[autosaveFurniture] PUT failed', err);
-          // on réautorise un renvoi pour les nouveaux qui ont échoué
-          sentNewFurniture.forEach(uid => {
-            // si ce uid était dans le lot échoué, on le retire
-            // (simple : on reset tout le set)
-          });
           sentNewFurniture.clear();
         }
-      }, 500); // même debounce que chez toi
+      }, 500);
     };
   })();
 
-  // ---- AUTOSAVE murs (déplacés au clavier) ----
+  // autosave murs (déplacés au clavier)
   const autosaveWalls = debounce(async () => {
     if (!state.active_plan) return;
+    dedupeWallsInState();                                // ← AJOUT
     const planId = state.active_plan.id;
     const payloadWalls = encodeWallsForStorage(state.walls);
     try { await api.saveWalls?.(planId, payloadWalls); } catch (e) { console.warn('saveWalls API KO', e); }
     try { localStorage.setItem(`pc_walls_${planId}`, JSON.stringify(payloadWalls)); } catch { }
   }, 500);
 
-
-  // Sauvegarde immédiate, un meuble, PAS de boot() (pour ne pas écraser la couleur locale)
+  // sauvegarde immédiate d'un meuble (pour couleur etc.)
   async function saveFurnitureItemImmediate(f) {
     if (!state.active_plan || !f) return;
     const payload = [{
@@ -461,7 +489,7 @@
       y: Math.round(f.y * PLAN_SUBDIV),
       w: Math.round(f.w * PLAN_SUBDIV),
       h: Math.round(f.h * PLAN_SUBDIV),
-      rotation: Math.round((f.rotAbs ?? f.rotation ?? 0) % 360),
+      rotation: norm360(Math.round((f.rotAbs ?? f.rotation ?? 0))),
       z: f.z || 0,
       radius: !!f.radius
     }];
@@ -471,11 +499,14 @@
   let resyncTimer = null;
   function resyncSoon(delay = 600) {
     clearTimeout(resyncTimer);
+    if (isDraggingNow) return;
+    if (!pendingSelSnap) pendingSelSnap = selectionSnapshot();
     resyncTimer = setTimeout(() => boot().catch(console.error), delay);
   }
 
+
   // [4] ----------------------------------------------------------------------
-  // Stage fit + Grille de fond
+  // Stage fit + Grille + Fullscreen
   // -------------------------------------------------------------------------
 
   function fitStageToWrap() {
@@ -504,24 +535,20 @@
     $stage.style.backgroundSize =
       `${sub}px ${sub}px, ${sub}px ${sub}px, ${unitPx}px ${unitPx}px, ${unitPx}px ${unitPx}px`;
 
-    // SVG overlay (murs)
-    // SVG overlay (murs)
     if (!$svg) {
       $svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       $svg.setAttribute('id', 'pc_svg');
       $svg.classList.add('pc_svg');
       $stage.appendChild($svg);
     }
-    // s'assure de sa position/tailles
     $svg.style.position = 'absolute';
     $svg.style.left = '0';
     $svg.style.top = '0';
     $svg.style.width = '100%';
     $svg.style.height = '100%';
-    $svg.style.pointerEvents = 'none';
+    $svg.style.pointerEvents = 'auto';
 
     ensureHatchPattern();
-
   }
 
   function ensureHatchPattern() {
@@ -530,13 +557,31 @@
     if (!defs) { defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs'); $svg.appendChild(defs); }
     if ($svg.querySelector('#hatch')) return;
     const pattern = document.createElementNS('http://www.w3.org/2000/svg', 'pattern');
-    pattern.setAttribute('id', 'hatch'); pattern.setAttribute('patternUnits', 'userSpaceOnUse');
-    pattern.setAttribute('width', '8'); pattern.setAttribute('height', '8');
+    pattern.setAttribute('id', 'hatch');
+    pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+    pattern.setAttribute('width', '8');
+    pattern.setAttribute('height', '8');
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', 'M-2,2 l4,-4 M0,8 l8,-8 M6,10 l4,-4');
-    path.setAttribute('stroke', '#334155'); path.setAttribute('stroke-width', '1');
+    path.setAttribute('stroke', '#334155');
+    path.setAttribute('stroke-width', '1');
     defs.appendChild(pattern); pattern.appendChild(path);
   }
+
+  function setupFullscreenExact($wrap, onFit, onRender) {
+    const btn = document.getElementById('pc_fullscreen');
+    if (!$wrap || !btn) return;
+
+    function enter() { if ($wrap.requestFullscreen) $wrap.requestFullscreen(); }
+    function exit() { if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen(); }
+
+    btn.addEventListener('click', () => { if (document.fullscreenElement) exit(); else enter(); });
+    document.addEventListener('fullscreenchange', () => {
+      try { onFit && onFit(); } catch { }
+      try { onRender && onRender(); } catch { }
+    });
+  }
+
 
   // [5] ----------------------------------------------------------------------
   // Collisions & collapse
@@ -550,9 +595,8 @@
 
   function rectsInPlan(exclude = {}) {
     const rects = [];
-    const fp = footprintCardUnits();
+    const fp = studentFootprintUnits();
 
-    // élèves
     for (const p of state.positions) {
       if (exclude.eleveId && p.eleve_id === exclude.eleveId) continue;
       const rot = (p.rotAbs ?? p.rot ?? 0);
@@ -560,7 +604,6 @@
       rects.push({ ...r, kind: 'eleve', id: p.eleve_id });
     }
 
-    // meubles
     for (const f of state.furniture) {
       if (exclude.furnitureId && f.id === exclude.furnitureId) continue;
       const rot = (f.rotAbs ?? f.rotation ?? 0);
@@ -571,23 +614,21 @@
     return rects;
   }
 
-
   const notOverlap = (a, b) =>
     (a.x + a.w) <= b.x + EPS || (b.x + b.w) <= a.x + EPS ||
     (a.y + a.h) <= b.y + EPS || (b.y + b.h) <= a.y + EPS;
+
   const collides = (r, others) => others.some(o => !notOverlap(r, o));
 
   function snapCollapse(r, others) {
     const margin = TICK + 1e-9;
-    const tol = TICK * 0.5; // tolérance d'overlap orthogonal
-    const onTick = v => Math.round(v * UI_SUBDIV) / UI_SUBDIV; // arrondi neutre (ne dépasse pas si v est déjà sur la grille)
+    const tol = TICK * 0.5;
+    const onTick = v => Math.round(v * UI_SUBDIV) / UI_SUBDIV;
     const overlap1D = (a0, a1, b0, b1) => !(a1 <= b0 + tol || b1 <= a0 + tol);
 
-    let best = null; // {x,y,d}
+    let best = null;
     const consider = (nx, ny) => {
-      // positions cibles calculées par ARÊTE (déjà sur la grille)
       const cand = { x: onTick(nx), y: onTick(ny), w: r.w, h: r.h };
-      // restreint au plan
       const c = clampToStage(cand.x, cand.y, r.w, r.h);
       const snapped = { x: c.gx, y: c.gy, w: r.w, h: r.h };
       if (collides(snapped, others)) return;
@@ -596,23 +637,20 @@
     };
 
     for (const o of others) {
-      // alignement horizontal (arêtes verticales) si recouvrement Y
       if (overlap1D(r.y, r.y + r.h, o.y, o.y + o.h)) {
-        const gapRight = o.x - (r.x + r.w);          // r à gauche de o
-        const gapLeft = (o.x + o.w) - r.x;          // r à droite de o
-        if (Math.abs(gapRight) <= margin) consider(o.x - r.w, r.y);     // colle r.x + r.w = o.x
-        if (Math.abs(gapLeft) <= margin) consider(o.x + o.w, r.y);     // colle r.x = o.x + o.w
+        const gapRight = o.x - (r.x + r.w);
+        const gapLeft = (o.x + o.w) - r.x;
+        if (Math.abs(gapRight) <= margin) consider(o.x - r.w, r.y);
+        if (Math.abs(gapLeft) <= margin) consider(o.x + o.w, r.y);
       }
-      // alignement vertical (arêtes horizontales) si recouvrement X
       if (overlap1D(r.x, r.x + r.w, o.x, o.x + o.w)) {
-        const gapBottom = o.y - (r.y + r.h);         // r au-dessus de o
-        const gapTop = (o.y + o.h) - r.y;         // r en dessous de o
-        if (Math.abs(gapBottom) <= margin) consider(r.x, o.y - r.h);    // colle r.y + r.h = o.y
-        if (Math.abs(gapTop) <= margin) consider(r.x, o.y + o.h);    // colle r.y = o.y + o.h
+        const gapBottom = o.y - (r.y + r.h);
+        const gapTop = (o.y + o.h) - r.y;
+        if (Math.abs(gapBottom) <= margin) consider(r.x, o.y - r.h);
+        if (Math.abs(gapTop) <= margin) consider(r.x, o.y + o.h);
       }
     }
 
-    // aimantation aux bords du plan
     if (state.active_plan) {
       const W = state.active_plan.width, H = state.active_plan.height;
       const dLeft = 0 - r.x;
@@ -627,7 +665,6 @@
 
     return best ? { x: best.x, y: best.y, w: r.w, h: r.h } : r;
   }
-
 
   function findNearestFreeSpot(gx, gy, wUnits, hUnits, exclude = {}) {
     const others = rectsInPlan(exclude);
@@ -652,6 +689,7 @@
 
   const shake = el => { el.classList.add('pc_shake'); setTimeout(() => el.classList.remove('pc_shake'), 250); };
 
+
   // [6] ----------------------------------------------------------------------
   // Rendu: élèves, meubles, murs, palette
   // -------------------------------------------------------------------------
@@ -666,104 +704,131 @@
       $sel.appendChild(o);
     }
   }
+
   function clearStage() {
     $stage.querySelectorAll('.pc_card, .pc_furn').forEach(n => n.remove());
-    if ($svg) $svg.innerHTML = '<defs></defs>'; ensureHatchPattern();
+    if ($svg) { $svg.innerHTML = '<defs></defs>'; ensureHatchPattern(); }
   }
 
   function moyClass(m20) { if (m20 == null) return ''; if (m20 >= 16) return 'mAp'; if (m20 >= 13) return 'mA'; if (m20 >= 8) return 'mPA'; return 'mNA'; }
 
-  // -- élèves
-  // -- élèves
-  function setCardRotation(card, delta, { snap = false } = {}) {
-    // angle visuel courant (pour l'affichage)
-    let visu = parseFloat(card.dataset.rotVisuAbs || card.dataset.rotAbs || card.dataset.rot || '0') || 0;
+  // --- rotation élève: snap 0/90/270 (évite 180)
+  function snapRotStudent(deg) {
+    const d = ((deg % 360) + 360) % 360;
+    if (d < 45 || d >= 315) return 0;
+    if (d < 135) return 90;
+    return 270;
+  }
 
-    // applique l'incrément
-    visu += delta;
 
-    // si clic boutons: on borne à [-90, 90] pour éviter 180 (lisibilité du nom)
-    if (snap) {
-      if (visu > 90) visu = 90;
-      if (visu < -90) visu = -90;
+
+  function onCardAltWheel(e) {
+    if (!e.altKey) return;
+    e.preventDefault();
+    const card = e.currentTarget;
+    setCardRotation(card, (e.deltaY > 0 ? -1 : 1), { snap: false });
+  }
+
+  function refreshCardRotateButtons(card) {
+    const leftBtn = card.querySelector('.pc_rot_btn.rot-left');
+    const rightBtn = card.querySelector('.pc_rot_btn.rot-right');
+    if (!leftBtn || !rightBtn) return;
+
+    let visu = parseFloat(card.dataset.rotVisuAbs || card.dataset.rotAbs || '0') || 0;
+    if (visu === 270) visu = -90; // normalise 270 → -90 côté UI
+
+    if (visu === 0) {
+      leftBtn.style.display = "inline-block";
+      rightBtn.style.display = "inline-block";
+    } else if (visu === -90) {
+      leftBtn.style.display = "none";
+      rightBtn.style.display = "inline-block";
+    } else if (visu === 90) {
+      rightBtn.style.display = "none";
+      leftBtn.style.display = "inline-block";
+    } else {
+      leftBtn.style.display = "inline-block";
+      rightBtn.style.display = "inline-block";
     }
+  }
 
-    // angle snap (modèle) = 0 / 90 / 270
+  function buildRotateControls(card) {
+    const nameEl = card.querySelector('.pc_name_in');
+    if (!nameEl) return;
+    if (nameEl.querySelector('.pc_rot_btn')) return;
+
+    const mk = (cls, title, delta) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `pc_rot_btn ${cls}`;
+      b.textContent = (delta < 0 ? '↺' : '↻');
+      b.title = title;
+      b.addEventListener('pointerdown', e => e.stopPropagation());
+      b.addEventListener('mousedown', e => e.stopPropagation());
+      b.addEventListener('click', e => e.stopPropagation());
+      b.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+      b.addEventListener('click', () => setCardRotation(card, delta, { snap: true }));
+      return b;
+    };
+
+    nameEl.prepend(mk('rot-left', 'Pivoter -90°', -90));
+    nameEl.append(mk('rot-right', 'Pivoter +90°', +90));
+
+    if (!card._wheelBound) {
+      card.addEventListener('wheel', onCardAltWheel, { passive: false });
+      card._wheelBound = true;
+    }
+  }
+
+  function refreshToolbarActionsEnabled() {
+    const has = !!($sel && $sel.value);
+    ['pc_activate', 'pc_duplicate', 'pc_delete_plan', 'pc_export_pdf', 'pc_reset_plan']
+      .forEach(id => { const b = document.getElementById(id); if (b) b.disabled = !has; });
+  }
+
+  // cartes (élèves)
+  function setCardRotation(card, delta, { snap = false } = {}) {
+    let visu = parseFloat(card.dataset.rotVisuAbs || card.dataset.rotAbs || card.dataset.rot || '0') || 0;
+    visu += delta;
+    if (snap) { if (visu > 90) visu = 90; if (visu < -90) visu = -90; } // bornes lisibilité
+
     const snapAbs = snapRotStudent(visu);
 
-    // maj datasets + rendu
     card.dataset.rotVisuAbs = String(visu);
     card.dataset.rotAbs = String(snapAbs);
-    card.dataset.rot = String(snapAbs);           // pour compat avec anciens usages
+    card.dataset.rot = String(snapAbs);
     card.style.transformOrigin = 'center center';
-    card.style.transform = `rotate(${visu}deg)`;  // on affiche l'angle fin
+    card.style.transform = `rotate(${visu}deg)`;  // affichage continu
 
-    // pousse dans le state + autosave
     const eleveId = parseInt(card.dataset.eleveId, 10);
     const p = state.positions.find(x => x.eleve_id === eleveId);
     if (p) {
       p.rotAbs = snapAbs;
       p.rot = snapAbs;
-      if (state.active_plan) lsSetPosRot(state.active_plan.id, eleveId, snapAbs); // NEW
+      if (state.active_plan) lsSetPosRot(state.active_plan.id, eleveId, snapAbs);
       autosavePositions();
     }
 
-
-    // gestion visibilité boutons (comme chez toi)
+    // UI boutons: masque celui vers la borne atteinte (si snap)
     const leftBtn = card.querySelector('.pc_rot_btn.rot-left');
     const rightBtn = card.querySelector('.pc_rot_btn.rot-right');
     if (leftBtn && rightBtn && snap) {
-      if (visu === 0) {
-        leftBtn.style.display = "inline-block";
-        rightBtn.style.display = "inline-block";
-      } else if (visu === -90) {
-        leftBtn.style.display = "none";
-        rightBtn.style.display = "inline-block";
-      } else if (visu === 90) {
-        rightBtn.style.display = "none";
-        leftBtn.style.display = "inline-block";
-      }
+      if (visu === 0) { leftBtn.style.display = "inline-block"; rightBtn.style.display = "inline-block"; }
+      else if (visu === -90) { leftBtn.style.display = "none"; rightBtn.style.display = "inline-block"; }
+      else if (visu === 90) { rightBtn.style.display = "none"; leftBtn.style.display = "inline-block"; }
     }
   }
 
-
-
-
-
-
-
-
-  function addRotateButton(card) {
-    // ↺ bouton
-    const btnL = document.createElement('div');
-    btnL.className = 'pc_delete_btn';
-    btnL.style.right = '46px';
-    btnL.title = 'Pivoter -90°';
-    btnL.textContent = '↺';
-    btnL.addEventListener('click', (e) => { e.stopPropagation(); setCardRotation(card, -90, { snap: true }); });
-
-    // ↻ bouton
-    const btnR = document.createElement('div');
-    btnR.className = 'pc_delete_btn';
-    btnR.style.right = '26px';
-    btnR.title = 'Pivoter +90°';
-    btnR.textContent = '↻';
-    btnR.addEventListener('click', (e) => { e.stopPropagation(); setCardRotation(card, +90, { snap: true }); });
-
-    // Alt+molette = rotation fine ±1°
-    card.addEventListener('wheel', (e) => {
-      if (!e.altKey) return;
-      e.preventDefault();
-      setCardRotation(card, (e.deltaY > 0 ? -1 : 1), { snap: false }); // visuel libre, modèle = snap
-    }, { passive: false });
-
-
-    card.append(btnL, btnR);
+  function addDeleteButton(el) {
+    const btn = document.createElement('div');
+    btn.className = 'pc_delete_btn';
+    btn.textContent = '×';
+    btn.title = 'Supprimer';
+    btn.addEventListener('click', (e) => { e.stopPropagation(); removeElement(el); });
+    el.appendChild(btn);
   }
 
-
   function addCard(eleve, pos) {
-    // === conteneur carte
     const card = document.createElement('div');
     card.className = 'pc_card';
     card.dataset.type = 'eleve';
@@ -774,77 +839,61 @@
     if (eleve.niveau) card.dataset.niveau = eleve.niveau;
     card.dataset.prenom = eleve.prenom || '';
 
-    // position (en px) depuis les unités
     card.style.left = `${toPx(pos.x)}px`;
     card.style.top = `${toPx(pos.y)}px`;
     card.title = `${eleve.prenom || ''} ${eleve.nom || ''}`.trim();
 
-    // dimension élève en unités (footprint réel 70x50 cm), converti en px
     const fp = studentFootprintUnits();
     card.style.width = `${toPx(fp.w)}px`;
     card.style.height = `${toPx(fp.h)}px`;
 
-    // === contenu interne (photo + ruban prénom)
     const inner = document.createElement('div');
     inner.className = 'pc_card_in';
 
-    // rotation initiale (visuelle & snap)
-    const initRot = Number.isFinite(pos.rotAbs ?? pos.rot)
-      ? (pos.rotAbs ?? pos.rot)
-      : 0;
-    card.dataset.rotAbs = String(initRot);
-    card.dataset.rotVisuAbs = String(initRot);
-    card.dataset.rot = String(initRot);
+    const initRotAbs = Number.isFinite(pos.rotAbs ?? pos.rot) ? (pos.rotAbs ?? pos.rot) : 0; // 0/90/270
+    const initVisu = (initRotAbs === 270) ? -90 : initRotAbs; // -90/0/90 pour l’affichage
+    card.dataset.rotAbs = String(initRotAbs);
+    card.dataset.rotVisuAbs = String(initVisu);
+    card.dataset.rot = String(initRotAbs);
     card.style.transformOrigin = 'center center';
-    card.style.transform = `rotate(${initRot}deg)`;
+    card.style.transform = `rotate(${initVisu}deg)`;
 
-    // photo
     const img = document.createElement('img');
     img.src = PHOTOS_BASE + (eleve.photo_filename || 'default.jpg');
     img.draggable = card.draggable = false;
     img.addEventListener('dragstart', ev => ev.preventDefault());
     card.addEventListener('dragstart', ev => ev.preventDefault());
 
-    // ruban prénom (reste sous les boutons)
     const name = document.createElement('div');
     name.className = 'pc_name_in';
     name.textContent = eleve.prenom || '';
-    const sexCls = (eleve.sexe === 'FEMININ' || eleve.sexe === 'F')
-      ? 'sex-fille'
-      : (eleve.sexe === 'MASCULIN' || eleve.sexe === 'M')
-        ? 'sex-garcon'
-        : '';
+    const sexCls = (eleve.sexe === 'FEMININ' || eleve.sexe === 'F') ? 'sex-fille'
+      : (eleve.sexe === 'MASCULIN' || eleve.sexe === 'M') ? 'sex-garcon' : '';
     if (sexCls) name.classList.add(sexCls);
 
-    // badge moyenne (gauche)
     const bM = document.createElement('div');
     bM.className = `badge moy ${moyClass(eleve.moyenne_20)}`;
-    bM.textContent = (eleve.moyenne_20 != null)
-      ? Math.round(eleve.moyenne_20)
-      : '—';
+    bM.textContent = (eleve.moyenne_20 != null) ? Math.round(eleve.moyenne_20) : '—';
 
-    // assemble
     inner.append(img, name);
     card.append(bM, inner);
 
-    // === boutons de rotation (au niveau .pc_card, au-dessus du ruban)
-    // -> NE PAS les mettre dans name; on veut qu’ils dépassent et restent au-dessus
     buildRotateControls(card);
+    refreshCardRotateButtons(card);
+    addDeleteButton(card);
 
-    // === autres contrôles / interactions
-    addDeleteButton(card);                    // croix de suppression (z-index déjà haut)
-    card.addEventListener('pointerdown', startDragCard);
-    card.addEventListener('click', handleSelectableClick);
-
-    // Alt+molette pour rotation fine est branché dans buildRotateControls
-    // On ne masque plus les boutons selon l’angle, donc pas d’appel à refreshCardRotationUI
+    card.addEventListener('pointerdown', (e) => {
+      if (e.button && e.button !== 0) return;
+      if (e.target.closest('.pc_delete_btn') || e.target.closest('.pc_rot_btn')) return;
+      selectNodeOnPointerDown(card, e);
+      limitSelectionToKind(card);
+      startDragCard(e);
+    });
 
     $stage.appendChild(card);
   }
 
-
-
-  // -- meubles
+  // meubles
   function applyFurnitureColor(el, type, color) {
     if (!color) return;
     el.style.background = color;
@@ -859,13 +908,16 @@
   }
   function addFurnRotate(el) {
     const btn = document.createElement('div');
-    btn.className = 'pc_delete_btn'; btn.style.right = '26px'; btn.title = 'Pivoter (90°) — Alt+molette: rotation fine'; btn.textContent = '↻';
+    btn.className = 'pc_delete_btn';
+    btn.style.right = '26px';
+    btn.title = 'Pivoter (90°) — Alt+molette: rotation fine';
+    btn.textContent = '↻';
     btn.addEventListener('click', (e) => { e.stopPropagation(); setFurnitureRotation(el, 90); });
     el.addEventListener('wheel', (e) => { if (!e.altKey) return; e.preventDefault(); setFurnitureRotation(el, (e.deltaY > 0 ? -5 : 5)); }, { passive: false });
     el.appendChild(btn);
   }
   function addFurnCornerToggle(el) {
-    if (el.dataset.furnitureType === 'table_round') return; // déjà rond
+    if (el.dataset.furnitureType === 'table_round') return;
     let btn = el.querySelector('.pc_corner_btn');
     if (!btn) {
       btn = document.createElement('div');
@@ -884,7 +936,6 @@
       });
       el.appendChild(btn);
     }
-    // affichage conditionné au mode édition
     btn.style.display = editMode ? 'block' : 'none';
   }
   function setFurnitureRotation(el, delta) {
@@ -893,7 +944,7 @@
     el.style.transform = `rotate(${abs}deg)`;
     const id = el.dataset.id ? parseInt(el.dataset.id, 10) : null;
     const f = (id != null) ? state.furniture.find(x => x.id === id) : null;
-    if (f) { f.rotAbs = abs; f.rotation = abs % 360; autosaveFurniture(); }
+    if (f) { f.rotAbs = abs; f.rotation = norm360(abs); autosaveFurniture(); }
   }
   function addFurnitureColorBtn(el) {
     const id = el.dataset.id ? parseInt(el.dataset.id, 10) : null;
@@ -902,7 +953,8 @@
     let pick = el.querySelector('.pc_col_btn');
     if (!pick) {
       pick = document.createElement('input');
-      pick.type = 'color'; pick.className = 'pc_col_btn';
+      pick.type = 'color';
+      pick.className = 'pc_col_btn';
       pick.addEventListener('pointerdown', e => e.stopPropagation());
       pick.addEventListener('click', e => e.stopPropagation());
       el.appendChild(pick);
@@ -964,12 +1016,8 @@
     name.className = 'pc_name_in';
     name.textContent = eleve.prenom || '';
 
-    // garde les couleurs fille/garçon aussi dans le fantôme (optionnel)
-    const sexCls = (eleve.sexe === 'FEMININ' || eleve.sexe === 'F')
-      ? 'sex-fille'
-      : (eleve.sexe === 'MASCULIN' || eleve.sexe === 'M')
-        ? 'sex-garcon'
-        : '';
+    const sexCls = (eleve.sexe === 'FEMININ' || eleve.sexe === 'F') ? 'sex-fille'
+      : (eleve.sexe === 'MASCULIN' || eleve.sexe === 'M') ? 'sex-garcon' : '';
     if (sexCls) name.classList.add(sexCls);
 
     inner.append(img, name);
@@ -977,14 +1025,18 @@
     return ghost;
   }
 
-
   function makeFurnitureGhost(type, wUnits, hUnits) {
     const t = (type || 'autre').toLowerCase().replace(/[^a-z0-9_ -]/g, '').replace(/\s+/g, '_');
     const ghost = document.createElement('div');
     ghost.className = `pc_furn preview type-${t}`;
-    ghost.style.position = 'fixed'; ghost.style.pointerEvents = 'none'; ghost.style.opacity = '0.75'; ghost.style.zIndex = '9999';
-    ghost.style.width = `${toPx(wUnits)}px`; ghost.style.height = `${toPx(hUnits)}px`;
-    ghost.style.transformOrigin = 'center center'; ghost.style.borderStyle = 'dashed';
+    ghost.style.position = 'fixed';
+    ghost.style.pointerEvents = 'none';
+    ghost.style.opacity = '0.75';
+    ghost.style.zIndex = '9999';
+    ghost.style.width = `${toPx(wUnits)}px`;
+    ghost.style.height = `${toPx(hUnits)}px`;
+    ghost.style.transformOrigin = 'center center';
+    ghost.style.borderStyle = 'dashed';
     const c = FURN_COLORS[t] || FURN_DEF_COLORS[t] || '#fff';
     ghost.style.background = c; ghost.style.borderColor = darken(c, .22);
     const lab = document.createElement('div'); lab.className = 'label';
@@ -996,17 +1048,24 @@
   function renderFurniture() {
     for (const f of (state.furniture || [])) {
       const el = document.createElement('div');
-      el.className = 'pc_furn'; el.dataset.type = 'furniture';
+      el.className = 'pc_furn';
+      el.dataset.type = 'furniture';
       el.dataset.id = (f.id != null) ? String(f.id) : '';
       const t = (f.type || 'autre').toLowerCase().replace(/[^a-z0-9_ -]/g, '').replace(/\s+/g, '_');
-      el.dataset.furnitureType = t; el.classList.add(`type-${t}`);
+      el.dataset.furnitureType = t;
+      el.classList.add(`type-${t}`);
+
       if (f.rotation != null) el.dataset.rot = String(f.rotation);
       if (f.rotAbs != null) el.dataset.rotAbs = String(f.rotAbs);
-      el.style.left = `${toPx(f.x)}px`; el.style.top = `${toPx(f.y)}px`;
-      el.style.width = `${toPx(f.w)}px`; el.style.height = `${toPx(f.h)}px`;
+
+      el.style.left = `${toPx(f.x)}px`;
+      el.style.top = `${toPx(f.y)}px`;
+      el.style.width = `${toPx(f.w)}px`;
+      el.style.height = `${toPx(f.h)}px`;
       el.style.transformOrigin = 'center center';
       el.style.transform = `rotate(${el.dataset.rotAbs || el.dataset.rot || 0}deg)`;
       if (f.radius) el.style.borderRadius = '12px';
+
       const color = f.color || FURN_COLORS[t] || null; if (color) applyFurnitureColor(el, t, color);
 
       const label = document.createElement('div'); label.className = 'label'; label.textContent = f.label || f.type || 'meuble';
@@ -1015,12 +1074,17 @@
 
       el.append(label, makeHandle('nw'), makeHandle('ne'), makeHandle('se'), makeHandle('sw'));
       addDeleteButton(el); addFurnRotate(el); addFurnCornerToggle(el);
-      el.addEventListener('pointerdown', startDragFurniture);
-      // sélection multiple
-      el.addEventListener('click', handleSelectableClick);
+      el.addEventListener('pointerdown', (e) => {
+        if (e.button && e.button !== 0) return;
+        if (e.target.closest('.pc_delete_btn')) return;
+        if (e.target.classList.contains('rz')) return;
+        selectNodeOnPointerDown(el, e);
+        limitSelectionToKind(el);
+        startDragFurniture(e);
+      });
+
       $stage.appendChild(el);
 
-      // handles visibles si édition
       el.querySelectorAll('.rz').forEach(h => {
         h.style.pointerEvents = editMode ? 'auto' : 'none';
         h.style.opacity = editMode ? '1' : '0';
@@ -1028,8 +1092,6 @@
       if (editMode) addFurnitureColorBtn(el);
     }
   }
-
-
 
   function renderEleveList() {
     if (!$elist) return; $elist.innerHTML = '';
@@ -1045,7 +1107,33 @@
     }
   }
 
+  function renderWalls() {
+    if (!$svg) return;
+    dedupeWallsInState();
+    ensureHatchPattern();
+    $svg.querySelectorAll('.wall, .wall-draft, .wall-preview').forEach(n => n.remove());
+
+    for (const w of (state.walls || [])) {
+      if (!w.points || w.points.length < 2) continue;
+
+      const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      poly.classList.add('wall');
+      poly.dataset.wallId = String(w.id);
+      poly.setAttribute('fill', 'none');
+      poly.setAttribute('stroke', 'url(#hatch)');
+      poly.setAttribute('stroke-width', Math.max(3, unitPx * 0.12));
+      poly.style.pointerEvents = 'stroke';
+      poly.addEventListener('click', handleSelectableClick);
+
+      const pts = w.points.map(p => `${toPx(p.x)},${toPx(p.y)}`).join(' ');
+      poly.setAttribute('points', pts);
+      $svg.appendChild(poly);
+    }
+  }
+
   function render() {
+    const snap = selectionSnapshot();
+
     renderPlansSelect();
     clearStage();
     fitStageToWrap();
@@ -1057,10 +1145,12 @@
     renderEleveList();
     ensureFurniturePalette();
     refreshFurnitureEditability();
-    refreshSelectionStyling();
+
+    restoreSelectionFromSnapshot(snap);
+    refreshToolbarActionsEnabled();
   }
 
-  // palette meubles + “Mur (tracer)”
+  // palette
   const FURN_DEFS = [
     { type: 'desk', label: 'Bureau', w: 2, h: 1 },
     { type: 'table_rect', label: 'Table', w: 2, h: 1 },
@@ -1073,14 +1163,11 @@
     { type: 'trash', label: 'Poubelle', w: 1, h: 1 },
     { type: 'plant', label: 'Plante', w: 1, h: 1 },
   ];
-  function ensureFurniturePalette() {
-    // palette absente → rien à faire
-    if (!$palette) return;
 
-    // Empêche la duplication des items et des listeners
+  function ensureFurniturePalette() {
+    if (!$palette) return;
     if ($palette.dataset.built === '1') return;
 
-    // helpers DOM simples (JS pur, pas de TS)
     function el(tag, className, attrs) {
       const n = document.createElement(tag);
       if (className) n.className = className;
@@ -1088,13 +1175,11 @@
       return n;
     }
 
-    // Nettoie et reconstruit
     $palette.innerHTML = '';
 
-    // ---------- Item spécial : Mur (tracer)
+    // Outil Mur (tracer)
     (function buildWallTool() {
       const item = el('div', 'pc_furn_tpl wall_tool');
-      // Thumb visuelle “mur”
       const thumb = el('div', 'thumb');
       thumb.style.height = '12px';
       thumb.style.borderRadius = '6px';
@@ -1103,52 +1188,38 @@
       const name = el('div', 'name'); name.textContent = 'Mur (tracer)';
       const dims = el('div', 'dims'); dims.textContent = 'clics successifs – Entrée pour finir';
       info.append(name, dims);
-      // pas de color picker pour un mur
       item.append(thumb, info);
-
-      // Important : on veut un CLIC simple qui démarre l’outil.
-      // On ne met PAS de cursor: grab ici pour éviter les confusions avec le drag de meuble.
       item.style.cursor = 'pointer';
 
-      // On évite que des handlers globaux de drag prennent la main
-      const start = (ev) => {
-        ev.preventDefault();         // empêche un “drag” natif
-        ev.stopPropagation();
-        startWallTool(ev);           // ta fonction de tracé
-      };
-      item.addEventListener('click', start);
-      // Double sécurité : si l’utilisateur maintient et relâche (pointer), on démarre pareil
-      item.addEventListener('pointerdown', (ev) => { ev.preventDefault(); ev.stopPropagation(); });
-      item.addEventListener('pointerup', start);
+
+      item.addEventListener('click', (ev) => {
+        ev.preventDefault(); ev.stopPropagation();
+        startWallTool(ev);
+      });
 
       $palette.appendChild(item);
     })();
 
-    // ---------- Items "meubles" depuis FURN_DEFS
+    // Items meubles
     FURN_DEFS.forEach((def) => {
       const item = el('div', 'pc_furn_tpl');
       item.style.cursor = 'grab';
 
-      // Couleur courante pour ce type (fallback sur défauts)
       const baseColor = (FURN_COLORS[def.type] || FURN_DEF_COLORS[def.type] || '#ffffff');
 
-      // Thumb
       const thumb = el('div', 'thumb' + (def.type === 'table_round' ? ' round' : ''));
       thumb.style.background = baseColor;
       thumb.style.borderColor = baseColor;
 
-      // Info
       const info = el('div', 'info');
       const name = el('div', 'name'); name.textContent = def.label || def.type;
       const dims = el('div', 'dims'); dims.textContent = `${def.w}×${def.h}`;
       info.append(name, dims);
 
-      // Color picker (met à jour la couleur par défaut du TYPE)
       const cp = el('input', '');
       cp.type = 'color';
       cp.value = baseColor;
       cp.title = `Couleur ${def.label || def.type}`;
-      // Important : un color picker ne doit jamais déclencher le drag
       ['pointerdown', 'mousedown', 'click'].forEach(evt =>
         cp.addEventListener(evt, (e) => { e.stopPropagation(); })
       );
@@ -1158,22 +1229,25 @@
         thumb.style.borderColor = cp.value;
       });
 
-      // Drag pour créer un meuble
-      const onPointerDown = (ev) => {
-        // Si on a cliqué le color picker, on ne drag pas
-        if (ev.target === cp) return;
-        startCreateFurnitureDrag(ev, def);
-      };
+      const onPointerDown = (ev) => { if (ev.target === cp) return; startCreateFurnitureDrag(ev, def); };
       item.addEventListener('pointerdown', onPointerDown);
 
       item.append(thumb, info, cp);
       $palette.appendChild(item);
     });
 
-    // Marqueur de construction (évite de rebinder en double)
     $palette.dataset.built = '1';
   }
 
+  function dedupeWallsInState() {
+    const seen = new Set();
+    state.walls = state.walls.filter(w => {
+      const key = String(w.id);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
 
   // [7] ----------------------------------------------------------------------
   // DRAG & DROP
@@ -1188,6 +1262,7 @@
     const eleveId = parseInt(ev.currentTarget.dataset.eleveId, 10);
     const eleve = state.eleves.find(e => e.id === eleveId);
     if (!eleve) return;
+
     dragData = { kind: 'fromList', eleveId };
     let hasDrag = false; const sx = ev.clientX, sy = ev.clientY;
 
@@ -1220,15 +1295,37 @@
     window.addEventListener('pointerup', onUp, { once: true });
   }
 
+  // conversion client → unités clampées + prise en compte w/h effectifs (swap)
+  function clientToUnitsClamped(clientX, clientY, wUnits = 0, hUnits = 0) {
+    const box = stageInnerBox();
+    const xpx = Math.min(box.left + box.width - 0.001, Math.max(box.left, clientX));
+    const ypx = Math.min(box.top + box.height - 0.001, Math.max(box.top, clientY));
+    let ux = snapUnits((xpx - box.left) / unitPx);
+    let uy = snapUnits((ypx - box.top) / unitPx);
+    if (state.active_plan) {
+      const W = state.active_plan.width, H = state.active_plan.height;
+      const minX = Math.max(TICK, wUnits || 0);
+      const minY = Math.max(TICK, hUnits || 0);
+      ux = Math.max(0, Math.min(ux, W - minX));
+      uy = Math.max(0, Math.min(uy, H - minY));
+    }
+    return { x: ux, y: uy };
+  }
+
   // 7.2 Déplacement carte élève
   function startDragCard(ev) {
-    if (ev.target.closest('.pc_delete_btn')) return;
+    if (ev.target.closest('.pc_delete_btn') || ev.target.closest('.pc_rot_btn')) return;
     ev.preventDefault();
     const card = ev.currentTarget;
+    isDraggingNow = true;
+
     dragData = {
-      kind: 'card', eleveId: parseInt(card.dataset.eleveId, 10),
-      startLeft: parseFloat(card.style.left || '0'), startTop: parseFloat(card.style.top || '0'),
-      sx: ev.clientX, sy: ev.clientY
+      kind: 'card',
+      eleveId: parseInt(card.dataset.eleveId, 10),
+      startLeft: parseFloat(card.style.left || '0'),
+      startTop: parseFloat(card.style.top || '0'),
+      sx: ev.clientX, sy: ev.clientY,
+      moved: false
     };
     card.setPointerCapture(ev.pointerId);
     card.addEventListener('pointermove', onDragCardMove);
@@ -1236,65 +1333,46 @@
   }
   function onDragCardMove(ev) {
     const card = ev.currentTarget;
-    card.style.left = (dragData.startLeft + (ev.clientX - dragData.sx)) + 'px';
-    card.style.top = (dragData.startTop + (ev.clientY - dragData.sy)) + 'px';
+    const dx = ev.clientX - dragData.sx;
+    const dy = ev.clientY - dragData.sy;
+    if (!dragData.moved && Math.hypot(dx, dy) >= DRAG_THRESHOLD) dragData.moved = true;
+    if (selection.has(card)) {
+      selection.forEach(node => {
+        const sL = parseFloat(node.dataset._startL || node.style.left || '0');
+        const sT = parseFloat(node.dataset._startT || node.style.top || '0');
+        node.style.left = (sL + dx) + 'px';
+        node.style.top = (sT + dy) + 'px';
+      });
+    } else {
+      card.style.left = (dragData.startLeft + dx) + 'px';
+      card.style.top = (dragData.startTop + dy) + 'px';
+    }
   }
-
   function endDragCard(ev) {
     const card = ev.currentTarget;
     card.releasePointerCapture(ev.pointerId);
     card.removeEventListener('pointermove', onDragCardMove);
 
-    const lx = parseFloat(card.style.left || '0');
-    const ly = parseFloat(card.style.top || '0');
-    const fp = footprintCardUnits();
-    const rot = parseFloat(card.dataset.rotAbs || card.dataset.rot || '0') || 0;
-
-    // correction px si carte tournée (90/270) + dims effectives en unités
-    const box = stageInnerBox();
-    const pxAdj = adjustClientPxForSwap(box.left + lx, box.top + ly, fp.w, fp.h, rot);
-
-    // clamp/snap dans le stage avec les dimensions effectives
-    const gxgy = clientToUnitsClamped(pxAdj.leftPx, pxAdj.topPx, pxAdj.wEff, pxAdj.hEff);
-
-    // cherche le spot libre
-    let spot = findNearestFreeSpot(gxgy.x, gxgy.y, pxAdj.wEff, pxAdj.hEff, { eleveId: dragData.eleveId });
-    if (spot) {
-      spot = snapCollapse(spot, rectsInPlan({ eleveId: dragData.eleveId }));
-      const p = state.positions.find(p => p.eleve_id === dragData.eleveId);
-      if (p) {
-        // reconversion vers le coin haut-gauche stocké (non tourné)
-        p.x = snapUnits(spot.x - pxAdj.dx);
-        p.y = snapUnits(spot.y - pxAdj.dy);
-      } else {
-        state.positions.push({
-          eleve_id: dragData.eleveId,
-          x: snapUnits(spot.x - pxAdj.dx),
-          y: snapUnits(spot.y - pxAdj.dy),
-          seat_id: null,
-          rot: 0, rotAbs: 0
-        });
-      }
-      autosavePositions();
-    } else {
-      shake(card);
+    if (!dragData || !dragData.moved) {
+      dragData = null;
+      isDraggingNow = false;
+      return;
     }
 
+    nudgeSelection(0, 0); // commit
     dragData = null;
+    isDraggingNow = false;
     render();
   }
 
-
-  // Projette (x,y) sur le segment de mur le plus proche si assez proche.
-  // Retourne {x,y} en UNITÉS, ou null si trop loin.
+  // snap à un mur le plus proche (projection sur segments)
   function snapToNearestWall(x, y, maxDist = 0.6) {
     if (!Array.isArray(state.walls) || !state.walls.length) return null;
 
     let best = null;
     const pt = { x, y };
-
-    function dist2(a, b) { const dx = a.x - b.x, dy = a.y - b.y; return dx * dx + dy * dy; }
-    function clamp01(t) { return Math.max(0, Math.min(1, t)); }
+    const dist2 = (a, b) => { const dx = a.x - b.x, dy = a.y - b.y; return dx * dx + dy * dy; };
+    const clamp01 = t => Math.max(0, Math.min(1, t));
 
     for (const w of state.walls) {
       const pts = (w.points || []);
@@ -1302,17 +1380,15 @@
         const a = pts[i], b = pts[i + 1];
         const vx = b.x - a.x, vy = b.y - a.y;
         const len2 = vx * vx + vy * vy || 1e-9;
-        // projection scalaire t dans [0,1]
         const t = clamp01(((pt.x - a.x) * vx + (pt.y - a.y) * vy) / len2);
         const proj = { x: a.x + t * vx, y: a.y + t * vy };
         const d2 = dist2(pt, proj);
-        if (!best || d2 < best.d2) best = { d2, p: proj };
+        if (!best || d2 < best.d2) best = { d2, p: proj, seg: { a, b } };
       }
     }
     if (!best) return null;
     return (Math.sqrt(best.d2) <= maxDist) ? best.p : null;
   }
-
 
   // 7.3 Création meuble depuis palette (ghost final)
   function startCreateFurnitureDrag(ev, def) {
@@ -1343,13 +1419,13 @@
       const wEff = swap ? def.h : def.w;
       const hEff = swap ? def.w : def.h;
 
-      // Portes / fenêtres : doivent coller à un mur
       const isOnWallType = (def.type === 'door' || def.type === 'window');
       let drop = clientToUnitsClamped(e.clientX, e.clientY, wEff, hEff);
       if (isOnWallType && state.walls.length) {
-        const snapped = snapToNearestWall(drop.x, drop.y);
-        if (!snapped) { alert("Placez portes/fenêtres sur un mur."); return; }
-        drop = { x: snapped.x, y: snapped.y };
+        const s = snapToNearestWall(drop.x, drop.y);
+        if (!s) { alert("Placez portes/fenêtres sur un mur."); return; }
+        // centre l’objet sur le mur
+        drop = { x: snapUnits(s.x - wEff / 2), y: snapUnits(s.y - hEff / 2) };
       }
 
       let spot = findNearestFreeSpot(drop.x, drop.y, wEff, hEff) || { x: drop.x, y: drop.y };
@@ -1369,7 +1445,6 @@
       });
 
       autosaveFurniture();
-
       render();
     };
     window.addEventListener('pointermove', onMove);
@@ -1382,10 +1457,15 @@
     if (ev.target.classList.contains('rz')) return;
     ev.preventDefault();
     const el = ev.currentTarget;
+    isDraggingNow = true;
+
     dragData = {
-      kind: 'furn', id: el.dataset.id ? parseInt(el.dataset.id, 10) : null,
-      startLeft: parseFloat(el.style.left || '0'), startTop: parseFloat(el.style.top || '0'),
-      sx: ev.clientX, sy: ev.clientY
+      kind: 'furn',
+      id: el.dataset.id ? parseInt(el.dataset.id, 10) : null,
+      startLeft: parseFloat(el.style.left || '0'),
+      startTop: parseFloat(el.style.top || '0'),
+      sx: ev.clientX, sy: ev.clientY,
+      moved: false
     };
     el.setPointerCapture(ev.pointerId);
     el.addEventListener('pointermove', onDragFurnitureMove);
@@ -1393,9 +1473,11 @@
   }
   function onDragFurnitureMove(ev) {
     const el = ev.currentTarget;
-    // si sélection multiple => déplacer tout le groupe
+    const dx = ev.clientX - dragData.sx;
+    const dy = ev.clientY - dragData.sy;
+    if (!dragData.moved && Math.hypot(dx, dy) >= DRAG_THRESHOLD) dragData.moved = true;
+
     if (selection.has(el)) {
-      const dx = (ev.clientX - dragData.sx), dy = (ev.clientY - dragData.sy);
       selection.forEach(node => {
         const sL = parseFloat(node.dataset._startL || node.style.left || '0');
         const sT = parseFloat(node.dataset._startT || node.style.top || '0');
@@ -1403,53 +1485,25 @@
         node.style.top = (sT + dy) + 'px';
       });
     } else {
-      el.style.left = (dragData.startLeft + (ev.clientX - dragData.sx)) + 'px';
-      el.style.top = (dragData.startTop + (ev.clientY - dragData.sy)) + 'px';
+      el.style.left = (dragData.startLeft + dx) + 'px';
+      el.style.top = (dragData.startTop + dy) + 'px';
     }
   }
-
   function endDragFurniture(ev) {
     const el = ev.currentTarget;
     el.releasePointerCapture(ev.pointerId);
     el.removeEventListener('pointermove', onDragFurnitureMove);
 
-    // group or single
-    const nodes = selection.has(el) ? Array.from(selection) : [el];
+    if (!dragData || !dragData.moved) {
+      dragData = null;
+      isDraggingNow = false;
+      return;
+    }
 
-    nodes.forEach(node => {
-      const L = parseFloat(node.style.left || '0');
-      const T = parseFloat(node.style.top || '0');
-      const W = parseFloat(node.style.width || '0');
-      const H = parseFloat(node.style.height || '0');
-
-      const gw = Math.max(TICK, Math.ceil((W / unitPx) * UI_SUBDIV) / UI_SUBDIV);
-      const gh = Math.max(TICK, Math.ceil((H / unitPx) * UI_SUBDIV) / UI_SUBDIV);
-
-      const rotNow = parseFloat(node.dataset.rotAbs || node.dataset.rot || '0') || 0;
-      const box = stageInnerBox();
-      const pxAdj = adjustClientPxForSwap(box.left + L, box.top + T, gw, gh, rotNow);
-
-      let { x: gx, y: gy } = clientToUnitsClamped(pxAdj.leftPx, pxAdj.topPx, pxAdj.wEff, pxAdj.hEff);
-      let spot = findNearestFreeSpot(gx, gy, pxAdj.wEff, pxAdj.hEff, {
-        furnitureId: node.dataset.id ? parseInt(node.dataset.id, 10) : -1
-      });
-      if (!spot) { shake(node); return; }
-      spot = snapCollapse(spot, rectsInPlan({ furnitureId: node.dataset.id ? parseInt(node.dataset.id, 10) : -1 }));
-
-      const id = node.dataset.id ? parseInt(node.dataset.id, 10) : null;
-      const fRef = (id != null) ? state.furniture.find(x => x.id === id) : null;
-      if (fRef) {
-        fRef.w = gw; fRef.h = gh;
-        fRef.x = snapUnits(spot.x - pxAdj.dx);
-        fRef.y = snapUnits(spot.y - pxAdj.dy);
-      }
-    });
-
-    autosaveFurniture();
+    nudgeSelection(0, 0); // commit px→unités (autosave)
     dragData = null;
-    render();
+    isDraggingNow = false;
   }
-
 
   function startResizeFurniture(ev) {
     const el = ev.currentTarget.parentElement;
@@ -1478,6 +1532,9 @@
     el.releasePointerCapture(ev.pointerId);
     el.removeEventListener('pointermove', onResizeFurnitureMove);
 
+    // considéré comme un drag en cours
+    isDraggingNow = true;
+
     const L = parseFloat(el.style.left || '0');
     const T = parseFloat(el.style.top || '0');
     const W = parseFloat(el.style.width || '0');
@@ -1494,67 +1551,34 @@
 
     const id = (dragData && dragData.id != null) ? dragData.id : null;
     let spot = findNearestFreeSpot(gx, gy, wEff, hEff, { furnitureId: id ?? -1 });
-    if (!spot) { shake(el); dragData = null; render(); return; }
+    if (!spot) { shake(el); dragData = null; isDraggingNow = false; return; }
     spot = snapCollapse(spot, rectsInPlan({ furnitureId: id ?? -1 }));
 
     const f = (id != null) ? state.furniture.find(x => x.id === id) : null;
     if (f) { f.w = gw; f.h = gh; f.x = spot.x; f.y = spot.y; }
 
     autosaveFurniture();
-    dragData = null; render();
+    dragData = null;
+    isDraggingNow = false;
   }
 
   // 7.5 Tracé des murs (SVG)
-  let wallToolActive = false;
-  let currentWall = null;
-
-
-  // Rend tous les murs présents dans state.walls
-  function renderWalls() {
-    if (!$svg) return;
-    ensureHatchPattern(); // garde <defs>#hatch
-
-    // on nettoie seulement les murs finalisés (pas la preview de l'outil)
-    $svg.querySelectorAll('.wall').forEach(n => n.remove());
-
-    for (const w of (state.walls || [])) {
-      if (!w.points || w.points.length < 2) continue;
-
-      const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-      poly.classList.add('wall');
-      poly.dataset.wallId = String(w.id);
-      poly.setAttribute('fill', 'none');
-      poly.setAttribute('stroke', 'url(#hatch)');
-      poly.setAttribute('stroke-width', Math.max(3, unitPx * 0.12));
-      poly.style.pointerEvents = 'stroke';           // ← cliquable uniquement sur le trait
-      poly.addEventListener('click', handleSelectableClick);
-
-      const pts = w.points.map(p => `${toPx(p.x)},${toPx(p.y)}`).join(' ');
-      poly.setAttribute('points', pts);
-      $svg.appendChild(poly);
-    }
-  }
-
-
-
-
-  // Démarre l’outil de tracé avec prévisualisation live + persistance
   function startWallTool(ev) {
     ev?.preventDefault?.();
+    if (document.body.classList.contains('pc_wall_mode')) return;
     if (!$svg || !$stage || !state.active_plan) return;
+    $svg.querySelectorAll('.wall-draft, .wall-preview').forEach(n => n.remove());
 
     const planId = state.active_plan.id;
     let currentWall = { id: genUid(), points: [] };
 
-    // 1) Segments confirmés
     const progress = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-    progress.classList.add('wall');
+    progress.classList.add('wall-draft');
     progress.setAttribute('fill', 'none');
     progress.setAttribute('stroke', 'url(#hatch)');
     progress.setAttribute('stroke-width', Math.max(3, unitPx * 0.12));
     $svg.appendChild(progress);
 
-    // 2) Jambe dynamique
     const preview = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
     preview.classList.add('wall-preview');
     preview.setAttribute('fill', 'none');
@@ -1562,6 +1586,9 @@
     preview.setAttribute('stroke-width', Math.max(2, unitPx * 0.10));
     preview.setAttribute('stroke-dasharray', '6 4');
     $svg.appendChild(preview);
+
+    progress.style.pointerEvents = 'none';
+    preview.style.pointerEvents = 'none';
 
     $stage.style.cursor = 'crosshair';
     document.body.classList.add('pc_wall_mode');
@@ -1587,27 +1614,24 @@
 
     const onMove = (e) => updatePreview(e.clientX, e.clientY);
     const onClick = (e) => {
-      currentWall.points.push(ptToUnits(e.clientX, e.clientY)); // ← UNITÉS DE PLAN
+      currentWall.points.push(ptToUnits(e.clientX, e.clientY));
       updateProgress();
       updatePreview(e.clientX, e.clientY);
     };
 
     async function persistWalls() {
-      // ENCODE pour persister (x,y entiers en sous-unités)
       const payloadWalls = encodeWallsForStorage(state.walls);
-
-      // 1) Serveur (si endpoint dispo)
       try { await api.saveWalls?.(planId, payloadWalls); } catch (e) { console.warn('saveWalls API KO', e); }
-
-      // 2) LocalStorage (même format encodé)
       try { localStorage.setItem(`pc_walls_${planId}`, JSON.stringify(payloadWalls)); } catch { }
     }
 
     const finish = async () => {
       teardown();
       if (currentWall.points.length >= 2) {
-        state.walls.push(currentWall);  // ← on garde en UNITÉS dans le state
-        renderWalls();
+        const i = state.walls.findIndex(w => String(w.id) === String(currentWall.id));
+        if (i >= 0) state.walls[i] = currentWall; else state.walls.push(currentWall);
+        dedupeWallsInState();          // ← AJOUT
+        renderWalls();                 // rendu propre d’unique <polyline>
         await persistWalls();
       }
     };
@@ -1632,51 +1656,40 @@
   }
 
 
-
   // [8] ----------------------------------------------------------------------
   // Sélection multiple, clavier, alignements & répartitions
   // -------------------------------------------------------------------------
 
-  // Set des éléments sélectionnés (DOM nodes .pc_card / .pc_furn)
-  const selection = new Set();
-
   function handleSelectableClick(e) {
     const node = e.currentTarget;
     if (e.shiftKey) {
-      // toggle
       if (selection.has(node)) selection.delete(node); else selection.add(node);
       refreshSelectionStyling();
-      // memorise positions de départ pour drag groupé
       selection.forEach(n => {
         n.dataset._startL = n.style.left;
         n.dataset._startT = n.style.top;
       });
       e.stopPropagation();
     } else {
-      // sélection simple
       selection.clear(); selection.add(node);
       refreshSelectionStyling();
     }
   }
 
   function refreshSelectionStyling() {
-    // purge les références mortes (ex: re-render des murs)
     Array.from(selection).forEach(n => { if (!n.isConnected) selection.delete(n); });
-
-    // applique le style sélectionné à tout : cartes, meubles et murs
     $stage.querySelectorAll('.pc_card, .pc_furn, #pc_svg .wall').forEach(n => {
       n.classList.toggle('pc_selected', selection.has(n));
     });
   }
 
-
   function nudgeSelection(dxPx, dyPx) {
     if (!selection.size) return;
 
     let movedWall = false;
+    let movedFurn = false;
 
     selection.forEach(n => {
-      // déplacement visuel si élément HTML (cartes/meubles)
       const isCard = n.classList.contains('pc_card');
       const isFurn = n.classList.contains('pc_furn');
       const isWall = n.tagName === 'polyline' && n.classList.contains('wall');
@@ -1689,7 +1702,6 @@
       }
 
       if (isCard) {
-        // --- élève
         const id = parseInt(n.dataset.eleveId, 10);
         const fp = footprintCardUnits();
         const rot = parseFloat(n.dataset.rotAbs || n.dataset.rot || '0') || 0;
@@ -1705,7 +1717,6 @@
         const p = state.positions.find(p => p.eleve_id === id);
         if (p) { p.x = snapUnits(gx - pxAdj.dx); p.y = snapUnits(gy - pxAdj.dy); }
       } else if (isFurn) {
-        // --- meuble
         const id = parseInt(n.dataset.id, 10);
         const f = state.furniture.find(x => x.id === id);
         if (f) {
@@ -1723,21 +1734,39 @@
           );
           const { x: gx, y: gy } = clientToUnitsClamped(pxAdj.leftPx, pxAdj.topPx, pxAdj.wEff, pxAdj.hEff);
 
-          f.x = snapUnits(gx - pxAdj.dx);
-          f.y = snapUnits(gy - pxAdj.dy);
+          const newX = snapUnits(gx - pxAdj.dx);
+          const newY = snapUnits(gy - pxAdj.dy);
+          // Snap spécial pour portes/fenêtres
+          const t = (n.dataset.furnitureType || '').toLowerCase();
+          if ((t === 'door' || t === 'window') && state.walls.length) {
+            // on “centre” l’objet sur le mur le plus proche
+            const center = { x: newX + (pxAdj.wEff / 2), y: newY + (pxAdj.hEff / 2) };
+            const s = snapToNearestWall(center.x, center.y, 0.6);
+            if (s) {
+              const cx = snapUnits(s.x), cy = snapUnits(s.y);
+              // recentre TL à partir du centre aimanté
+              const nx = snapUnits(cx - (pxAdj.wEff / 2));
+              const ny = snapUnits(cy - (pxAdj.hEff / 2));
+              if (nx !== newX || ny !== newY) { movedFurn = true; }
+              f.x = nx; f.y = ny;
+            } else {
+              if (newX !== f.x || newY !== f.y) movedFurn = true;
+              f.x = newX; f.y = newY;
+            }
+          } else {
+            if (newX !== f.x || newY !== f.y) movedFurn = true;
+            f.x = newX; f.y = newY;
+          }
           f.w = gw; f.h = gh;
         }
       } else if (isWall) {
-        // --- mur (polyline SVG) : translation des points
         const wallId = n.dataset.wallId;
         const w = state.walls.find(W => String(W.id) === String(wallId));
         if (!w || !Array.isArray(w.points)) return;
 
-        // conversion px -> unités
         let du = dxPx / unitPx;
         let dv = dyPx / unitPx;
 
-        // clamp pour rester dans le plan
         if (state.active_plan) {
           const Wp = state.active_plan.width, Hp = state.active_plan.height;
           const xs = w.points.map(p => p.x), ys = w.points.map(p => p.y);
@@ -1749,7 +1778,6 @@
 
         if (du !== 0 || dv !== 0) {
           w.points = w.points.map(p => ({ x: snapUnits(p.x + du), y: snapUnits(p.y + dv) }));
-          // MAJ DOM immédiate
           n.setAttribute('points', w.points.map(p => `${toPx(p.x)},${toPx(p.y)}`).join(' '));
           movedWall = true;
         }
@@ -1757,46 +1785,39 @@
     });
 
     autosavePositions();
-    autosaveFurniture();
-    if (movedWall) autosaveWalls();
+    if (movedFurn) autosaveFurniture();
+    if (movedWall) {
+      autosaveWalls(); // on persiste (debounce)…
+      // …et c'est tout : PAS de renderWalls ici.
+      refreshSelectionStyling(); // optionnel
+    }
+
+
+
   }
 
-
-  // Construit le rectangle "effectif" d'un objet stocké par son coin haut-gauche
-  // quand il est potentiellement tourné à 90°/270° : on recentre pour garder le centre.
+  // rect stockage (coin TL) → rect effectif (swap 90°/270°)
   function rectFromTopLeftWithRotation(x, y, w, h, rot) {
     const swap = isQuarterTurnSwap(rot);
     const wEff = swap ? h : w;
     const hEff = swap ? w : h;
-    const dx = swap ? (w - wEff) / 2 : 0;   // en unités
-    const dy = swap ? (h - hEff) / 2 : 0;   // en unités
+    const dx = swap ? (w - wEff) / 2 : 0;
+    const dy = swap ? (h - hEff) / 2 : 0;
     return { x: snapUnits(x + dx), y: snapUnits(y + dy), w: wEff, h: hEff };
   }
-
-  // Corrige un (left/top) exprimé en PIXELS si l'objet est à 90°/270°.
-  // - leftPx/topPx : position coin haut-gauche en px (comme dans le style CSS)
-  // - w/h : dimensions stockées en unités (non tournées)
-  // Retourne aussi dx/dy en unités (offset appliqué) pour reconvertir au stockage.
+  // correction coin TL en px si swap 90°/270°
   function adjustClientPxForSwap(leftPx, topPx, w, h, rot) {
     const swap = isQuarterTurnSwap(rot);
     if (!swap) return { leftPx, topPx, wEff: w, hEff: h, dx: 0, dy: 0 };
-    const wEff = h, hEff = w;               // dimensions effectives en unités
+    const wEff = h, hEff = w;
     const dx = (w - wEff) / 2;
     const dy = (h - hEff) / 2;
-    return {
-      leftPx: leftPx + toPx(dx),
-      topPx: topPx + toPx(dy),
-      wEff, hEff, dx, dy
-    };
+    return { leftPx: leftPx + toPx(dx), topPx: topPx + toPx(dy), wEff, hEff, dx, dy };
   }
 
-
-
-
-
-  function alignSelection(side) { // 'left'|'right'|'top'|'bottom'
-    if (selection.size < 2) return;
-    const nodes = Array.from(selection);
+  function alignSelection(side) {
+    const nodes = Array.from(selection).filter(n => n.classList.contains('pc_card') || n.classList.contains('pc_furn'));
+    if (nodes.length < 2) return;
     const rects = nodes.map(n => ({ n, L: parseFloat(n.style.left || '0'), T: parseFloat(n.style.top || '0'), W: parseFloat(n.style.width || '0'), H: parseFloat(n.style.height || '0') }));
     const minL = Math.min(...rects.map(r => r.L));
     const maxR = Math.max(...rects.map(r => r.L + r.W));
@@ -1808,12 +1829,11 @@
       if (side === 'top') r.n.style.top = `${minT}px`;
       if (side === 'bottom') r.n.style.top = `${(maxB - r.H)}px`;
     });
-    // commit
     nudgeSelection(0, 0);
   }
-  function distributeSelection(orientation) { // 'h'|'v'
-    if (selection.size < 3) return;
-    const nodes = Array.from(selection);
+  function distributeSelection(orientation) {
+    const nodes = Array.from(selection).filter(n => n.classList.contains('pc_card') || n.classList.contains('pc_furn'));
+    if (nodes.length < 3) return;
     const rects = nodes.map(n => ({ n, L: parseFloat(n.style.left || '0'), T: parseFloat(n.style.top || '0'), W: parseFloat(n.style.width || '0'), H: parseFloat(n.style.height || '0') }));
     if (orientation === 'h') {
       rects.sort((a, b) => a.L - b.L);
@@ -1830,7 +1850,6 @@
       let cur = minT;
       rects.forEach((r, i) => { if (i === 0 || i === rects.length - 1) return; cur += rects[i - 1].H + gap; r.n.style.top = `${cur}px`; });
     }
-    // commit
     nudgeSelection(0, 0);
   }
 
@@ -1838,13 +1857,10 @@
     if (!state.active_plan) return;
     const planId = state.active_plan.id;
 
-    // 1) Si l’API a déjà rempli state.walls → OK
     if (Array.isArray(state.walls) && state.walls.length) {
       renderWalls();
       return;
     }
-
-    // 2) Fallback localStorage (format ENCODÉ) → DECODE
     try {
       const raw = localStorage.getItem(`pc_walls_${planId}`);
       const stored = raw ? JSON.parse(raw) : [];
@@ -1857,46 +1873,84 @@
 
 
   // [9] ----------------------------------------------------------------------
-  // Suppression, delete button, etc.
+  // Suppression (élève / meuble / mur)
   // -------------------------------------------------------------------------
 
-  function addDeleteButton(el) {
-    const btn = document.createElement('div'); btn.className = 'pc_delete_btn'; btn.textContent = '×'; btn.title = 'Supprimer';
-    btn.addEventListener('click', (e) => { e.stopPropagation(); removeElement(el); });
-    el.appendChild(btn);
-  }
   function removeElement(el) {
-    const typ = el.dataset.type; if (!state.active_plan) return;
+    if (!state.active_plan) return;
+
+    // --- murs
+    if (el.tagName === 'polyline' && el.classList.contains('wall')) {
+      const wallId = el.dataset.wallId;
+      const before = state.walls.length;
+      state.walls = state.walls.filter(w => String(w.id) !== String(wallId));
+      el.remove();
+      if (before !== state.walls.length) autosaveWalls();
+      selection.delete(el);
+      refreshSelectionStyling();
+      return;
+    }
+
+    const typ = el.dataset.type;
+
+    // --- élève
     if (typ === 'eleve') {
       const eleveId = parseInt(el.dataset.id, 10);
       api.deletePosition(state.active_plan.id, eleveId).then(() => {
         state.positions = state.positions.filter(p => p.eleve_id !== eleveId);
         el.remove();
+
         const e = state.eleves.find(x => x.id === eleveId);
         if (e && $elist) {
-          const item = document.createElement('div'); item.className = 'pc_eleve_item'; item.dataset.eleveId = e.id;
-          const img = document.createElement('img'); img.src = PHOTOS_BASE + (e.photo_filename || 'default.jpg');
-          const name = document.createElement('div'); name.className = 'name'; name.textContent = `${e.prenom} ${e.nom}`;
-          item.append(img, name); item.addEventListener('pointerdown', startDragFromList);
+          const item = document.createElement('div');
+          item.className = 'pc_eleve_item';
+          item.dataset.eleveId = e.id;
+          const img = document.createElement('img');
+          img.src = PHOTOS_BASE + (e.photo_filename || 'default.jpg');
+          const name = document.createElement('div');
+          name.className = 'name';
+          name.textContent = `${e.prenom} ${e.nom}`;
+          item.append(img, name);
+          item.addEventListener('pointerdown', startDragFromList);
           $elist.appendChild(item);
         }
-      }).catch(err => { console.error(err); alert("Suppression impossible (élève)."); });
+
+        selection.delete(el);
+        refreshSelectionStyling();
+      }).catch(err => {
+        console.error(err);
+        alert("Suppression impossible (élève).");
+      });
+      return;
     }
+
+    // --- meuble
     if (typ === 'furniture') {
       const fid = parseInt(el.dataset.id, 10);
+
       if (!fid || fid < 0) {
         const f = state.furniture.find(x => x.id === fid);
         if (f?.uid) sentNewFurniture.delete(f.uid);
         state.furniture = state.furniture.filter(f => f.id !== fid);
-        el.remove(); return;
+        el.remove();
+        selection.delete(el);
+        refreshSelectionStyling();
+        return;
       }
+
       api.deleteFurniture(state.active_plan.id, fid).then(() => {
         state.furniture = state.furniture.filter(f => f.id !== fid);
         lsDelColor(state.active_plan.id, fid);
         el.remove();
-      }).catch(err => { console.error(err); alert("Suppression impossible (meuble)."); });
+        selection.delete(el);
+        refreshSelectionStyling();
+      }).catch(err => {
+        console.error(err);
+        alert("Suppression impossible (meuble).");
+      });
     }
   }
+
 
   // [10] ---------------------------------------------------------------------
   // Boot / Chargement
@@ -1917,23 +1971,17 @@
     };
   }
 
-
-
-
   async function boot(planIdToShow = null) {
     try {
       document.body.classList.add('pc_loading');
 
-      // 1) Récupération API (le plan demandé, sinon actif / plus récent)
       const data = await api.getAll(planIdToShow);
-      console.log('[API positions sample]', (data.positions || [])[0]);
 
       const plans = Array.isArray(data.plans) ? data.plans : [];
       const eleves = Array.isArray(data.eleves) ? data.eleves : [];
       const seats = Array.isArray(data.seats) ? data.seats : [];
-      const apiWallsEnc = Array.isArray(data.walls) ? data.walls : []; // murs encodés côté serveur
+      const apiWallsEnc = Array.isArray(data.walls) ? data.walls : [];
 
-      // 2) Sélection du plan à afficher (conservateur : garde si possible l'actuel)
       const pickActivePlan = (plans, currentActive, apiActive) => {
         if (apiActive) return apiActive;
         if (currentActive) {
@@ -1944,56 +1992,55 @@
       };
       const active_plan = pickActivePlan(plans, state.active_plan, data.active_plan);
 
-      // 3) Réinitialise les subdivisions (cohérence avec le reste de ton code)
-      PLAN_SUBDIV = 32;
-      UI_SUBDIV = 32;
+      PLAN_SUBDIV = 32; UI_SUBDIV = 32;
 
-      // 4) Positions élèves (→ unités)
       const positions = Array.isArray(data.positions) ? data.positions.map(fromDBPosition) : [];
 
-      // 5) Meubles : préserver les couleurs locales si l’API n’en renvoie pas
-      //    + remapper rotation/coords en unités
       const prevTmpByUid = new Map((state.furniture || []).filter(ff => ff && ff.id < 0 && ff.uid).map(ff => [ff.uid, ff]));
       const prevColorById = new Map((state.furniture || []).filter(ff => ff && ff.id > 0).map(ff => [ff.id, ff.color]));
 
-      const furniture = (Array.isArray(data.furniture) ? data.furniture : []).map(f => {
-        const rot = Number(f.rotation || 0);
+      const furniture = (Array.isArray(data.furniture) ? data.furniture : [])
+        .filter(f => String(f.type || '').toLowerCase() !== 'wall')
+        .map(f => {
+          const rot = Number(f.rotation || 0);
 
-        // couleur: priorité = API > localStorage > ancien tmp (client_uid) > palette type > null
-        let color = (f.color != null ? f.color : null);
-        if (color == null && active_plan && f.id > 0) {
-          color = lsGetColor(active_plan.id, f.id) || prevColorById.get(f.id) || null;
-        }
-        const prevTmp = f.client_uid ? prevTmpByUid.get(f.client_uid) : null;
-        if (color == null && prevTmp?.color) color = prevTmp.color;
+          let color = (f.color != null ? f.color : null);
+          if (color == null && active_plan && f.id > 0) {
+            color = lsGetColor(active_plan.id, f.id) || prevColorById.get(f.id) || null;
+          }
+          const prevTmp = f.client_uid ? prevTmpByUid.get(f.client_uid) : null;
+          if (color == null && prevTmp?.color) color = prevTmp.color;
 
-        const t = (f.type || 'autre').toLowerCase().replace(/\s+/g, '_');
-        if (color == null) color = FURN_COLORS[t] || FURN_DEF_COLORS[t] || null;
-        if (active_plan && f.id > 0 && color) lsSetColor(active_plan.id, f.id, color);
+          const t = (f.type || 'autre').toLowerCase().replace(/\s+/g, '_');
+          if (color == null) color = FURN_COLORS[t] || FURN_DEF_COLORS[t] || null;
+          if (active_plan && f.id > 0 && color) lsSetColor(active_plan.id, f.id, color);
 
-        return {
-          ...f,
-          x: (+f.x || 0) / PLAN_SUBDIV,
-          y: (+f.y || 0) / PLAN_SUBDIV,
-          w: (+f.w || 1) / PLAN_SUBDIV,
-          h: (+f.h || 1) / PLAN_SUBDIV,
-          rotation: rot,
-          rotAbs: rot,
-          color,
-          radius: !!f.radius
-        };
-      });
+          return {
+            ...f,
+            x: (+f.x || 0) / PLAN_SUBDIV,
+            y: (+f.y || 0) / PLAN_SUBDIV,
+            w: (+f.w || 1) / PLAN_SUBDIV,
+            h: (+f.h || 1) / PLAN_SUBDIV,
+            rotation: rot,
+            rotAbs: rot,
+            color,
+            radius: !!f.radius
+          };
+        });
 
-      // 6) Murs : **decode** depuis l’API (on garde le state en unités)
       const walls = decodeWallsFromStorage(apiWallsEnc);
 
-      // 7) Commit état
       state = { ...state, plans, active_plan, eleves, positions, furniture, seats, walls };
       sentNewFurniture.clear();
 
-      // 8) Rendu + fallback murs localStorage si l’API n’a rien renvoyé
       render();
-      restoreWallsForPlan(); // si API vide, on recharge pc_walls_<planId> (encodé) puis decode
+      restoreWallsForPlan();
+
+      refreshToolbarActionsEnabled();
+      if (pendingSelSnap) {
+        restoreSelectionFromSnapshot(pendingSelSnap);
+        pendingSelSnap = null;
+      }
     } catch (err) {
       console.error('[boot] fail', err);
       alert("Impossible de charger les plans de classe pour le moment.");
@@ -2002,24 +2049,33 @@
     }
   }
 
+  // --- Helper: ID de plan courant fiable (évite "0")
+  function currentPlanIdSafe() {
+    const v = $sel?.value;
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) return n;
+    const a = Number(state?.active_plan?.id);
+    return (Number.isFinite(a) && a > 0) ? a : null;
+  }
 
   // [11] ---------------------------------------------------------------------
-  // Listeners globaux & Toolbar
+  // Toolbar (actions de plan) & Listeners globaux
   // -------------------------------------------------------------------------
 
-  // Toolbar
   $sel?.addEventListener('change', async () => {
     const id = parseInt($sel.value, 10);
     if (!Number.isFinite(id)) return;
-    await api.activate(id);  // modifie is_active en BDD
-    await boot(id);          // recharge l’affichage
+    await api.activate(id);
+    await boot(id);
   });
 
   $new?.addEventListener('click', async () => {
     const name = prompt("Nom du plan :", "Rentrée"); if (!name) return;
     const r = await api.create({ classe_id: classeId, name, width: 30, height: 20, grid_size: unitPx });
-    await boot(); if (r.plan_id) { $sel.value = String(r.plan_id); $sel.dispatchEvent(new Event('change')); }
+    await boot();
+    if (r.plan_id) { $sel.value = String(r.plan_id); $sel.dispatchEvent(new Event('change')); }
   });
+
   $dup?.addEventListener('click', async () => { if (!state.active_plan) return; await api.duplicate(state.active_plan.id); await boot(); });
   $act?.addEventListener('click', async () => { if (!state.active_plan) return; await api.activate(state.active_plan.id); await boot(); });
   $pdf?.addEventListener('click', () => { if (!state.active_plan) return; window.open(`${API_BASE}/plans/${state.active_plan.id}/export/pdf`, '_blank'); });
@@ -2032,26 +2088,48 @@
 
   $edit?.addEventListener('click', () => { editMode = !editMode; refreshFurnitureEditability(); });
 
+  // suppression de plan (optionnel via SEATING_URLS.deletePlan)
+  $delPlan?.addEventListener('click', async () => {
+    const planId = currentPlanIdSafe();
+    if (!planId) { alert("Aucun plan valide sélectionné."); return; }
+
+    const name = $sel?.selectedOptions?.[0]?.text || `Plan ${planId}`;
+    if (!confirm(`Supprimer le plan « ${name} » ?\nCette action est irréversible.`)) return;
+
+    console.log('[pc] delete plan id =', planId, 'url=', window.SEATING_URLS?.deletePlan?.(planId));
+    const ok = await api.deletePlan(planId);
+    if (!ok) { alert("Suppression côté serveur non confirmée."); return; }
+
+    await boot(); // recharge depuis le serveur
+    if ($sel && state.active_plan) {
+      $sel.value = String(state.active_plan.id);
+      $sel.dispatchEvent(new Event('change'));
+    }
+  });
+
+
   // Clavier global : suppression, déplacements, alignements, distributions
   window.addEventListener('keydown', (e) => {
     if (!state.active_plan) return;
     const arrow = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key);
     const ctrlAlt = e.ctrlKey && e.altKey;
-    if (e.key === 'Delete') { // supprimer sélection
+
+    if (e.key === 'Delete') {
       selection.forEach(n => removeElement(n));
       selection.clear(); refreshSelectionStyling();
       e.preventDefault(); return;
     }
+
     if (arrow) {
       let stepPx = 1;
       if (e.shiftKey) stepPx = 10;
-      if (e.altKey) stepPx = Math.max(1, Math.round(unitPx / UI_SUBDIV)); // 1 tick
+      if (e.altKey) stepPx = Math.max(1, Math.round(unitPx / UI_SUBDIV));
       const dx = (e.key === 'ArrowLeft' ? -stepPx : e.key === 'ArrowRight' ? stepPx : 0);
       const dy = (e.key === 'ArrowUp' ? -stepPx : e.key === 'ArrowDown' ? stepPx : 0);
       nudgeSelection(dx, dy);
       e.preventDefault(); return;
     }
-    // alignements / répartitions
+
     if (ctrlAlt) {
       if (e.key === 'ArrowLeft') { alignSelection('left'); e.preventDefault(); }
       if (e.key === 'ArrowRight') { alignSelection('right'); e.preventDefault(); }
@@ -2065,130 +2143,8 @@
   // Resize
   window.addEventListener('resize', () => render());
 
-
-
-
-  // ===== Supprimer un plan =====
-  // ===== Supprimer un plan (utilise SEATING_URLS.deletePlan) =====
-  (function () {
-    const sel = document.getElementById('pc_plan_select');
-    const btn = document.getElementById('pc_delete_plan');
-    const svg = document.getElementById('pc_svg');
-
-    if (!btn || !sel) return;
-
-    const furn = () => {
-      const S = (window._SEATING_STATE = window._SEATING_STATE || {});
-      if (!Array.isArray(S.furniture)) S.furniture = [];
-      return S.furniture;
-    };
-    const getPlanId = () => (sel.value ? String(sel.value).trim() : (window._SEATING_STATE?.active_plan ? String(window._SEATING_STATE.active_plan).trim() : null));
-    const clearWallsDOM = () => { if (svg) svg.querySelectorAll('.wall, .wall-preview').forEach(n => n.remove()); };
-    const clearWallsState = (pid) => {
-      const F = furn();
-      window._SEATING_STATE.furniture = F.filter(x => x?.type !== 'wall');
-      try { localStorage.removeItem(`pc_walls_${pid}`); } catch { }
-    };
-    const clearStageDOM = () => {
-      const canvas = document.getElementById('pc_canvas');
-      if (canvas) canvas.replaceChildren();
-    };
-
-    async function callDeleteAPI(planId) {
-      if (!window.SEATING_URLS?.deletePlan) return false;
-      const url = window.SEATING_URLS.deletePlan(planId);
-      try {
-        // On envoie un POST (conforme à la route ajoutée)
-        const res = await fetch(url, { method: 'POST', headers: { 'Accept': 'application/json' } });
-        if (res.ok) return true;
-        // Fallback DELETE si tu préfères supprimer via DELETE aussi
-        if (res.status === 405) {
-          const res2 = await fetch(url, { method: 'DELETE', headers: { 'Accept': 'application/json' } });
-          return res2.ok;
-        }
-        return false;
-      } catch (e) {
-        console.warn('Erreur suppression côté API :', e);
-        return false;
-      }
-    }
-
-    function removeSelectedOption() {
-      const opt = sel.selectedOptions && sel.selectedOptions[0];
-      if (opt) opt.remove();
-      if (!sel.options.length) {
-        window._SEATING_STATE.active_plan = null;
-        return;
-      }
-      sel.selectedIndex = 0;
-      window._SEATING_STATE.active_plan = sel.value || null;
-      sel.dispatchEvent(new Event('change'));
-    }
-
-    btn.addEventListener('click', async () => {
-      const planId = getPlanId();
-      if (!planId) { alert("Aucun plan sélectionné."); return; }
-
-      const name = sel.selectedOptions[0]?.text || `Plan ${planId}`;
-      const isActive = String(window._SEATING_STATE?.active_plan || '') === String(planId);
-      if (!confirm(`Supprimer le plan « ${name} »${isActive ? " (actif)" : ""} ?\nCette action est irréversible.`)) return;
-
-      const serverOK = await callDeleteAPI(planId);
-      // ✅ Recharge propre depuis le serveur pour rafraîchir la <select> et l’état complet
-      await boot();                                // <-- re-fetch plans/active_plan/seats/...
-      // optionnel : repositionner le select sur le premier plan dispo
-      if (sel && state.active_plan) {
-        sel.value = String(state.active_plan.id);
-        sel.dispatchEvent(new Event('change'));
-      }
-      window.dispatchEvent(new CustomEvent('seating:plan:deleted', { detail: { planId, serverOK } }));
-      if (!serverOK) console.warn('[Plan] Suppression : serveur non confirmé (mais état rechargé).');
-
-    });
-  })();
-
-
-  // À lancer au chargement et sur change du select :
-  (function () {
-    const sel = document.getElementById('pc_plan_select');
-    const ids = ['pc_activate', 'pc_duplicate', 'pc_delete_plan', 'pc_export_pdf', 'pc_reset_plan'];
-    function refreshActionsState() {
-      const has = !!(sel && sel.value);
-      ids.forEach(id => { const b = document.getElementById(id); if (b) b.disabled = !has; });
-    }
-    if (sel) {
-      refreshActionsState();
-      sel.addEventListener('change', refreshActionsState);
-    }
-  })();
-
-  // SUPPRIMER ce bloc inutile, ou corriger ainsi si tu veux t’en servir :
-  async function onClickDeletePlan() {
-    if (!state.active_plan) return;
-    // Réutilise l’API existante qui marche déjà :
-    await api.reset(state.active_plan.id, true); // ou api.delete si tu en as un
-    await boot();
-  }
-
-  async function refreshPlansFromServer() {
-    const url = `${API_BASE}/plans/${conf.classeId}`; // ex: /seating/api/plans/123
-    const r = await fetch(url, { credentials: 'same-origin' });
-    if (!r.ok) throw new Error(`GET plans failed: ${r.status}`);
-    const data = await r.json();
-
-    state.plans = data.plans || [];
-    state.active_plan = data.active_plan || null;
-    state.seats = data.seats || [];
-    state.furniture = data.furniture || [];
-    state.positions = data.positions || [];
-    state.eleves = data.eleves || [];
-  }
-
-
-
-  // INIT
+  // init
   boot().catch(console.error);
   setupFullscreenExact($wrap, fitStageToWrap, render);
-
 
 })();

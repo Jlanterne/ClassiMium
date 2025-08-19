@@ -42,7 +42,39 @@
     <h4 class="pc_head">Meubles</h4>
     <div id="pc_furn_palette" class="pc_furn_palette" role="list"></div>
     <button id="pc_add_furniture" class="pc_btn_add" type="button">+ Meuble / Bureau</button>
+    <!-- ===== Traçage automatique des murs ===== -->
+    <section id="pc_auto_walls" class="pc-section">
+      <h3 class="pc-section-title">Traçage automatique des murs</h3>
+      <div class="pc-auto-walls-actions">
+        <div id="aw_handle_token" class="aw-token" draggable="true" title="Glisser sur le plan">
+          ● Point de départ
+        </div>
+      </div>
+
+      <p class="pc-help">Clique sur le plan pour choisir le <strong>point de départ</strong>.</p>
+      <div id="aw_start_display" class="pc-start-display">Aucun point choisi</div>
+
+      <div class="pc-auto-walls-rows" id="aw_rows">
+        <!-- Les lignes (mur/angle) s’ajoutent automatiquement ici -->
+      </div>
+
+      <div class="pc-auto-walls-actions">
+        <button type="button" id="aw_add_row">+ Ajouter un segment</button>
+        <label class="pc-inline">
+          <input type="checkbox" id="aw_close" checked>
+          Fermer le polygone
+        </label>
+      </div>
+
+      <div class="pc-auto-walls-actions">
+        <button type="button" id="aw_validate" class="primary">Valider → Créer les murs</button>
+        <button type="button" id="aw_clear">Réinitialiser</button>
+      </div>
+    </section>
+
   </aside>
+
+
 </div>
 
 <!-- ===== Bootstrapping JS (URLs & config) ===== -->

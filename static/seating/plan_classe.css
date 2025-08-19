@@ -204,6 +204,15 @@ body.pc_edit_on #pc_edit_mode {
   place-items: center;
 }
 
+/* Empêche la coupe des flèches par les bords arrondis */
+.pc_card {
+  overflow: visible;
+  /* important */
+  position: relative;
+  /* pour positionner les flèches */
+}
+
+
 .pc_card:active {
   cursor: grabbing;
 }
@@ -1137,4 +1146,601 @@ body.pc_dragging .pc_card,
 body.pc_dragging .pc_furn {
   transition: none !important;
   outline: none !important;
+}
+
+/* === Palette élèves groupée par niveau === */
+.pc_eleve_group {
+  margin-bottom: 1em;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fafafa;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.pc_eleve_group_title {
+  font-weight: bold;
+  padding: 6px 8px;
+  background: #e6e6e6;
+  border-bottom: 1px solid #ddd;
+  text-align: center;
+  border-radius: 6px 6px 0 0;
+}
+
+.pc_eleve_group_list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px;
+}
+
+.pc_eleve_group .pc_eleve_item {
+  flex: 0 1 90px;
+  /* largeur fixe approximative */
+  text-align: center;
+}
+
+/* Nom "Prénom N." sous la photo, petit et net */
+.pc_eleve_group .pc_eleve_item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pc_eleve_group .pc_eleve_item .name {
+  font-size: 11px;
+  line-height: 1.15;
+  margin-top: 4px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #334155;
+  /* gris lisible */
+}
+
+/* (optionnel) homogénéiser les vignettes si besoin */
+.pc_eleve_group .pc_eleve_item img {
+  display: block;
+  /* décommente si tu veux forcer une taille uniforme :
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 4px;
+  */
+}
+
+/* Centrer la grille dans chaque bloc */
+.pc_eleve_group_list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px;
+  justify-content: center;
+  /* ← centre les lignes */
+  align-content: start;
+  /* ← évite l’étirement vertical */
+}
+
+/* Carte élève compacte + nom collé à la photo */
+.pc_eleve_group .pc_eleve_item {
+  flex: 0 1 90px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pc_eleve_group .pc_eleve_item img {
+  display: block;
+  margin-bottom: 2px;
+  /* ← rapproche le prénom de la photo */
+  /* optionnel pour uniformiser :
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 4px;
+  */
+}
+
+.pc_eleve_group .pc_eleve_item .name {
+  margin-top: 0;
+  /* ← pas d’espace supplémentaire */
+  font-size: 11px;
+  line-height: 1.1;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #334155;
+}
+
+.pc_eleve_group .pc_eleve_item img {
+  display: block;
+  margin-bottom: 0;
+  /* ← aucun espace sous l’image */
+}
+
+.pc_eleve_group .pc_eleve_item .name {
+  margin-top: 0;
+  /* ← pas d’espace au-dessus du prénom */
+  font-size: 11px;
+  line-height: 1;
+  /* ← texte très compact */
+  color: #334155;
+}
+
+.pc_eleve_group .pc_eleve_item img {
+  display: block;
+  margin-bottom: -4px;
+  /* chevauche légèrement */
+}
+
+.pc_eleve_group .pc_eleve_item .name {
+  margin-top: 0;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.pc_eleve_group .pc_eleve_item {
+  position: relative;
+}
+
+.pc_eleve_group .pc_eleve_item .name {
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+.pc_toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.pc_toolbar .group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.pc_toolbar select,
+.pc_toolbar button {
+  height: 34px;
+  border: 1px solid var(--border);
+  background: #fff;
+  padding: 0 10px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.pc_toolbar button {
+  cursor: pointer;
+}
+
+.pc_toolbar button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.pc_toolbar .primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+}
+
+body.pc_edit_on .pc_furn .rz {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.pc_furn .rz {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #fff;
+  border: 1px solid #0003;
+  border-radius: 2px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pc_furn .rz.nw {
+  left: -5px;
+  top: -5px;
+  cursor: nwse-resize;
+}
+
+.pc_furn .rz.ne {
+  right: -5px;
+  top: -5px;
+  cursor: nesw-resize;
+}
+
+.pc_furn .rz.se {
+  right: -5px;
+  bottom: -5px;
+  cursor: nwse-resize;
+}
+
+.pc_furn .rz.sw {
+  left: -5px;
+  bottom: -5px;
+  cursor: nesw-resize;
+}
+
+.pc_delete_btn,
+.pc_corner_btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  line-height: 20px;
+  text-align: center;
+  border-radius: 6px;
+  background: #fff;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  user-select: none;
+}
+
+.pc_corner_btn {
+  right: 30px;
+}
+
+.pc_furn_tpl.wall_tool .hint {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px
+}
+
+.pc_furn_tpl.wall_tool .hint .kbd {
+  display: inline-block;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 18px
+}
+
+.pc_furn .label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* Boutons rotation — ÉLÈVES (latéraux, centrés verticalement) */
+.pc_card .pc_rot_btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+  font-size: 14px;
+  text-align: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  border: 0;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  /* visibles au survol */
+  transition: opacity .15s ease, transform .15s ease, background .15s ease;
+  z-index: 50;
+  /* sous la croix (voir §3) */
+  pointer-events: auto;
+}
+
+.pc_card .pc_rot_btn.rot-left {
+  left: -12px;
+}
+
+.pc_card .pc_rot_btn.rot-right {
+  right: -12px;
+}
+
+.pc_card:hover .pc_rot_btn {
+  opacity: 1;
+}
+
+.pc_card .pc_rot_btn:hover {
+  background: rgba(0, 0, 0, 0.92);
+  transform: translateY(-50%) scale(1.08);
+}
+
+/* Croix supprimer — passe au-dessus des flèches */
+.pc_delete_btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+  text-align: center;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, .92);
+  color: #fff;
+  border: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  transition: opacity .15s, transform .12s;
+  z-index: 1000;
+  /* > 50 des flèches */
+}
+
+.pc_card:hover .pc_delete_btn,
+.pc_furn:hover .pc_delete_btn {
+  opacity: 1;
+}
+
+.pc_delete_btn:hover {
+  transform: scale(1.06);
+}
+
+/* Boutons rotation — MEUBLES (mêmes visuels que cartes) */
+.pc_furn {
+  overflow: visible;
+}
+
+/* laisse dépasser les flèches */
+.pc_furn .pc_rot_btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+  text-align: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  border: 0;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  /* visibles au survol */
+  transition: opacity .15s ease, transform .15s ease, background .15s ease;
+  z-index: 50;
+  /* < croix */
+  pointer-events: auto;
+}
+
+.pc_furn .pc_rot_btn.rot-left {
+  left: -12px;
+}
+
+.pc_furn .pc_rot_btn.rot-right {
+  right: -12px;
+}
+
+.pc_furn:hover .pc_rot_btn {
+  opacity: 1;
+}
+
+.pc_furn .pc_rot_btn:hover {
+  background: rgba(0, 0, 0, 0.92);
+  transform: translateY(-50%) scale(1.08);
+}
+
+/* ===== AutoWalls (traçage automatique des murs) ===== */
+#pc_auto_walls {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--panel, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 10px;
+  box-shadow: var(--shadow, 0 6px 14px rgba(0, 0, 0, .06));
+}
+
+#pc_auto_walls .pc-section-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pc-auto-walls-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pc-auto-walls-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pc-auto-walls-start input {
+  width: 90px;
+}
+
+#aw_rows {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.aw-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.aw-row .aw-cell {
+  display: grid;
+  gap: 4px;
+}
+
+.aw-row input {
+  width: 100%;
+}
+
+.aw-del {
+  align-self: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #e5e7eb);
+  background: #f9fafb;
+  cursor: pointer;
+}
+
+.aw-del:hover {
+  background: #f3f4f6;
+}
+
+.pc-auto-walls-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+}
+
+.pc-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#aw_validate.primary {
+  background: var(--accent, #2563eb);
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#aw_validate.primary:hover {
+  filter: brightness(0.95);
+}
+
+.pc-help {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+  line-height: 1.4;
+}
+
+.pc-start-display {
+  font-size: 13px;
+  color: #555;
+  margin: 4px 0 8px;
+  padding: 4px 6px;
+  background: #f3f4f6;
+  border-radius: 6px;
+}
+
+.pc_svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* évite les micro-gaps inline */
+  pointer-events: auto;
+  /* s’assure que les clics passent */
+}
+
+/* Poignée de départ */
+#aw_start_handle {
+  pointer-events: all;
+}
+
+#aw_start_handle circle {
+  fill: #e11d48;
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+#aw_start_handle line {
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.pc-click-surface {
+  pointer-events: all;
+}
+
+/* capte les clics même sur SVG vide */
+.pc-wall {
+  stroke: #2c3e50;
+  stroke-width: 4;
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.aw-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px dashed #e11d48;
+  border-radius: 999px;
+  background: #fff5f7;
+  color: #be123c;
+  cursor: grab;
+  user-select: none;
+}
+
+.aw-token:active {
+  cursor: grabbing;
+}
+
+.aw-token::before {
+  content: "⤴";
+  font-size: 14px;
+}
+
+#aw_start_handle {
+  pointer-events: all;
+}
+
+#aw_start_handle circle {
+  fill: #e11d48;
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+#aw_start_handle line {
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.pc_svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: auto;
+}
+
+.pc-click-surface {
+  pointer-events: all;
 }

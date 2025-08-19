@@ -1,5 +1,5 @@
 # Debug links 
- Généré automatiquement par gp.cmd le 18/08/2025 23:51:51,19 
+ Généré automatiquement par gp.cmd le 19/08/2025  4:09:03,83 
  Repo: Jlanterne/ClassiMium — Branche: main 
  
 - .gitattributes

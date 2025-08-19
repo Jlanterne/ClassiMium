@@ -1,41 +1,4 @@
-﻿/* ============================================================================
-   plan_classe.js — ÉDITEUR DE PLAN DE CLASSE (version refactor)
-   ============================================================================
-
-   SOMMAIRE
-   --------
-   [0]  Bootstrap & Constants
-   [1]  Utils (unités/px, géométrie, couleurs, localStorage)
-   [2]  API client (fetch)
-   [3]  Autosave (positions, meubles, murs) & resync contrôlé
-   [4]  Stage fit + Grille + Fullscreen
-   [5]  Collisions & "collapse" (aimantation bord à bord)
-   [6]  Rendu: élèves, meubles, murs (SVG), palette
-   [7]  Drag & Drop:
-        7.1 Élève depuis la liste (ghost final)
-        7.2 Déplacement carte élève
-        7.3 Création meuble depuis palette (ghost final)
-        7.4 Déplacement / redimension meuble + rotation
-        7.5 Tracé de murs (polyline SVG)
-   [8]  Sélection multiple, clavier, alignements & répartitions
-   [9]  Suppression (élève / meuble / mur), couleur & coins arrondis
-   [10] Boot (chargement, mapping id temp -> id serveur, persistance couleurs)
-   [11] Toolbar (actions de plan) & Listeners globaux
-
-   Points clés
-   ----------
-   • Couleur PAR MEUBLE => sauvegarde unitaire immédiate ; boot() ne les écrase pas.
-   • Anti-duplication => Set(uid) lors des PUT, mapping client_uid sur boot().
-   • Murs en SVG (hachures) + portes/fenêtres forcement sur mur (snap).
-   • Fantômes (élèves/meubles) identiques à l’objet final pendant le drag.
-   • Sélection multiple, déplacements clavier, alignements/distrib à la Word.
-
-   Échelle
-   -------
-   • 1 unité = 25 cm (CM_PER_UNIT = 25).
-   • Empreinte élève ≈ 70x50 cm, aimantée aux ticks UI.
-============================================================================ */
-
+﻿
 (() => {
   // [0] ----------------------------------------------------------------------
   // Bootstrap & Constants
@@ -49,9 +12,9 @@
   const API_BASE = (conf.apiBase || "/seating") + "/api";
   const PHOTOS_BASE = conf.photosBase || "/static/photos/";
 
-  let UI_SUBDIV = 32;   // précision UI (ticks aimantation)
+  let UI_SUBDIV = 32;    // précision UI (ticks aimantation)
   let PLAN_SUBDIV = 32;  // précision stockage API
-  let unitPx = 32;   // dimension d'une unité en pixels (calculée par autofit)
+  let unitPx = 32;       // dimension d'une unité en pixels (calculée par autofit)
 
   // ids temporaires (meubles) & mode édition
   let tempIdSeq = -1;
@@ -62,6 +25,18 @@
   const STUDENT_W_CM = 70;
   const STUDENT_H_CM = 50;
   const cmToUnits = (cm) => cm / CM_PER_UNIT;
+
+  // Rayon "coins arrondis" en unités du plan (1 u = 25 cm)
+  // 12px à l’échelle par défaut (~32 px/u) ≈ 0.375 u ≈ 9.4 cm
+  const CORNER_R_UNITS = 0.375;
+
+  const cornerUnitsFor = (f) => (f?.radius ? CORNER_R_UNITS : 0);
+  const cornerPxFor = (f) => Math.round(cornerUnitsFor(f) * unitPx);
+
+  function applyCornerRadiusPx(el, f) {
+    const rpx = cornerPxFor(f);
+    el.style.borderRadius = rpx ? `${rpx}px` : '0';
+  }
 
   // évite les resync pendant un drag et permet de restaurer la sélection après boot()
   let isDraggingNow = false;
@@ -80,6 +55,16 @@
     seats: [],
     eleves: []
   };
+
+  // Conversion centimètres -> pixels
+  function cmToPx(cm) {
+    // si tu as déjà unitPx défini globalement :
+    if (typeof unitPx !== "undefined") {
+      return (cm / CM_PER_UNIT) * unitPx;
+    }
+    // sinon, fallback approximatif : 10 px = 1 cm
+    return cm * 10;
+  }
 
   // couleurs par type — défauts (palette) pour futurs meubles
   const FURN_DEF_COLORS = {
@@ -106,6 +91,10 @@
   // conteneur SVG (murs)
   let $svg = document.getElementById('pc_svg') || null;
 
+  // --- Marquee (sélection rectangulaire)
+  let marqueeEl = null;
+  let marqueeData = null; // { sx, sy, add, box }
+  let pendingShiftDeselect = null; // node à désélectionner si clic sans drag
 
   // [1] ----------------------------------------------------------------------
   // Utils (unités/px, géométrie, couleurs, localStorage)
@@ -181,14 +170,11 @@
 
   // empreinte élève (en unités), aimantée aux ticks
   function studentFootprintUnits() {
-    // Alias pour compat rétro : certains appels utilisent footprintCardUnits()
-
-
     const w = Math.max(TICK, Math.round(cmToUnits(STUDENT_W_CM) * UI_SUBDIV) / UI_SUBDIV);
     const h = Math.max(TICK, Math.round(cmToUnits(STUDENT_H_CM) * UI_SUBDIV) / UI_SUBDIV);
     return { w, h };
   }
-  // ✅ Alias global pour compat rétro (utilisé par ton code existant)
+  // Alias global pour compat
   const footprintCardUnits = studentFootprintUnits;
 
   // helpers sélection
@@ -214,13 +200,23 @@
   }
 
   function selectNodeOnPointerDown(node, e) {
+    const already = selection.has(node);
+    pendingShiftDeselect = null;
+
     if (e.shiftKey) {
-      if (selection.has(node)) selection.delete(node); else selection.add(node);
+      if (already) {
+        // ⛔️ ne pas toggler tout de suite (autorise drag groupé)
+        pendingShiftDeselect = node;
+      } else {
+        selection.add(node);
+      }
     } else {
-      selection.clear(); selection.add(node);
+      if (!already) { selection.clear(); selection.add(node); }
     }
+
     refreshSelectionStyling();
-    // mémoriser les positions de départ pour le drag groupé
+
+    // Positions de départ pour le drag groupé
     selection.forEach(n => {
       n.dataset._startL = n.style.left;
       n.dataset._startT = n.style.top;
@@ -250,7 +246,14 @@
     return `#${h(d(r))}${h(d(g))}${h(d(b))}`;
   }
 
-  // --- Helpers pour POST/PUT/DELETE avec cookie + CSRF ------------------------
+  // ↔︎ format longueur (en m/cm) à partir d'unités plan
+  function formatLen(units) {
+    const cm = units * CM_PER_UNIT;
+    if (cm >= 100) return `${(cm / 100).toFixed(2).replace('.', ',')} m (${Math.round(cm)} cm)`;
+    return `${Math.round(cm)} cm`;
+  }
+
+  // --- Helpers pour POST/PUT/DELETE avec cookie + CSRF ----------------------
   function getCsrfToken() {
     const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
     if (m) return decodeURIComponent(m[1]);
@@ -268,7 +271,7 @@
     return fetch(url, { credentials: 'same-origin', ...opts, headers });
   }
 
-  // Retourne {} si 204/no JSON, sinon parse le JSON. Lance une erreur si !r.ok
+  // Retourne {} si 204/no JSON, sinon parse le JSON. Lance erreur si !ok
   const jsonIfAny = async (r) => {
     if (!r.ok) {
       let msg = '';
@@ -282,8 +285,145 @@
     return txt ? JSON.parse(txt) : {};
   };
 
+  // Place le libellé au milieu du segment, toujours lisible (jamais à l'envers)
+  function computeWallLabelPlacement(dx, dy, midxU, midyU) {
+    // angle "lisible" en degrés
+    let angDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+    let offSign = 1;
+    if (angDeg > 90) { angDeg -= 180; offSign = -1; }
+    else if (angDeg < -90) { angDeg += 180; offSign = -1; }
 
+    const angRad = angDeg * Math.PI / 180;
+    const off = Math.max(8, unitPx * 0.35); // décalage perpendiculaire
+    const xpx = toPx(midxU) + Math.cos(angRad + Math.PI / 2) * off * offSign;
+    const ypx = toPx(midyU) + Math.sin(angRad + Math.PI / 2) * off * offSign;
 
+    return { xpx, ypx, angDeg };
+  }
+
+  function cleanupOrphanMeasures() {
+    if (!$svg) return;
+    const alive = new Set((state.walls || []).map(w => String(w.id)));
+    $svg.querySelectorAll('.wall-measure, .wall-angle').forEach(t => {
+      if (!alive.has(String(t.dataset.wallId))) t.remove();
+    });
+  }
+
+  function computeAngleDeg(a, b, c) {
+    // angle intérieur entre BA et BC en degrés
+    const v1x = a.x - b.x, v1y = a.y - b.y;
+    const v2x = c.x - b.x, v2y = c.y - b.y;
+    const n1 = Math.hypot(v1x, v1y), n2 = Math.hypot(v2x, v2y);
+    if (n1 < EPS || n2 < EPS) return null;
+    let cos = (v1x * v2x + v1y * v2y) / (n1 * n2);
+    cos = Math.max(-1, Math.min(1, cos));
+    return Math.round(Math.acos(cos) * 180 / Math.PI); // 0..180
+  }
+
+  function buildWallAnglesFor(w) {
+    if (!$svg || !w.points || w.points.length < 3) return;
+    for (let i = 1; i < w.points.length - 1; i++) {
+      const a = w.points[i - 1], b = w.points[i], c = w.points[i + 1];
+      const ang = computeAngleDeg(a, b, c);
+      if (ang == null) continue;
+
+      // direction du bissecteur
+      let u1x = a.x - b.x, u1y = a.y - b.y;
+      let u2x = c.x - b.x, u2y = c.y - b.y;
+      const n1 = Math.hypot(u1x, u1y) || 1, n2 = Math.hypot(u2x, u2y) || 1;
+      u1x /= n1; u1y /= n1; u2x /= n2; u2y /= n2;
+      let bx = u1x + u2x, by = u1y + u2y;
+      let bl = Math.hypot(bx, by);
+      if (bl < 1e-6) { bx = -u2y; by = u2x; bl = 1; }
+      bx /= bl; by /= bl;
+
+      const rPx = Math.max(12, unitPx * 0.6);
+      const xpx = toPx(b.x + (bx * (rPx / unitPx)));
+      const ypx = toPx(b.y + (by * (rPx / unitPx)));
+
+      const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t.setAttribute('class', 'wall-angle');
+      t.dataset.wallId = String(w.id);
+      t.setAttribute('text-anchor', 'middle');
+      t.setAttribute('dominant-baseline', 'central');
+      t.style.pointerEvents = 'none';
+      t.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+      t.style.fontSize = `${Math.max(11, unitPx * 0.45)}px`;
+      t.style.fontWeight = '700';
+      t.style.paintOrder = 'stroke';
+      t.style.stroke = '#ffffff';
+      t.style.strokeWidth = '3';
+      t.style.strokeLinejoin = 'round';
+      t.style.fill = '#111827';
+      t.textContent = `${ang}°`;
+      t.setAttribute('x', String(xpx));
+      t.setAttribute('y', String(ypx));
+      $svg.appendChild(t);
+    }
+  }
+
+  function hideWallAngles(wallId) {
+    $svg?.querySelectorAll(`.wall-angle[data-wall-id="${wallId}"]`).forEach(n => n.remove());
+  }
+
+  function updateVisibleWallAngles() {
+    if (!$svg) return;
+    const ids = [...new Set(Array.from($svg.querySelectorAll('.wall-angle')).map(n => n.dataset.wallId))];
+    ids.forEach(id => {
+      hideWallAngles(id);
+      const w = state.walls.find(W => String(W.id) === String(id));
+      if (w) buildWallAnglesFor(w);
+    });
+  }
+  // — flèche diagonale la plus proche d'un angle (↖ ↗ ↘ ↙)
+  function diagArrowFor(deg) {
+    const a = ((deg % 360) + 360) % 360;
+    const choices = [
+      { d: 45, ch: '↘' },
+      { d: 135, ch: '↙' },
+      { d: 225, ch: '↖' },
+      { d: 315, ch: '↗' }
+    ];
+    let best = choices[0], min = 1e9;
+    for (const c of choices) {
+      let diff = Math.abs(a - c.d);
+      diff = Math.min(diff, 360 - diff);
+      if (diff < min) { min = diff; best = c; }
+    }
+    return best.ch;
+  }
+
+  // — met à jour les flèches des 4 poignées en fonction de la rotation du meuble
+  function updateResizeHandleArrowsFor(el) {
+    const rot = parseFloat(el.dataset.rotAbs || el.dataset.rot || '0') || 0;
+    const BASE = { nw: 225, ne: 315, se: 45, sw: 135 }; // diagonales “extérieures” à 0°
+
+    el.querySelectorAll('.rz').forEach(h => {
+      const dir = (h.dataset.dir || '').toLowerCase();
+      const base = BASE[dir] ?? 45;
+      const arrow = diagArrowFor(base + rot);
+
+      let ic = h.querySelector('.rz_icon');
+      if (!ic) {
+        ic = document.createElement('span');
+        ic.className = 'rz_icon';
+        ic.style.position = 'absolute';
+        ic.style.left = '50%';
+        ic.style.top = '50%';
+        ic.style.transform = 'translate(-50%, -50%)';
+        ic.style.fontSize = Math.max(10, unitPx * 0.25) + 'px';
+        ic.style.fontWeight = '700';
+        ic.style.userSelect = 'none';
+        ic.style.pointerEvents = 'none';
+        ic.style.lineHeight = '1';
+        h.appendChild(ic);
+      } else {
+        // si l'échelle change (fit), recalcule la taille
+        ic.style.fontSize = Math.max(10, unitPx * 0.25) + 'px';
+      }
+      ic.textContent = arrow;
+    });
+  }
 
   // [2] ----------------------------------------------------------------------
   // API Client
@@ -397,13 +537,18 @@
     }
   };
 
-
-
   // [3] ----------------------------------------------------------------------
   // Autosave (debounce) & resync contrôlé
   // -------------------------------------------------------------------------
 
-  const debounce = (fn, d = 600) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), d); }; };
+  const debounce = (fn, d = 600) => {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), d);
+    };
+  };
+
 
   const autosavePositions = debounce(() => {
     if (!state.active_plan) return;
@@ -469,7 +614,7 @@
   // autosave murs (déplacés au clavier)
   const autosaveWalls = debounce(async () => {
     if (!state.active_plan) return;
-    dedupeWallsInState();                                // ← AJOUT
+    dedupeWallsInState();
     const planId = state.active_plan.id;
     const payloadWalls = encodeWallsForStorage(state.walls);
     try { await api.saveWalls?.(planId, payloadWalls); } catch (e) { console.warn('saveWalls API KO', e); }
@@ -503,7 +648,6 @@
     if (!pendingSelSnap) pendingSelSnap = selectionSnapshot();
     resyncTimer = setTimeout(() => boot().catch(console.error), delay);
   }
-
 
   // [4] ----------------------------------------------------------------------
   // Stage fit + Grille + Fullscreen
@@ -549,6 +693,13 @@
     $svg.style.pointerEvents = 'auto';
 
     ensureHatchPattern();
+    // Recalibre le border-radius (px) après changement d'échelle
+    $stage.querySelectorAll('.pc_furn').forEach(el => {
+      const id = el.dataset.id ? parseInt(el.dataset.id, 10) : null;
+      const f = (id != null) ? state.furniture.find(x => x.id === id) : null;
+      applyCornerRadiusPx(el, f);
+      updateResizeHandleArrowsFor(el);
+    });
   }
 
   function ensureHatchPattern() {
@@ -581,7 +732,6 @@
       try { onRender && onRender(); } catch { }
     });
   }
-
 
   // [5] ----------------------------------------------------------------------
   // Collisions & collapse
@@ -674,7 +824,9 @@
       return collides(r, others) ? null : r;
     };
     let r = tryPlace(gx, gy); if (r) return r;
-    const maxR = 80;
+    const W = state.active_plan?.width || 30;
+    const H = state.active_plan?.height || 20;
+    const maxR = Math.max(80, Math.ceil((W + H) * UI_SUBDIV / 2));
     for (let d = 1; d <= maxR; d++) {
       for (let dx = -d; dx <= d; dx++) {
         for (let dy = -d; dy <= d; dy++) {
@@ -688,7 +840,6 @@
   }
 
   const shake = el => { el.classList.add('pc_shake'); setTimeout(() => el.classList.remove('pc_shake'), 250); };
-
 
   // [6] ----------------------------------------------------------------------
   // Rendu: élèves, meubles, murs, palette
@@ -707,8 +858,17 @@
 
   function clearStage() {
     $stage.querySelectorAll('.pc_card, .pc_furn').forEach(n => n.remove());
-    if ($svg) { $svg.innerHTML = '<defs></defs>'; ensureHatchPattern(); }
+    if ($svg) {
+      // Supprime tout SAUF <defs>, la surface de clic, et la poignée AutoWalls
+      Array.from($svg.childNodes).forEach(n => {
+        if (n.tagName === 'defs') return;
+        if (n.matches?.('rect.pc-click-surface, #aw_start_handle')) return;
+        n.remove();
+      });
+      ensureHatchPattern();
+    }
   }
+
 
   function moyClass(m20) { if (m20 == null) return ''; if (m20 >= 16) return 'mAp'; if (m20 >= 13) return 'mA'; if (m20 >= 8) return 'mPA'; return 'mNA'; }
 
@@ -719,8 +879,6 @@
     if (d < 135) return 90;
     return 270;
   }
-
-
 
   function onCardAltWheel(e) {
     if (!e.altKey) return;
@@ -790,7 +948,7 @@
   function setCardRotation(card, delta, { snap = false } = {}) {
     let visu = parseFloat(card.dataset.rotVisuAbs || card.dataset.rotAbs || card.dataset.rot || '0') || 0;
     visu += delta;
-    if (snap) { if (visu > 90) visu = 90; if (visu < -90) visu = -90; } // bornes lisibilité
+    if (snap) { if (visu > 90) visu = 90; if (visu < -90) visu = -90; }
 
     const snapAbs = snapRotStudent(visu);
 
@@ -809,14 +967,9 @@
       autosavePositions();
     }
 
-    // UI boutons: masque celui vers la borne atteinte (si snap)
     const leftBtn = card.querySelector('.pc_rot_btn.rot-left');
     const rightBtn = card.querySelector('.pc_rot_btn.rot-right');
-    if (leftBtn && rightBtn && snap) {
-      if (visu === 0) { leftBtn.style.display = "inline-block"; rightBtn.style.display = "inline-block"; }
-      else if (visu === -90) { leftBtn.style.display = "none"; rightBtn.style.display = "inline-block"; }
-      else if (visu === 90) { rightBtn.style.display = "none"; leftBtn.style.display = "inline-block"; }
-    }
+    if (leftBtn && rightBtn) refreshCardRotateButtons(card);
   }
 
   function addDeleteButton(el) {
@@ -851,7 +1004,7 @@
     inner.className = 'pc_card_in';
 
     const initRotAbs = Number.isFinite(pos.rotAbs ?? pos.rot) ? (pos.rotAbs ?? pos.rot) : 0; // 0/90/270
-    const initVisu = (initRotAbs === 270) ? -90 : initRotAbs; // -90/0/90 pour l’affichage
+    const initVisu = (initRotAbs === 270) ? -90 : initRotAbs; // -90/0/90
     card.dataset.rotAbs = String(initRotAbs);
     card.dataset.rotVisuAbs = String(initVisu);
     card.dataset.rot = String(initRotAbs);
@@ -886,7 +1039,6 @@
       if (e.button && e.button !== 0) return;
       if (e.target.closest('.pc_delete_btn') || e.target.closest('.pc_rot_btn')) return;
       selectNodeOnPointerDown(card, e);
-      limitSelectionToKind(card);
       startDragCard(e);
     });
 
@@ -930,7 +1082,7 @@
         const f = (id != null) ? state.furniture.find(x => x.id === id) : null;
         if (!f) return;
         f.radius = !f.radius;
-        el.style.borderRadius = f.radius ? '12px' : '0';
+        applyCornerRadiusPx(el, f);
         btn.textContent = f.radius ? '◯' : '◻︎';
         saveFurnitureItemImmediate(f);
       });
@@ -945,6 +1097,8 @@
     const id = el.dataset.id ? parseInt(el.dataset.id, 10) : null;
     const f = (id != null) ? state.furniture.find(x => x.id === id) : null;
     if (f) { f.rotAbs = abs; f.rotation = norm360(abs); autosaveFurniture(); }
+    updateResizeHandleArrowsFor(el); // ← flèches à jour après rotation
+    updateFurnitureMeasures(el);
   }
   function addFurnitureColorBtn(el) {
     const id = el.dataset.id ? parseInt(el.dataset.id, 10) : null;
@@ -992,6 +1146,7 @@
       addFurnCornerToggle(el);
     });
     if ($edit) $edit.textContent = 'Édition meubles : ' + (editMode ? 'ON' : 'OFF');
+    $stage.querySelectorAll('.pc_furn').forEach(updateResizeHandleArrowsFor);
   }
 
   function makeStudentGhost(eleve) {
@@ -1054,6 +1209,8 @@
       const t = (f.type || 'autre').toLowerCase().replace(/[^a-z0-9_ -]/g, '').replace(/\s+/g, '_');
       el.dataset.furnitureType = t;
       el.classList.add(`type-${t}`);
+      el.addEventListener('mouseenter', () => showFurnitureMeasures(el));
+      el.addEventListener('mouseleave', () => hideFurnitureMeasures(el));
 
       if (f.rotation != null) el.dataset.rot = String(f.rotation);
       if (f.rotAbs != null) el.dataset.rotAbs = String(f.rotAbs);
@@ -1064,22 +1221,38 @@
       el.style.height = `${toPx(f.h)}px`;
       el.style.transformOrigin = 'center center';
       el.style.transform = `rotate(${el.dataset.rotAbs || el.dataset.rot || 0}deg)`;
-      if (f.radius) el.style.borderRadius = '12px';
+      applyCornerRadiusPx(el, f);
 
       const color = f.color || FURN_COLORS[t] || null; if (color) applyFurnitureColor(el, t, color);
 
-      const label = document.createElement('div'); label.className = 'label'; label.textContent = f.label || f.type || 'meuble';
+      const label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = f.label || f.type || 'meuble';
+      // centrer + lisible, sans bloquer les clics
+      label.style.position = 'absolute';
+      label.style.left = '50%';
+      label.style.top = '50%';
+      label.style.transform = 'translate(-50%, -50%)';
+      label.style.pointerEvents = 'none';
+      label.style.fontWeight = '600';
+      label.style.fontSize = Math.max(10, unitPx * 0.33) + 'px';
+      label.style.padding = '2px 6px';
+      label.style.borderRadius = '6px';
+      label.style.border = '1px solid rgba(0,0,0,.08)';
+      el.append(label);
+
 
       const makeHandle = dir => { const h = document.createElement('div'); h.className = `rz ${dir}`; h.dataset.dir = dir; h.title = 'Redimensionner'; h.addEventListener('pointerdown', startResizeFurniture); return h; };
 
       el.append(label, makeHandle('nw'), makeHandle('ne'), makeHandle('se'), makeHandle('sw'));
       addDeleteButton(el); addFurnRotate(el); addFurnCornerToggle(el);
+      // oriente les flèches des poignées selon la rotation actuelle
+      updateResizeHandleArrowsFor(el);
       el.addEventListener('pointerdown', (e) => {
         if (e.button && e.button !== 0) return;
         if (e.target.closest('.pc_delete_btn')) return;
         if (e.target.classList.contains('rz')) return;
         selectNodeOnPointerDown(el, e);
-        limitSelectionToKind(el);
         startDragFurniture(e);
       });
 
@@ -1093,25 +1266,145 @@
     }
   }
 
+  // --- Tri & groupement de la palette d'élèves : par niveau, prénoms A→Z
   function renderEleveList() {
-    if (!$elist) return; $elist.innerHTML = '';
+    if (!$elist) return;
+    $elist.innerHTML = '';
+
+    // 1) Élèves déjà placés à exclure de la palette
     const placed = new Set(state.positions.map(p => p.eleve_id));
-    for (const e of state.eleves) {
-      if (placed.has(e.id)) continue;
-      const item = document.createElement('div'); item.className = 'pc_eleve_item'; item.dataset.eleveId = e.id; item.draggable = false;
-      const img = document.createElement('img'); img.src = PHOTOS_BASE + (e.photo_filename || 'default.jpg'); img.draggable = false;
-      const name = document.createElement('div'); name.className = 'name'; name.textContent = `${e.prenom} ${e.nom}`;
-      item.append(img, name);
-      item.addEventListener('pointerdown', startDragFromList);
-      $elist.appendChild(item);
+
+    // 2) Regrouper par niveau
+    const groups = new Map(); // niveau -> Array<eleve>
+    state.eleves.forEach(e => {
+      if (placed.has(e.id)) return;
+      const nivRaw = (e.niveau || '').toString().trim();
+      const niveau = nivRaw || 'Autres';
+      if (!groups.has(niveau)) groups.set(niveau, []);
+      groups.get(niveau).push(e);
+    });
+
+    // 3) Ordre des niveaux
+    const LEVEL_ORDER = ['PS', 'MS', 'GS', 'CP', 'CE1', 'CE2', 'CM1', 'CM2'];
+    const levelRank = (name) => {
+      const i = LEVEL_ORDER.indexOf(String(name).toUpperCase());
+      return i === -1 ? 999 : i;
+    };
+
+    const levels = Array.from(groups.keys()).sort((a, b) => {
+      const ra = levelRank(a), rb = levelRank(b);
+      return (ra - rb) || a.localeCompare(b, 'fr', { sensitivity: 'base' });
+    });
+
+    // 4) Construire les blocs de niveau
+    levels.forEach(niveau => {
+      const list = groups.get(niveau) || [];
+
+      // Tri par prénom (accents/casse neutralisés)
+      list.sort((a, b) =>
+        (a.prenom || '').localeCompare(b.prenom || '', 'fr', { sensitivity: 'base' })
+      );
+
+      const bloc = document.createElement('div');
+      bloc.className = 'pc_eleve_group';
+      bloc.dataset.niveau = niveau;
+
+      const head = document.createElement('div');
+      head.className = 'pc_eleve_group_title';
+      head.textContent = niveau;
+      bloc.appendChild(head);
+
+      const itemsWrap = document.createElement('div');
+      itemsWrap.className = 'pc_eleve_group_list';
+
+      list.forEach(e => {
+        const item = document.createElement('div');
+        item.className = 'pc_eleve_item';
+        item.dataset.eleveId = e.id;
+        item.draggable = false;
+
+        const img = document.createElement('img');
+        img.src = PHOTOS_BASE + (e.photo_filename || 'default.jpg');
+        img.draggable = false;
+
+        const name = document.createElement('div');
+        name.className = 'name';
+
+        const shortName = (e) => {
+          const prenom = (e.prenom || '').trim();
+          const nomInit = (e.nom || '').trim().charAt(0);
+          return nomInit ? `${prenom} ${nomInit}.` : prenom;
+        };
+        name.textContent = shortName(e);
+
+        item.title = `${(e.prenom || '').trim()} ${(e.nom || '').trim()}`.trim();
+
+        item.append(img, name);
+        item.addEventListener('pointerdown', startDragFromList);
+
+        itemsWrap.appendChild(item);
+      });
+
+      bloc.appendChild(itemsWrap);
+      $elist.appendChild(bloc);
+    });
+  }
+
+  function buildWallMeasuresFor(w) {
+    if (!$svg || !w.points || w.points.length < 2) return;
+    for (let i = 0; i < w.points.length - 1; i++) {
+      const a = w.points[i], b = w.points[i + 1];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const du = Math.hypot(dx, dy);
+      if (du < 1e-6) continue;
+
+      const midxU = (a.x + b.x) / 2, midyU = (a.y + b.y) / 2;
+      const { xpx, ypx, angDeg } = computeWallLabelPlacement(dx, dy, midxU, midyU);
+
+      const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t.setAttribute('class', 'wall-measure');
+      t.dataset.wallId = String(w.id);
+      t.setAttribute('text-anchor', 'middle');
+      t.setAttribute('dominant-baseline', 'central');
+      t.style.pointerEvents = 'none';
+      t.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+      t.style.fontSize = `${Math.max(11, unitPx * 0.45)}px`;
+      t.style.fontWeight = '700';
+      t.style.paintOrder = 'stroke';
+      t.style.stroke = '#ffffff';
+      t.style.strokeWidth = '3';
+      t.style.strokeLinejoin = 'round';
+      t.style.fill = '#111827';
+      t.textContent = formatLen(du);
+      t.setAttribute('x', String(xpx));
+      t.setAttribute('y', String(ypx));
+      t.setAttribute('transform', `rotate(${angDeg}, ${xpx}, ${ypx})`);
+      $svg.appendChild(t);
     }
+  }
+
+  function hideWallMeasures(wallId) {
+    $svg?.querySelectorAll(`.wall-measure[data-wall-id="${wallId}"]`).forEach(n => n.remove());
+  }
+
+  function updateVisibleWallMeasures() {
+    if (!$svg) return;
+    const ids = [...new Set(Array.from($svg.querySelectorAll('.wall-measure'))
+      .map(n => n.dataset.wallId))];
+
+    ids.forEach(id => {
+      hideWallMeasures(id);
+      const w = state.walls.find(W => String(W.id) === String(id));
+      if (w) buildWallMeasuresFor(w);
+    });
   }
 
   function renderWalls() {
     if (!$svg) return;
     dedupeWallsInState();
     ensureHatchPattern();
-    $svg.querySelectorAll('.wall, .wall-draft, .wall-preview').forEach(n => n.remove());
+
+    $svg.querySelectorAll('.wall, .wall-draft, .wall-preview, .wall-measure, .wall-angle').forEach(n => n.remove());
 
     for (const w of (state.walls || [])) {
       if (!w.points || w.points.length < 2) continue;
@@ -1124,11 +1417,141 @@
       poly.setAttribute('stroke-width', Math.max(3, unitPx * 0.12));
       poly.style.pointerEvents = 'stroke';
       poly.addEventListener('click', handleSelectableClick);
-
+      poly.addEventListener('mouseenter', () => {
+        const id = String(w.id);
+        if (!$svg?.querySelector(`.wall-measure[data-wall-id="${id}"]`)) buildWallMeasuresFor(w);
+        if (!$svg?.querySelector(`.wall-angle[data-wall-id="${id}"]`)) buildWallAnglesFor(w);
+      });
+      poly.addEventListener('mouseleave', () => {
+        if (!selection.has(poly)) hideWallMeasures(String(w.id));
+        if (!selection.has(poly)) hideWallAngles(String(w.id));
+      });
       const pts = w.points.map(p => `${toPx(p.x)},${toPx(p.y)}`).join(' ');
       poly.setAttribute('points', pts);
       $svg.appendChild(poly);
     }
+  }
+
+  function updateWallMeasures() {
+    updateVisibleWallMeasures();
+    updateVisibleWallAngles();
+  }
+
+  function ensureFurnitureMeasureNodes(el) {
+    const mk = (cls) => {
+      const d = document.createElement('div');
+      d.className = `furn-measure ${cls}`;
+      d.style.position = 'absolute';
+      d.style.left = '50%';
+      d.style.top = '50%';
+      d.style.transformOrigin = 'center center';
+      d.style.pointerEvents = 'none';
+      d.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+      d.style.fontWeight = '700';
+      d.style.borderRadius = '8px';
+      d.style.padding = '1px 4px';
+      d.style.background = 'rgba(255,255,255,.92)';
+      d.style.border = '1px solid rgba(0,0,0,.08)';
+      d.style.color = '#111827';
+      d.style.boxShadow = '0 0 0 2px rgba(255,255,255,.55)';
+      d.style.userSelect = 'none';
+      return d;
+    };
+    const pick = (cls) => el.querySelector(`.furn-measure.${cls}`) || el.appendChild(mk(cls));
+
+    const topLab = pick('fm-top');
+    const rightLab = pick('fm-right');
+    const bottomLab = pick('fm-bottom');
+    const leftLab = pick('fm-left');
+    const diamLab = pick('fm-diam');
+
+    return { topLab, rightLab, bottomLab, leftLab, diamLab };
+  }
+
+  function showFurnitureMeasures(el) {
+    const { topLab, rightLab, bottomLab, leftLab, diamLab } = ensureFurnitureMeasureNodes(el);
+
+    // Tout masquer puis base commune
+    [topLab, rightLab, bottomLab, leftLab, diamLab].forEach(n => {
+      n.style.display = 'none';
+      n.style.position = 'absolute';
+      n.style.left = '50%';
+      n.style.top = '50%';
+      n.style.transformOrigin = 'center center';
+      n.style.pointerEvents = 'none';
+    });
+
+    // Dimensions LOCALES (valeurs style, AVANT rotation)
+    const Wpx = parseFloat(el.style.width || '0') || 0;   // axe X local
+    const Hpx = parseFloat(el.style.height || '0') || 0;   // axe Y local
+
+    if (Wpx < 24 || Hpx < 24) return; // trop petit → pas d’étiquettes
+
+    // Unités “locales”
+    const wUnits = Wpx / unitPx;
+    const hUnits = Hpx / unitPx;
+
+    // Apparence : police plus petite + léger retrait depuis le bord
+    const fsPx = Math.max(8, Math.min(12, unitPx * 0.18));
+    const inset = Math.max(4, unitPx * 0.12);
+
+    // Coins arrondis → longueurs droites visibles
+    const id = el.dataset.id ? parseInt(el.dataset.id, 10) : null;
+    const f = Number.isFinite(id) ? state.furniture.find(x => x.id === id) : null;
+    const rUnits = f ? cornerUnitsFor(f) : 0;
+    const showW = f?.radius ? Math.max(0, wUnits - 2 * rUnits) : wUnits;
+    const showH = f?.radius ? Math.max(0, hUnits - 2 * rUnits) : hUnits;
+
+    const type = (el.dataset.furnitureType || '').toLowerCase();
+
+    const showAs = (node, txt) => {
+      node.style.display = '';
+      node.style.fontSize = fsPx + 'px';
+      node.textContent = txt;
+    };
+
+    // Tables rondes → Ø centré
+    if (type === 'table_round') {
+      showAs(diamLab, 'Ø ' + formatLen(Math.min(wUnits, hUnits)));
+      diamLab.style.transform = 'translate(-50%, -50%)';
+      return;
+    }
+
+    // Rectangles (coins carrés/arrondis) : 4 côtés
+    // IMPORTANT : on calcule les décalages dans le REPÈRE LOCAL du meuble.
+    // L’élément parent est déjà rotaté, donc ces positions collent toujours aux bords.
+
+    // Haut / Bas (aucune rotation du label)
+    showAs(topLab, formatLen(showW));
+    topLab.style.transform =
+      `translate(-50%, -50%) translate(0, ${-(Hpx / 2 - inset)}px)`;
+
+    showAs(bottomLab, formatLen(showW));
+    bottomLab.style.transform =
+      `translate(-50%, -50%) translate(0, ${(Hpx / 2 - inset)}px)`;
+
+    // Gauche / Droite (label vertical)
+    showAs(leftLab, formatLen(showH));
+    leftLab.style.transform =
+      `translate(-50%, -50%) translate(${-(Wpx / 2 - inset)}px, 0) rotate(90deg)`;
+
+    showAs(rightLab, formatLen(showH));
+    rightLab.style.transform =
+      `translate(-50%, -50%) translate(${(Wpx / 2 - inset)}px, 0) rotate(90deg)`;
+  }
+
+
+
+
+
+  function updateFurnitureMeasures(el) {
+    const any = el.querySelector('.furn-measure');
+    if (!any || (any.style.display === 'none')) return;
+    showFurnitureMeasures(el);
+  }
+
+  function hideFurnitureMeasures(el) {
+    el.querySelectorAll('.furn-measure').forEach(n => n.style.display = 'none');
   }
 
   function render() {
@@ -1190,7 +1613,6 @@
       info.append(name, dims);
       item.append(thumb, info);
       item.style.cursor = 'pointer';
-
 
       item.addEventListener('click', (ev) => {
         ev.preventDefault(); ev.stopPropagation();
@@ -1348,17 +1770,25 @@
       card.style.top = (dragData.startTop + dy) + 'px';
     }
   }
+
   function endDragCard(ev) {
     const card = ev.currentTarget;
     card.releasePointerCapture(ev.pointerId);
     card.removeEventListener('pointermove', onDragCardMove);
 
     if (!dragData || !dragData.moved) {
+      if (pendingShiftDeselect && pendingShiftDeselect === card) {
+        if (selection.has(card)) selection.delete(card);
+        else selection.add(card);
+        refreshSelectionStyling();
+      }
+      pendingShiftDeselect = null;
       dragData = null;
       isDraggingNow = false;
       return;
     }
 
+    pendingShiftDeselect = null;
     nudgeSelection(0, 0); // commit
     dragData = null;
     isDraggingNow = false;
@@ -1387,7 +1817,10 @@
       }
     }
     if (!best) return null;
-    return (Math.sqrt(best.d2) <= maxDist) ? best.p : null;
+    if (Math.sqrt(best.d2) > maxDist) return null;
+    const dx = best.seg.b.x - best.seg.a.x, dy = best.seg.b.y - best.seg.a.y;
+    const angDeg = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+    return { point: best.p, angleDeg: angDeg };
   }
 
   // 7.3 Création meuble depuis palette (ghost final)
@@ -1424,8 +1857,8 @@
       if (isOnWallType && state.walls.length) {
         const s = snapToNearestWall(drop.x, drop.y);
         if (!s) { alert("Placez portes/fenêtres sur un mur."); return; }
-        // centre l’objet sur le mur
-        drop = { x: snapUnits(s.x - wEff / 2), y: snapUnits(s.y - hEff / 2) };
+        drop = { x: snapUnits(s.point.x - wEff / 2), y: snapUnits(s.point.y - hEff / 2) };
+        def._initRotAbs = Math.round(s.angleDeg);
       }
 
       let spot = findNearestFreeSpot(drop.x, drop.y, wEff, hEff) || { x: drop.x, y: drop.y };
@@ -1440,7 +1873,7 @@
         type: def.type, label: def.label, color: col,
         x: spot.x, y: spot.y,
         w: def.w, h: def.h,
-        rotation: 0, rotAbs: 0, z: 0,
+        rotation: def._initRotAbs || 0, rotAbs: def._initRotAbs || 0, z: 0,
         radius: false
       });
 
@@ -1489,85 +1922,581 @@
       el.style.top = (dragData.startTop + dy) + 'px';
     }
   }
+
   function endDragFurniture(ev) {
     const el = ev.currentTarget;
     el.releasePointerCapture(ev.pointerId);
     el.removeEventListener('pointermove', onDragFurnitureMove);
 
     if (!dragData || !dragData.moved) {
+      if (pendingShiftDeselect && pendingShiftDeselect === el) {
+        if (selection.has(el)) selection.delete(el);
+        else selection.add(el);
+        refreshSelectionStyling();
+      }
+      pendingShiftDeselect = null;
       dragData = null;
       isDraggingNow = false;
       return;
     }
 
+    pendingShiftDeselect = null;
     nudgeSelection(0, 0); // commit px→unités (autosave)
     dragData = null;
     isDraggingNow = false;
   }
+  // Helpers pour le resize ancré (repère local du meuble)
+  function _anchorLocalForOppositeHandle(dir, W, H) {
+    // dir = poignée saisie ; l’ancre = coin opposé
+    const halfW = W / 2, halfH = H / 2;
+    const d = (dir || 'se').toLowerCase();
+    if (d === 'se') return { x: -halfW, y: -halfH }; // ancre = NW
+    if (d === 'ne') return { x: -halfW, y: halfH }; // ancre = SW
+    if (d === 'sw') return { x: halfW, y: -halfH }; // ancre = NE
+  /* 'nw' */      return { x: halfW, y: halfH }; // ancre = SE
+  }
+  function _rot(ax, ay, cos, sin) {
+    // (x,y) local -> monde
+    return { x: ax * cos - ay * sin, y: ax * sin + ay * cos };
+  }
 
+  // --- Redimension
   function startResizeFurniture(ev) {
     const el = ev.currentTarget.parentElement;
-    const dir = ev.currentTarget.dataset.dir;
-    const startLeft = parseFloat(el.style.left || '0'), startTop = parseFloat(el.style.top || '0');
-    const startW = parseFloat(el.style.width || '0'), startH = parseFloat(el.style.height || '0');
-    dragData = { kind: 'resize', id: el.dataset.id ? parseInt(el.dataset.id, 10) : null, dir, startLeft, startTop, startW, startH, sx: ev.clientX, sy: ev.clientY };
-    el.setPointerCapture(ev.pointerId);
-    el.addEventListener('pointermove', onResizeFurnitureMove);
-    el.addEventListener('pointerup', endResizeFurniture, { once: true });
-    ev.stopPropagation();
-  }
-  function onResizeFurnitureMove(ev) {
-    const el = ev.currentTarget;
-    const dx = (ev.clientX - dragData.sx), dy = (ev.clientY - dragData.sy);
-    let L = dragData.startLeft, T = dragData.startTop, W = dragData.startW, H = dragData.startH;
-    if (dragData.dir.includes('w')) { L = dragData.startLeft + dx; W = dragData.startW - dx; }
-    if (dragData.dir.includes('e')) { W = dragData.startW + dx; }
-    if (dragData.dir.includes('n')) { T = dragData.startTop + dy; H = dragData.startH - dy; }
-    if (dragData.dir.includes('s')) { H = dragData.startH + dy; }
-    W = Math.max(16, W); H = Math.max(16, H);
-    el.style.left = `${L}px`; el.style.top = `${T}px`; el.style.width = `${W}px`; el.style.height = `${H}px`;
-  }
-  function endResizeFurniture(ev) {
-    const el = ev.currentTarget;
-    el.releasePointerCapture(ev.pointerId);
-    el.removeEventListener('pointermove', onResizeFurnitureMove);
-
-    // considéré comme un drag en cours
-    isDraggingNow = true;
+    const handle = ev.currentTarget;
 
     const L = parseFloat(el.style.left || '0');
     const T = parseFloat(el.style.top || '0');
     const W = parseFloat(el.style.width || '0');
     const H = parseFloat(el.style.height || '0');
+    const rotDeg = parseFloat(el.dataset.rotAbs || el.dataset.rot || '0') || 0;
+    const dirLocal = (handle.dataset.dir || 'se').toLowerCase();
+
+    const cx = L + W / 2, cy = T + H / 2; // centre (px)
+    const rad = rotDeg * Math.PI / 180, cos = Math.cos(rad), sin = Math.sin(rad);
+
+    // ancre monde = centre + R * (ancre locale)
+    const A0loc = _anchorLocalForOppositeHandle(dirLocal, W, H);
+    const A0off = _rot(A0loc.x, A0loc.y, cos, sin);
+    const Ax = cx + A0off.x, Ay = cy + A0off.y;
+
+    dragData = {
+      kind: 'resize',
+      id: el.dataset.id ? parseInt(el.dataset.id, 10) : null,
+      dirLocal,
+      // état initial
+      startLeft: L, startTop: T, startW: W, startH: H,
+      cx0: cx, cy0: cy,
+      rotDeg, cos, sin,
+      // ancre monde
+      anchorX: Ax, anchorY: Ay,
+      sx: ev.clientX, sy: ev.clientY
+    };
+
+    el.setPointerCapture(ev.pointerId);
+    el.addEventListener('pointermove', onResizeFurnitureMove);
+    el.addEventListener('pointerup', endResizeFurniture, { once: true });
+    ev.stopPropagation();
+  }
+
+  function onResizeFurnitureMove(ev) {
+    const el = ev.currentTarget;
+    const dx = (ev.clientX - dragData.sx);
+    const dy = (ev.clientY - dragData.sy);
+
+    // projeter le déplacement curseur dans le repère local de l’objet
+    const du = dx * dragData.cos + dy * dragData.sin;    // axe X local (largeur)
+    const dv = -dx * dragData.sin + dy * dragData.cos;   // axe Y local (hauteur)
+
+    // nouvelles dimensions (en px), selon la poignée utilisée
+    let W = dragData.startW;
+    let H = dragData.startH;
+    if (dragData.dirLocal.includes('e')) W = dragData.startW + du;
+    if (dragData.dirLocal.includes('w')) W = dragData.startW - du;
+    if (dragData.dirLocal.includes('s')) H = dragData.startH + dv;
+    if (dragData.dirLocal.includes('n')) H = dragData.startH - dv;
+
+    W = Math.max(16, W);
+    H = Math.max(16, H);
+
+    // centre requis pour que le COIN OPPOSÉ reste fixe en monde
+    const AnewLoc = _anchorLocalForOppositeHandle(dragData.dirLocal, W, H); // (±W/2, ±H/2)
+    const AnewOff = _rot(AnewLoc.x, AnewLoc.y, dragData.cos, dragData.sin);
+    const cx = dragData.anchorX - AnewOff.x;
+    const cy = dragData.anchorY - AnewOff.y;
+
+    // rectangle affiché (style) = boîte non-rotée centrée en (cx,cy)
+    el.style.width = `${W}px`;
+    el.style.height = `${H}px`;
+    el.style.left = `${(cx - W / 2)}px`;
+    el.style.top = `${(cy - H / 2)}px`;
+
+    updateFurnitureMeasures(el);
+  }
+
+  function endResizeFurniture(ev) {
+    const el = ev.currentTarget;
+    el.releasePointerCapture(ev.pointerId);
+    el.removeEventListener('pointermove', onResizeFurnitureMove);
+
+    // on est en fin de resize : PAS de resnap/collision, juste clamp dans le stage
+    const L = parseFloat(el.style.left || '0');
+    const T = parseFloat(el.style.top || '0');
+    const W = parseFloat(el.style.width || '0');
+    const H = parseFloat(el.style.height || '0');
+
+    // convertit px -> unités (en arrondissant aux ticks UI)
     const gw = Math.max(TICK, Math.ceil((W / unitPx) * UI_SUBDIV) / UI_SUBDIV);
     const gh = Math.max(TICK, Math.ceil((H / unitPx) * UI_SUBDIV) / UI_SUBDIV);
 
     const rotNow = parseFloat(el.dataset.rotAbs || el.dataset.rot || '0') || 0;
-    const swapNow = isQuarterTurnSwap(rotNow);
-    const wEff = swapNow ? gh : gw, hEff = swapNow ? gw : gh;
 
+    // coin TL en px -> unités (en tenant compte de l'échange w/h à 90/270°)
     const box = stageInnerBox();
-    const { x: gx, y: gy } = clientToUnitsClamped(box.left + L, box.top + T, wEff, hEff);
+    const pxAdj = adjustClientPxForSwap(
+      box.left + L, box.top + T, gw, gh, rotNow
+    );
 
-    const id = (dragData && dragData.id != null) ? dragData.id : null;
-    let spot = findNearestFreeSpot(gx, gy, wEff, hEff, { furnitureId: id ?? -1 });
-    if (!spot) { shake(el); dragData = null; isDraggingNow = false; return; }
-    spot = snapCollapse(spot, rectsInPlan({ furnitureId: id ?? -1 }));
+    // clamp simple au stage, pas de snap aux autres
+    let { x: gx, y: gy } = clientToUnitsClamped(pxAdj.leftPx, pxAdj.topPx, pxAdj.wEff, pxAdj.hEff);
 
-    const f = (id != null) ? state.furniture.find(x => x.id === id) : null;
-    if (f) { f.w = gw; f.h = gh; f.x = spot.x; f.y = spot.y; }
+    // coin TL réel en unités (retire le décalage dû au swap)
+    gx = snapUnits(gx - pxAdj.dx);
+    gy = snapUnits(gy - pxAdj.dy);
 
+    const id = parseInt(el.dataset.id || '-1', 10);
+    const f = state.furniture.find(x => x.id === id);
+    if (f) {
+      f.w = gw; f.h = gh; f.x = gx; f.y = gy;
+    }
+
+    // sauvegarde meubles (debounce)
     autosaveFurniture();
-    dragData = null;
-    isDraggingNow = false;
+
+    // mettre à jour l’affichage des mesures si on est encore hover
+    updateFurnitureMeasures(el);
   }
 
-  // 7.5 Tracé des murs (SVG)
+  /* ============================================================================
+     AutoWalls — Traçage automatique des murs (poignée de départ draggable)
+     - Poignée SVG draggable (cercle rouge + croix) pour le point de départ
+     - Clic dans le plan = téléporte la poignée (si elle existe), sinon la crée
+     - Drag avec accroche à la grille (SEATING_CONF.grid). Maintenir Alt = pas de snap
+     - Segments illimités : Mur N (cm) + Angle N (°)
+     - Orientation initiale & sens horaire/antihoraire (facile à rajouter si besoin)
+     - Génération d’un polyline dans le calque SVG
+     ============================================================================ */
+
+  const AutoWalls = (() => {
+    // ---- État interne ---------------------------------------------------------
+    let startHandle = null;           // <g id="aw_start_handle">
+    let startPos = null;              // {x,y} -- SOURCE DE VÉRITÉ
+    let dragging = false;
+
+    let dragOffset = { x: 0, y: 0 }; // offset curseur -> centre poignée
+    const DEG2RAD = Math.PI / 180;
+
+    // ---- Utilitaires ----------------------------------------------------------
+    // Utilitaire
+    const cmToUnits = (cm) => cm / CM_PER_UNIT; // ou la fonction existante si tu l'as déjà
+
+    function buildPointsUnits() {
+      const handlePx = getHandlePos();
+      if (!handlePx) { alert('Choisis un point de départ.'); return null; }
+
+      // convertit la poignée px -> unités
+      const startU = { x: handlePx.x / unitPx, y: handlePx.y / unitPx };
+
+      const segs = readSegments(); // {length_cm, turn_deg}
+      if (!segs.length) { alert('Ajoute au moins un segment.'); return null; }
+
+      const close = document.getElementById('aw_close')?.checked ?? true;
+
+      const pts = [startU];
+      let dirDeg = 0; // 0° droite, 90° bas (Y+)
+      segs.forEach(s => {
+        const L = cmToUnits(s.length_cm);
+        const last = pts[pts.length - 1];
+        const nx = last.x + Math.cos(dirDeg * DEG2RAD) * L;
+        const ny = last.y + Math.sin(dirDeg * DEG2RAD) * L;
+        pts.push({ x: nx, y: ny });
+        dirDeg = (dirDeg + s.turn_deg) % 360;
+      });
+
+      if (close) {
+        const a = pts[0], b = pts[pts.length - 1];
+        if (a.x !== b.x || a.y !== b.y) pts.push({ x: a.x, y: a.y });
+      }
+      return pts;
+    }
+
+    async function validate() {
+      const pts = buildPointsUnits();
+      if (!pts?.length) return;
+
+      const id = genUid();
+      state.walls.push({ id, points: pts });
+      dedupeWallsInState();
+      renderWalls();           // dessine via la classe .wall existante
+      updateWallMeasures();    // (si tu l’appelles ailleurs aussi)
+
+      // Sauvegarde comme le wall tool
+      try {
+        const planId = currentPlanIdSafe();
+        const payloadWalls = encodeWallsForStorage(state.walls);
+        await api.saveWalls?.(planId, payloadWalls);
+        try { localStorage.setItem(`pc_walls_${planId}`, JSON.stringify(payloadWalls)); } catch { }
+      } catch (e) {
+        console.warn('saveWalls API KO', e);
+      }
+    }
+
+    const gridSize = (window.SEATING_CONF && +window.SEATING_CONF.grid) ? +window.SEATING_CONF.grid : 0;
+
+    function getSvgLayer() {
+      return document.querySelector('#pc_svg, #pc_walls_layer, #pc_stage_svg, svg');
+    }
+    function ensureClickSurface(svg) {
+      const ns = 'http://www.w3.org/2000/svg';
+      let r = svg.querySelector('rect.pc-click-surface');
+      if (!r) {
+        r = document.createElementNS(ns, 'rect');
+        r.classList.add('pc-click-surface');
+        r.setAttribute('x', 0); r.setAttribute('y', 0);
+        r.setAttribute('width', '100%'); r.setAttribute('height', '100%');
+        r.setAttribute('fill', 'transparent'); r.setAttribute('pointer-events', 'all');
+        svg.insertBefore(r, svg.firstChild);
+      }
+    }
+    function screenToSvg(svg, clientX, clientY, fallbackEvt) {
+      const pt = svg.createSVGPoint(); pt.x = clientX; pt.y = clientY;
+      const ctm = svg.getScreenCTM?.(); return ctm ? pt.matrixTransform(ctm.inverse())
+        : { x: fallbackEvt?.offsetX || 0, y: fallbackEvt?.offsetY || 0 };
+    }
+    function bindTokenDragDrop() {
+      const token = document.getElementById('aw_handle_token');
+      const svg = getSvgLayer(); ensureHandleRef(); if (!token || !svg) return;
+      ensureClickSurface(svg);
+
+      // autoriser le drop
+      svg.addEventListener('dragover', (e) => { e.preventDefault(); });
+      svg.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const p = screenToSvg(svg, e.clientX, e.clientY, e);
+        let x = p.x, y = p.y;
+        const grid = (window.SEATING_CONF && +window.SEATING_CONF.grid) ? +window.SEATING_CONF.grid : 0;
+        if (grid) { x = Math.round(x / grid) * grid; y = Math.round(y / grid) * grid; }
+        if (!startHandle) createStartHandle(svg, x, y);
+        else moveHandle(startHandle, x, y);
+      });
+
+      // dragstart sur le jeton (optionnel : dataTransfer pour Firefox)
+      token.addEventListener('dragstart', (e) => {
+        try { e.dataTransfer.setData('text/plain', 'aw-handle'); } catch { }
+      });
+
+      // clic sur le jeton = créer/centrer la poignée au milieu de la scène
+      token.addEventListener('click', () => {
+        const rect = (document.getElementById('pc_stage') || svg).getBoundingClientRect();
+        const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+        const p = screenToSvg(svg, cx, cy);
+        if (!startHandle) createStartHandle(svg, p.x, p.y);
+        else moveHandle(startHandle, p.x, p.y);
+      });
+    }
+
+
+    function snap(val) {
+      if (!gridSize || gridSize <= 0) return val;
+      return Math.round(val / gridSize) * gridSize;
+    }
+
+    function setDisplay(x, y) {
+      const disp = document.getElementById('aw_start_display');
+      if (disp) disp.textContent = `Départ : (${Math.round(x)}, ${Math.round(y)})`;
+    }
+
+    // ---- Poignée de départ ----------------------------------------------------
+    function createStartHandle(svg, x, y) {
+      const ns = 'http://www.w3.org/2000/svg';
+      const g = document.createElementNS(ns, 'g');
+      g.setAttribute('id', 'aw_start_handle');
+      g.setAttribute('cursor', 'grab');
+      g.style.pointerEvents = 'all';
+
+      const circle = document.createElementNS(ns, 'circle');
+      circle.setAttribute('r', 8);
+      circle.setAttribute('fill', '#e11d48');
+      circle.setAttribute('stroke', '#ffffff');
+      circle.setAttribute('stroke-width', '2');
+
+      const crossV = document.createElementNS(ns, 'line');
+      crossV.setAttribute('x1', 0); crossV.setAttribute('y1', -5);
+      crossV.setAttribute('x2', 0); crossV.setAttribute('y2', 5);
+      crossV.setAttribute('stroke', '#ffffff'); crossV.setAttribute('stroke-width', '2');
+
+      const crossH = document.createElementNS(ns, 'line');
+      crossH.setAttribute('x1', -5); crossH.setAttribute('y1', 0);
+      crossH.setAttribute('x2', 5); crossH.setAttribute('y2', 0);
+      crossH.setAttribute('stroke', '#ffffff'); crossH.setAttribute('stroke-width', '2');
+
+      g.appendChild(circle);
+      g.appendChild(crossV);
+      g.appendChild(crossH);
+      svg.appendChild(g);
+
+      moveHandle(g, x, y);
+      bindHandleDrag(g, svg);
+      startHandle = g;
+      return g;
+    }
+
+    function ensureHandleRef() {
+      if (startHandle && startHandle.isConnected) return startHandle;
+      startHandle = document.getElementById('aw_start_handle') || null;
+      return startHandle;
+    }
+
+    function moveHandle(g, x, y) {
+      g.setAttribute('transform', `translate(${x}, ${y})`);
+      startPos = { x, y };                          // <— on mémorise ici
+      const disp = document.getElementById('aw_start_display');
+      if (disp) disp.textContent = `Départ : (${Math.round(x)}, ${Math.round(y)})`;
+    }
+
+
+    function getHandlePos() {
+      if (!startHandle) return null;
+      const tr = startHandle.getAttribute('transform') || '';
+      // transform="translate(x, y)"
+      const m = /translate\(([-\d.]+)[ ,]([-\d.]+)\)/.exec(tr);
+      if (!m) return null;
+      return { x: parseFloat(m[1]), y: parseFloat(m[2]) };
+    }
+
+    // ---- Drag de la poignée ---------------------------------------------------
+    function bindHandleDrag(g, svg) {
+      const onPointerDown = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        g.setPointerCapture?.(e.pointerId);
+        g.setAttribute('cursor', 'grabbing');
+        dragging = true;
+
+        const p = screenToSvg(svg, e.clientX, e.clientY, e);
+        const cur = getHandlePos() || { x: p.x, y: p.y };
+        dragOffset.x = p.x - cur.x;
+        dragOffset.y = p.y - cur.y;
+      };
+
+      const onPointerMove = (e) => {
+        if (!dragging) return;
+        const p = screenToSvg(svg, e.clientX, e.clientY, e);
+        let nx = p.x - dragOffset.x;
+        let ny = p.y - dragOffset.y;
+
+        // Snap à la grille (maintenir Alt pour désactiver)
+        if (!e.altKey && gridSize) {
+          nx = snap(nx);
+          ny = snap(ny);
+        }
+        moveHandle(g, nx, ny);
+      };
+
+      const onPointerUp = (e) => {
+        dragging = false;
+        g.releasePointerCapture?.(e.pointerId);
+        g.setAttribute('cursor', 'grab');
+      };
+
+      g.addEventListener('pointerdown', onPointerDown);
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+    }
+
+    // ---- UI lignes Mur/Angle --------------------------------------------------
+    function makeRow(index) {
+      const row = document.createElement('div');
+      row.className = 'aw-row';
+      row.innerHTML = `
+      <div class="aw-cell">
+        <label for="aw_len_${index}">Mur ${index} (cm)</label>
+        <input type="number" id="aw_len_${index}" class="aw-len" min="0" step="1" placeholder="ex. 300">
+      </div>
+      <div class="aw-cell">
+        <label for="aw_ang_${index}">Angle ${index} (°)</label>
+        <input type="number" id="aw_ang_${index}" class="aw-ang" step="1" placeholder="ex. 90">
+      </div>
+      <button type="button" class="aw-del" title="Supprimer cette ligne">×</button>
+    `;
+      return row;
+    }
+
+    function addRow(autofocus = true) {
+      const box = document.getElementById('aw_rows');
+      const index = box.querySelectorAll('.aw-row').length + 1;
+      const row = makeRow(index);
+      box.appendChild(row);
+
+      const lenEl = row.querySelector('.aw-len');
+      const angEl = row.querySelector('.aw-ang');
+
+      const onChange = () => {
+        if (lenEl.value && angEl.value) {
+          const isLast = row === box.lastElementChild;
+          if (isLast) addRow(false);
+        }
+      };
+      lenEl.addEventListener('input', onChange);
+      angEl.addEventListener('input', onChange);
+
+      row.querySelector('.aw-del').addEventListener('click', () => { row.remove(); renumberRows(); });
+      if (autofocus) lenEl.focus();
+    }
+
+    function renumberRows() {
+      const rows = [...document.querySelectorAll('#aw_rows .aw-row')];
+      rows.forEach((r, i) => {
+        const idx = i + 1;
+        r.querySelector('.aw-len').id = `aw_len_${idx}`;
+        r.querySelector('.aw-ang').id = `aw_ang_${idx}`;
+        r.querySelector(`label[for^="aw_len_"]`).setAttribute('for', `aw_len_${idx}`);
+        r.querySelector(`label[for^="aw_ang_"]`).setAttribute('for', `aw_ang_${idx}`);
+        r.querySelector(`label[for="aw_len_${idx}"]`).textContent = `Mur ${idx} (cm)`;
+        r.querySelector(`label[for="aw_ang_${idx}"]`).textContent = `Angle ${idx} (°)`;
+      });
+    }
+
+    function readRows() {
+      const rows = [...document.querySelectorAll('#aw_rows .aw-row')];
+      const segs = [];
+      for (const r of rows) {
+        const len = parseFloat(r.querySelector('.aw-len')?.value || '');
+        const ang = parseFloat(r.querySelector('.aw-ang')?.value || '');
+        if (Number.isFinite(len) && len > 0) {
+          segs.push({ length_cm: len, turn_deg: Number.isFinite(ang) ? ang : 0 });
+        }
+      }
+      return segs;
+    }
+
+    // ---- Construction du chemin ----------------------------------------------
+    // Convention : orientation initiale = 0° (vers la droite), angle N appliqué APRÈS le segment N
+    // Sens positif = horaire (si tu veux antihoraire : remplace turn_deg par -turn_deg)
+    function buildPoints() {
+      if (!startPos) { alert('Clique/dépose d’abord le point de départ.'); return null; }
+
+      const segs = readRows();
+      if (!segs.length) { alert('Ajoute au moins un segment.'); return null; }
+
+      const close = document.getElementById('aw_close')?.checked ?? true;
+
+      const pts = [{ x: startPos.x, y: startPos.y }];
+      let dirDeg = 0;
+      // … (le reste inchangé)
+      // 0° = → ; 90° = ↓ (SVG Y+ vers le bas) ; -90° = ↑
+
+      segs.forEach((s) => {
+        const Lpx = cmToPx(s.length_cm);
+        const dx = Math.cos(dirDeg * DEG2RAD) * Lpx;
+        const dy = Math.sin(dirDeg * DEG2RAD) * Lpx;
+        const last = pts[pts.length - 1];
+        const next = { x: last.x + dx, y: last.y + dy };
+        pts.push(next);
+        dirDeg = (dirDeg + s.turn_deg) % 360; // horaire
+      });
+
+      if (close) {
+        const first = pts[0];
+        const last = pts[pts.length - 1];
+        if (first.x !== last.x || first.y !== last.y) pts.push({ x: first.x, y: first.y });
+      }
+      return pts;
+    }
+
+    function addWallsPolyline(points) {
+      const parent = getSvgLayer();
+      if (!parent) return;
+      const ns = 'http://www.w3.org/2000/svg';
+      const poly = document.createElementNS(ns, 'polyline');
+      poly.setAttribute('points', points.map(p => `${p.x},${p.y}`).join(' '));
+      poly.setAttribute('class', 'pc-wall');
+      parent.appendChild(poly);
+    }
+
+    // ---- Actions --------------------------------------------------------------
+    function validate() {
+      const pts = buildPoints();
+      if (pts) addWallsPolyline(pts);
+    }
+
+    function clearAll() {
+      document.getElementById('aw_rows').innerHTML = '';
+      addRow(); addRow(false);
+      // Supprime la poignée
+      if (startHandle && startHandle.parentNode) startHandle.parentNode.removeChild(startHandle);
+      startHandle = null;
+      setDisplay(NaN, NaN);
+      const disp = document.getElementById('aw_start_display');
+      if (disp) disp.textContent = 'Aucun point choisi';
+    }
+
+    // ---- Interaction plan -----------------------------------------------------
+    function bindPlanClick() {
+      const svg = getSvgLayer();
+      ensureHandleRef();
+      if (!svg) return;
+      ensureClickSurface(svg);
+
+      svg.addEventListener('click', (e) => {
+        // éviter de capter le clic si on relâche un drag sur la poignée
+        if (dragging) return;
+
+        const p = screenToSvg(svg, e.clientX, e.clientY, e);
+        let x = p.x, y = p.y;
+        if (gridSize) { x = snap(x); y = snap(y); }
+
+        if (!startHandle) {
+          createStartHandle(svg, x, y);
+        } else {
+          moveHandle(startHandle, x, y);
+        }
+      });
+    }
+
+    // ---- Boot -----------------------------------------------------------------
+    function init() {
+      // lignes par défaut
+      addRow(); addRow(false);
+
+      // boutons
+      document.getElementById('aw_add_row')?.addEventListener('click', () => addRow(true));
+      document.getElementById('aw_validate')?.addEventListener('click', validate);
+      document.getElementById('aw_clear')?.addEventListener('click', clearAll);
+
+      // clic/drag dans le plan
+      bindPlanClick();        // clic direct pour placer la poignée
+      bindTokenDragDrop();    // ET dépôt du jeton sur la scène
+    }
+
+    return { init };
+  })();
+
+  document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('pc_auto_walls')) AutoWalls.init();
+  });
+
+  //////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////
+
+  // 7.5 Tracé des murs (SVG) — live length + live angle + verrou 90° (Maj)
   function startWallTool(ev) {
     ev?.preventDefault?.();
     if (document.body.classList.contains('pc_wall_mode')) return;
     if (!$svg || !$stage || !state.active_plan) return;
-    $svg.querySelectorAll('.wall-draft, .wall-preview').forEach(n => n.remove());
+
+    $svg.querySelectorAll('.wall-draft, .wall-preview, .wall-length, .wall-angle-live').forEach(n => n.remove());
 
     const planId = state.active_plan.id;
     let currentWall = { id: genUid(), points: [] };
@@ -1577,6 +2506,7 @@
     progress.setAttribute('fill', 'none');
     progress.setAttribute('stroke', 'url(#hatch)');
     progress.setAttribute('stroke-width', Math.max(3, unitPx * 0.12));
+    progress.style.pointerEvents = 'none';
     $svg.appendChild(progress);
 
     const preview = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
@@ -1585,10 +2515,38 @@
     preview.setAttribute('stroke', '#60a5fa');
     preview.setAttribute('stroke-width', Math.max(2, unitPx * 0.10));
     preview.setAttribute('stroke-dasharray', '6 4');
+    preview.style.pointerEvents = 'none';
     $svg.appendChild(preview);
 
-    progress.style.pointerEvents = 'none';
-    preview.style.pointerEvents = 'none';
+    const lenText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    lenText.setAttribute('class', 'wall-length');
+    lenText.setAttribute('text-anchor', 'middle');
+    lenText.setAttribute('dominant-baseline', 'central');
+    lenText.style.pointerEvents = 'none';
+    lenText.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    lenText.style.fontSize = `${Math.max(11, unitPx * 0.45)}px`;
+    lenText.style.fontWeight = '700';
+    lenText.style.paintOrder = 'stroke';
+    lenText.style.stroke = '#ffffff';
+    lenText.style.strokeWidth = '3';
+    lenText.style.strokeLinejoin = 'round';
+    lenText.style.fill = '#111827';
+    $svg.appendChild(lenText);
+
+    const angText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    angText.setAttribute('class', 'wall-angle-live');
+    angText.setAttribute('text-anchor', 'middle');
+    angText.setAttribute('dominant-baseline', 'central');
+    angText.style.pointerEvents = 'none';
+    angText.style.fontFamily = 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    angText.style.fontSize = `${Math.max(11, unitPx * 0.45)}px`;
+    angText.style.fontWeight = '700';
+    angText.style.paintOrder = 'stroke';
+    angText.style.stroke = '#ffffff';
+    angText.style.strokeWidth = '3';
+    angText.style.strokeLinejoin = 'round';
+    angText.style.fill = '#111827';
+    $svg.appendChild(angText);
 
     $stage.style.cursor = 'crosshair';
     document.body.classList.add('pc_wall_mode');
@@ -1599,24 +2557,100 @@
       y: snapUnits((cy - box.top) / unitPx),
     });
 
+    let shiftDown = false;
+    let lastMoveX = null, lastMoveY = null;
+
+    function constrainWithShift(prev, last, raw) {
+      if (prev) {
+        let vx = last.x - prev.x, vy = last.y - prev.y;
+        const n = Math.hypot(vx, vy);
+        if (n > EPS) {
+          vx /= n; vy /= n;
+          const nx = -vy, ny = vx; // normale au segment précédent
+          const tx = raw.x - last.x, ty = raw.y - last.y;
+          const s = (tx * nx + ty * ny);
+          return { x: snapUnits(last.x + nx * s), y: snapUnits(last.y + ny * s) };
+        }
+      }
+      const dx = raw.x - last.x, dy = raw.y - last.y;
+      if (Math.abs(dx) >= Math.abs(dy)) return { x: snapUnits(raw.x), y: snapUnits(last.y) };
+      return { x: snapUnits(last.x), y: snapUnits(raw.y) };
+    }
+
     const updateProgress = () => {
       if (currentWall.points.length < 2) { progress.setAttribute('points', ''); return; }
       const pts = currentWall.points.map(p => `${toPx(p.x)},${toPx(p.y)}`).join(' ');
       progress.setAttribute('points', pts);
     };
 
-    const updatePreview = (clientX, clientY) => {
-      if (!currentWall.points.length) { preview.setAttribute('points', ''); return; }
+    function updatePreview(clientX, clientY, wantShift = false) {
+      if (!currentWall.points.length) {
+        preview.setAttribute('points', '');
+        lenText.textContent = '';
+        angText.textContent = '';
+        return;
+      }
       const last = currentWall.points[currentWall.points.length - 1];
-      const cur = ptToUnits(clientX, clientY);
+      const raw = ptToUnits(clientX, clientY);
+      const prev = currentWall.points.length >= 2 ? currentWall.points[currentWall.points.length - 2] : null;
+      const cur = wantShift ? constrainWithShift(prev, last, raw) : raw;
+
       preview.setAttribute('points', [last, cur].map(p => `${toPx(p.x)},${toPx(p.y)}`).join(' '));
+
+      const dx = cur.x - last.x, dy = cur.y - last.y;
+      const du = Math.hypot(dx, dy);
+      if (du < 1e-6) { lenText.textContent = ''; angText.textContent = ''; return; }
+
+      const midxU = (last.x + cur.x) / 2, midyU = (last.y + cur.y) / 2;
+      const { xpx, ypx, angDeg } = computeWallLabelPlacement(dx, dy, midxU, midyU);
+
+      lenText.textContent = formatLen(du);
+      lenText.setAttribute('x', String(xpx));
+      lenText.setAttribute('y', String(ypx));
+      lenText.setAttribute('transform', `rotate(${angDeg}, ${xpx}, ${ypx})`);
+
+      if (prev) {
+        const ang = computeAngleDeg(prev, last, cur);
+        if (ang != null) {
+          let u1x = prev.x - last.x, u1y = prev.y - last.y;
+          let u2x = cur.x - last.x, u2y = cur.y - last.y;
+          const n1 = Math.hypot(u1x, u1y) || 1, n2 = Math.hypot(u2x, u2y) || 1;
+          u1x /= n1; u1y /= n1; u2x /= n2; u2y /= n2;
+          let bx = u1x + u2x, by = u1y + u2y;
+          let bl = Math.hypot(bx, by);
+          if (bl < 1e-6) { bx = -u2y; by = u2x; bl = 1; }
+          bx /= bl; by /= bl;
+
+          const rPx = Math.max(12, unitPx * 0.6);
+          const ax = toPx(last.x + (bx * (rPx / unitPx)));
+          const ay = toPx(last.y + (by * (rPx / unitPx)));
+          angText.textContent = `${ang}°`;
+          angText.setAttribute('x', String(ax));
+          angText.setAttribute('y', String(ay));
+        } else {
+          angText.textContent = '';
+        }
+      } else {
+        angText.textContent = '';
+      }
+    }
+
+    const onMove = (e) => {
+      lastMoveX = e.clientX; lastMoveY = e.clientY;
+      updatePreview(e.clientX, e.clientY, shiftDown || !!e.shiftKey);
     };
 
-    const onMove = (e) => updatePreview(e.clientX, e.clientY);
     const onClick = (e) => {
-      currentWall.points.push(ptToUnits(e.clientX, e.clientY));
+      const raw = ptToUnits(e.clientX, e.clientY);
+      if (currentWall.points.length >= 1 && (shiftDown || e.shiftKey)) {
+        const last = currentWall.points[currentWall.points.length - 1];
+        const prev = currentWall.points.length >= 2 ? currentWall.points[currentWall.points.length - 2] : null;
+        currentWall.points.push(constrainWithShift(prev, last, raw));
+      } else {
+        currentWall.points.push(raw);
+      }
       updateProgress();
-      updatePreview(e.clientX, e.clientY);
+      updatePreview(e.clientX, e.clientY, shiftDown || !!e.shiftKey);
     };
 
     async function persistWalls() {
@@ -1630,57 +2664,214 @@
       if (currentWall.points.length >= 2) {
         const i = state.walls.findIndex(w => String(w.id) === String(currentWall.id));
         if (i >= 0) state.walls[i] = currentWall; else state.walls.push(currentWall);
-        dedupeWallsInState();          // ← AJOUT
-        renderWalls();                 // rendu propre d’unique <polyline>
+        dedupeWallsInState();
+        renderWalls();
         await persistWalls();
       }
     };
 
     const cancel = () => teardown();
-    const onKey = (e) => { if (e.key === 'Escape') cancel(); if (e.key === 'Enter') finish(); };
+
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') cancel();
+      else if (e.key === 'Enter') finish();
+      else if (e.key === 'Shift') {
+        shiftDown = true;
+        if (lastMoveX != null && lastMoveY != null) updatePreview(lastMoveX, lastMoveY, true);
+      }
+    };
+
+    const onKeyUp = (e) => {
+      if (e.key === 'Shift') {
+        shiftDown = false;
+        if (lastMoveX != null && lastMoveY != null) updatePreview(lastMoveX, lastMoveY, false);
+      }
+    };
+
     const onDbl = () => finish();
 
     function teardown() {
       $stage.removeEventListener('click', onClick);
       window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
       $stage.removeEventListener('dblclick', onDbl);
-      progress.remove(); preview.remove();
-      $stage.style.cursor = ''; document.body.classList.remove('pc_wall_mode');
+      progress.remove();
+      preview.remove();
+      lenText.remove();
+      angText.remove();
+      $stage.style.cursor = '';
+      document.body.classList.remove('pc_wall_mode');
     }
 
     $stage.addEventListener('click', onClick);
     window.addEventListener('mousemove', onMove);
-    window.addEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
     $stage.addEventListener('dblclick', onDbl, { once: true });
   }
-
 
   // [8] ----------------------------------------------------------------------
   // Sélection multiple, clavier, alignements & répartitions
   // -------------------------------------------------------------------------
-
   function handleSelectableClick(e) {
     const node = e.currentTarget;
     if (e.shiftKey) {
-      if (selection.has(node)) selection.delete(node); else selection.add(node);
-      refreshSelectionStyling();
-      selection.forEach(n => {
-        n.dataset._startL = n.style.left;
-        n.dataset._startT = n.style.top;
-      });
-      e.stopPropagation();
+      if (selection.has(node)) selection.delete(node);
+      else selection.add(node);
     } else {
-      selection.clear(); selection.add(node);
-      refreshSelectionStyling();
+      if (!selection.has(node)) { selection.clear(); selection.add(node); }
     }
+    refreshSelectionStyling();
   }
 
   function refreshSelectionStyling() {
     Array.from(selection).forEach(n => { if (!n.isConnected) selection.delete(n); });
+
     $stage.querySelectorAll('.pc_card, .pc_furn, #pc_svg .wall').forEach(n => {
-      n.classList.toggle('pc_selected', selection.has(n));
+      const isSel = selection.has(n);
+      n.classList.toggle('pc_selected', isSel);
+
+      if (n.tagName === 'polyline' && n.classList.contains('wall')) {
+        const wallId = String(n.dataset.wallId || '');
+        if (isSel) {
+          hideWallMeasures(wallId); hideWallAngles(wallId);
+          const w = state.walls.find(W => String(W.id) === wallId);
+          if (w) buildWallMeasuresFor(w); buildWallAnglesFor(w);
+        } else {
+          if (!n.matches(':hover')) { hideWallMeasures(wallId); hideWallAngles(wallId); }
+        }
+      }
     });
+  }
+
+  // Rectangle en unités (0..W/H du plan)
+  function clampUnitsRect(r) {
+    const W = state.active_plan?.width || 0, H = state.active_plan?.height || 0;
+    const x0 = Math.max(0, Math.min(r.x0, W)), x1 = Math.max(0, Math.min(r.x1, W));
+    const y0 = Math.max(0, Math.min(r.y0, H)), y1 = Math.max(0, Math.min(r.y1, H));
+    return { x0: Math.min(x0, x1), y0: Math.min(y0, y1), x1: Math.max(x0, x1), y1: Math.max(y0, y1) };
+  }
+
+  function rectsOverlap(a, b) {
+    return !(a.x1 <= b.x0 || b.x1 <= a.x0 || a.y1 <= b.y0 || b.y1 <= a.y0);
+  }
+
+  function nodeRectUnits(node) {
+    const Lpx = parseFloat(node.style.left || '0');
+    const Tpx = parseFloat(node.style.top || '0');
+    const Wpx = parseFloat(node.style.width || '0');
+    const Hpx = parseFloat(node.style.height || '0');
+    const Lu = Lpx / unitPx, Tu = Tpx / unitPx, Wu = Wpx / unitPx, Hu = Hpx / unitPx;
+    const rot = parseFloat(node.dataset.rotAbs || node.dataset.rot || '0') || 0;
+    const r = rectFromTopLeftWithRotation(Lu, Tu, Wu, Hu, rot);
+    return { x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h };
+  }
+
+  // Applique la sélection par rectangle (unités). Si add==true → ajoute, sinon remplace.
+  function selectWithinRectUnits(selRect, add) {
+    const R = clampUnitsRect(selRect);
+    if (!add) selection.clear();
+
+    $stage.querySelectorAll('.pc_card, .pc_furn').forEach(node => {
+      const nr = nodeRectUnits(node);
+      if (rectsOverlap(R, nr)) selection.add(node);
+    });
+
+    if ($svg && Array.isArray(state.walls)) {
+      state.walls.forEach(w => {
+        const pts = w.points || [];
+        const hit = pts.some(p => p.x >= R.x0 && p.x <= R.x1 && p.y >= R.y0 && p.y <= R.y1)
+          || pts.some((p, i) => i < pts.length - 1 && segIntersectsRect(p, pts[i + 1], R));
+        if (hit) {
+          const poly = $svg.querySelector(`.wall[data-wall-id="${String(w.id)}"]`);
+          if (poly) selection.add(poly);
+        }
+      });
+    }
+
+    refreshSelectionStyling();
+  }
+
+  function startMarquee(ev) {
+    if (document.body.classList.contains('pc_wall_mode')) return;
+    if (ev.button && ev.button !== 0) return;
+
+    const isOnItem = ev.target.closest('.pc_card, .pc_furn, #aw_start_handle') ||
+      (ev.target.tagName === 'polyline' && ev.target.classList.contains('wall'));
+
+    if (isOnItem) return;
+
+    const box = stageInnerBox();
+    const inside = ev.clientX >= box.left && ev.clientX <= (box.left + box.width) &&
+      ev.clientY >= box.top && ev.clientY <= (box.top + box.height);
+    if (!inside) return;
+
+    marqueeData = {
+      sx: ev.clientX,
+      sy: ev.clientY,
+      add: !!ev.shiftKey,
+      box,
+      moved: false
+    };
+
+    marqueeEl = document.createElement('div');
+    marqueeEl.className = 'pc_marquee';
+    marqueeEl.style.position = 'absolute';
+    marqueeEl.style.left = '0'; marqueeEl.style.top = '0';
+    marqueeEl.style.border = '1.5px dashed #3b82f6';
+    marqueeEl.style.background = 'rgba(59,130,246,.12)';
+    marqueeEl.style.pointerEvents = 'none';
+    marqueeEl.style.zIndex = '9998';
+    $stage.appendChild(marqueeEl);
+
+    $stage.setPointerCapture?.(ev.pointerId);
+    $stage.addEventListener('pointermove', onMarqueeMove);
+    $stage.addEventListener('pointerup', endMarquee, { once: true });
+  }
+
+  function onMarqueeMove(e) {
+    if (!marqueeData || !marqueeEl) return;
+    const { box, sx, sy } = marqueeData;
+
+    const cx = Math.max(box.left, Math.min(e.clientX, box.left + box.width));
+    const cy = Math.max(box.top, Math.min(e.clientY, box.top + box.height));
+    const dx = Math.abs(cx - sx);
+    const dy = Math.abs(cy - sy);
+    if (!marqueeData.moved && (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD)) {
+      marqueeData.moved = true;
+    }
+
+    const x0px = Math.min(sx, cx) - box.left;
+    const y0px = Math.min(sy, cy) - box.top;
+    const wpx = Math.abs(cx - sx);
+    const hpx = Math.abs(cy - sy);
+
+    marqueeEl.style.left = `${x0px}px`;
+    marqueeEl.style.top = `${y0px}px`;
+    marqueeEl.style.width = `${wpx}px`;
+    marqueeEl.style.height = `${hpx}px`;
+
+    const x0u = (Math.min(sx, cx) - box.left) / unitPx;
+    const y0u = (Math.min(sy, cy) - box.top) / unitPx;
+    const x1u = x0u + (wpx / unitPx);
+    const y1u = y0u + (hpx / unitPx);
+    selectWithinRectUnits({ x0: x0u, y0: y0u, x1: x1u, y1: y1u }, marqueeData.add);
+  }
+
+  function endMarquee(e) {
+    $stage.removeEventListener('pointermove', onMarqueeMove);
+    const clickOnly = marqueeData && !marqueeData.moved;
+
+    if (marqueeEl) marqueeEl.remove();
+    marqueeEl = null;
+
+    if (clickOnly) {
+      selection.clear();
+      refreshSelectionStyling();
+    }
+
+    marqueeData = null;
   }
 
   function nudgeSelection(dxPx, dyPx) {
@@ -1736,19 +2927,18 @@
 
           const newX = snapUnits(gx - pxAdj.dx);
           const newY = snapUnits(gy - pxAdj.dy);
-          // Snap spécial pour portes/fenêtres
           const t = (n.dataset.furnitureType || '').toLowerCase();
           if ((t === 'door' || t === 'window') && state.walls.length) {
-            // on “centre” l’objet sur le mur le plus proche
             const center = { x: newX + (pxAdj.wEff / 2), y: newY + (pxAdj.hEff / 2) };
             const s = snapToNearestWall(center.x, center.y, 0.6);
             if (s) {
-              const cx = snapUnits(s.x), cy = snapUnits(s.y);
-              // recentre TL à partir du centre aimanté
+              const cx = snapUnits(s.point.x), cy = snapUnits(s.point.y);
               const nx = snapUnits(cx - (pxAdj.wEff / 2));
               const ny = snapUnits(cy - (pxAdj.hEff / 2));
               if (nx !== newX || ny !== newY) { movedFurn = true; }
               f.x = nx; f.y = ny;
+              const r = Math.round(s.angleDeg);
+              if (f.rotAbs !== r) { f.rotAbs = r; f.rotation = ((r % 360) + 360) % 360; movedFurn = true; }
             } else {
               if (newX !== f.x || newY !== f.y) movedFurn = true;
               f.x = newX; f.y = newY;
@@ -1787,13 +2977,10 @@
     autosavePositions();
     if (movedFurn) autosaveFurniture();
     if (movedWall) {
-      autosaveWalls(); // on persiste (debounce)…
-      // …et c'est tout : PAS de renderWalls ici.
-      refreshSelectionStyling(); // optionnel
+      autosaveWalls();
+      updateWallMeasures();
+      refreshSelectionStyling();
     }
-
-
-
   }
 
   // rect stockage (coin TL) → rect effectif (swap 90°/270°)
@@ -1871,7 +3058,6 @@
     renderWalls();
   }
 
-
   // [9] ----------------------------------------------------------------------
   // Suppression (élève / meuble / mur)
   // -------------------------------------------------------------------------
@@ -1879,42 +3065,28 @@
   function removeElement(el) {
     if (!state.active_plan) return;
 
-    // --- murs
     if (el.tagName === 'polyline' && el.classList.contains('wall')) {
       const wallId = el.dataset.wallId;
+      hideWallMeasures(String(wallId));
+      hideWallAngles(String(wallId));
       const before = state.walls.length;
       state.walls = state.walls.filter(w => String(w.id) !== String(wallId));
       el.remove();
       if (before !== state.walls.length) autosaveWalls();
       selection.delete(el);
       refreshSelectionStyling();
+      cleanupOrphanMeasures();
       return;
     }
 
     const typ = el.dataset.type;
 
-    // --- élève
     if (typ === 'eleve') {
       const eleveId = parseInt(el.dataset.id, 10);
       api.deletePosition(state.active_plan.id, eleveId).then(() => {
         state.positions = state.positions.filter(p => p.eleve_id !== eleveId);
         el.remove();
-
-        const e = state.eleves.find(x => x.id === eleveId);
-        if (e && $elist) {
-          const item = document.createElement('div');
-          item.className = 'pc_eleve_item';
-          item.dataset.eleveId = e.id;
-          const img = document.createElement('img');
-          img.src = PHOTOS_BASE + (e.photo_filename || 'default.jpg');
-          const name = document.createElement('div');
-          name.className = 'name';
-          name.textContent = `${e.prenom} ${e.nom}`;
-          item.append(img, name);
-          item.addEventListener('pointerdown', startDragFromList);
-          $elist.appendChild(item);
-        }
-
+        renderEleveList();
         selection.delete(el);
         refreshSelectionStyling();
       }).catch(err => {
@@ -1924,7 +3096,6 @@
       return;
     }
 
-    // --- meuble
     if (typ === 'furniture') {
       const fid = parseInt(el.dataset.id, 10);
 
@@ -1950,7 +3121,6 @@
       });
     }
   }
-
 
   // [10] ---------------------------------------------------------------------
   // Boot / Chargement
@@ -2034,8 +3204,6 @@
       sentNewFurniture.clear();
 
       render();
-      restoreWallsForPlan();
-
       refreshToolbarActionsEnabled();
       if (pendingSelSnap) {
         restoreSelectionFromSnapshot(pendingSelSnap);
@@ -2049,7 +3217,21 @@
     }
   }
 
-  // --- Helper: ID de plan courant fiable (évite "0")
+  function segIntersectsRect(a, b, R) {
+    const minX = Math.min(a.x, b.x), maxX = Math.max(a.x, b.x);
+    const minY = Math.min(a.y, b.y), maxY = Math.max(a.y, b.y);
+    if (maxX < R.x0 || minX > R.x1 || maxY < R.y0 || minY > R.y1) return false;
+    const line = (p, q, r) => (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y);
+    const onSeg = (p, q, r) => Math.min(p.x, r.x) <= q.x && q.x <= Math.max(p.x, r.x) && Math.min(p.y, r.y) <= q.y && q.y <= Math.max(p.y, r.y);
+    const inter = (p1, q1, p2, q2) => {
+      const o1 = line(p1, q1, p2), o2 = line(p1, q1, q2), o3 = line(p2, q2, p1), o4 = line(p2, q2, q1);
+      if ((o1 === 0 && onSeg(p1, p2, q1)) || (o2 === 0 && onSeg(p1, q2, q1)) || (o3 === 0 && onSeg(p2, p1, q2)) || (o4 === 0 && onSeg(p2, q1, q2))) return true;
+      return (o1 > 0) !== (o2 > 0) && (o3 > 0) !== (o4 > 0);
+    };
+    const tl = { x: R.x0, y: R.y0 }, tr = { x: R.x1, y: R.y0 }, br = { x: R.x1, y: R.y1 }, bl = { x: R.x0, y: R.y1 };
+    return inter(a, b, tl, tr) || inter(a, b, tr, br) || inter(a, b, br, bl) || inter(a, b, bl, tl);
+  }
+
   function currentPlanIdSafe() {
     const v = $sel?.value;
     const n = Number(v);
@@ -2088,7 +3270,6 @@
 
   $edit?.addEventListener('click', () => { editMode = !editMode; refreshFurnitureEditability(); });
 
-  // suppression de plan (optionnel via SEATING_URLS.deletePlan)
   $delPlan?.addEventListener('click', async () => {
     const planId = currentPlanIdSafe();
     if (!planId) { alert("Aucun plan valide sélectionné."); return; }
@@ -2096,19 +3277,17 @@
     const name = $sel?.selectedOptions?.[0]?.text || `Plan ${planId}`;
     if (!confirm(`Supprimer le plan « ${name} » ?\nCette action est irréversible.`)) return;
 
-    console.log('[pc] delete plan id =', planId, 'url=', window.SEATING_URLS?.deletePlan?.(planId));
     const ok = await api.deletePlan(planId);
     if (!ok) { alert("Suppression côté serveur non confirmée."); return; }
 
-    await boot(); // recharge depuis le serveur
+    await boot();
     if ($sel && state.active_plan) {
       $sel.value = String(state.active_plan.id);
       $sel.dispatchEvent(new Event('change'));
     }
   });
 
-
-  // Clavier global : suppression, déplacements, alignements, distributions
+  // Clavier global : suppression, déplacements, alignements & répartitions
   window.addEventListener('keydown', (e) => {
     if (!state.active_plan) return;
     const arrow = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key);
@@ -2121,30 +3300,67 @@
     }
 
     if (arrow) {
-      let stepPx = 1;
-      if (e.shiftKey) stepPx = 10;
-      if (e.altKey) stepPx = Math.max(1, Math.round(unitPx / UI_SUBDIV));
+      // Raccourcis d’alignement/distribution
+      if (ctrlAlt) {
+        if (e.shiftKey) {
+          // Distribution (h/v) avec Ctrl+Alt+Shift+Flèche
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') distributeSelection('h');
+          else distributeSelection('v');
+        } else {
+          // Alignements avec Ctrl+Alt+Flèche
+          if (e.key === 'ArrowLeft') alignSelection('left');
+          if (e.key === 'ArrowRight') alignSelection('right');
+          if (e.key === 'ArrowUp') alignSelection('top');
+          if (e.key === 'ArrowDown') alignSelection('bottom');
+        }
+        e.preventDefault();
+        return;
+      }
+
+      // Déplacement fin/rapide de la sélection
+      let stepPx = 1;                 // fin
+      if (e.shiftKey) stepPx = 10;    // rapide
+      if (e.altKey && !e.ctrlKey) {   // pas de conflit avec Ctrl+Alt
+        stepPx = Math.max(1, Math.round(unitPx / UI_SUBDIV));
+      }
+
       const dx = (e.key === 'ArrowLeft' ? -stepPx : e.key === 'ArrowRight' ? stepPx : 0);
       const dy = (e.key === 'ArrowUp' ? -stepPx : e.key === 'ArrowDown' ? stepPx : 0);
-      nudgeSelection(dx, dy);
-      e.preventDefault(); return;
+
+      if (dx || dy) {
+        nudgeSelection(dx, dy);
+        e.preventDefault();
+      }
+      return;
     }
 
-    if (ctrlAlt) {
-      if (e.key === 'ArrowLeft') { alignSelection('left'); e.preventDefault(); }
-      if (e.key === 'ArrowRight') { alignSelection('right'); e.preventDefault(); }
-      if (e.key === 'ArrowUp') { alignSelection('top'); e.preventDefault(); }
-      if (e.key === 'ArrowDown') { alignSelection('bottom'); e.preventDefault(); }
-      if (e.key?.toLowerCase() === 'h') { distributeSelection('h'); e.preventDefault(); }
-      if (e.key?.toLowerCase() === 'v') { distributeSelection('v'); e.preventDefault(); }
+    // Échap: vide la sélection (hors mode mur déjà géré dans startWallTool)
+    if (e.key === 'Escape') {
+      selection.clear();
+      refreshSelectionStyling();
     }
   });
 
-  // Resize
-  window.addEventListener('resize', () => render());
+  // Sélection rectangulaire sur le stage (marquee)
+  $stage?.addEventListener('pointerdown', startMarquee);
 
-  // init
+  // Fullscreen (réadapte l’échelle et recalcule les mesures visibles)
+  setupFullscreenExact($wrap, () => {
+    fitStageToWrap();
+  }, () => {
+    renderWalls();
+    updateWallMeasures();
+    $stage.querySelectorAll('.pc_furn').forEach(updateFurnitureMeasures);
+  });
+
+  // Resize fenêtre → refit + refresh mesures
+  window.addEventListener('resize', () => {
+    fitStageToWrap();
+    renderWalls();
+    updateWallMeasures();
+    $stage.querySelectorAll('.pc_furn').forEach(updateFurnitureMeasures);
+  });
+
+  // Boot initial
   boot().catch(console.error);
-  setupFullscreenExact($wrap, fitStageToWrap, render);
-
 })();

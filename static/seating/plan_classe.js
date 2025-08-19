@@ -6,6 +6,8 @@
 
   const $stage = document.getElementById('pc_stage');
   if (!$stage) return;
+  let _justPastedAt = 0;
+  const JUST_PASTED_GRACE_MS = 250; // petit délai de grâce
 
   const conf = window.SEATING_CONF || {};
   const classeId = conf.classeId || parseInt($stage.dataset.classeId, 10);
@@ -25,6 +27,8 @@
   const STUDENT_W_CM = 70;
   const STUDENT_H_CM = 50;
   const cmToUnits = (cm) => cm / CM_PER_UNIT;
+
+
 
   // Rayon "coins arrondis" en unités du plan (1 u = 25 cm)
   // 12px à l’échelle par défaut (~32 px/u) ≈ 0.375 u ≈ 9.4 cm
@@ -114,6 +118,14 @@
     return Math.round(s) / UI_SUBDIV;
   };
   const norm360 = a => ((a % 360) + 360) % 360;
+  const round1 = x => Math.round((+x || 0) * 10) / 10; // garde 1 décimale
+  // --- Normalise un meuble reçu du serveur à 0,1° et alimente rotation/rotAbs
+  function normalizeFurnitureArray(arr) {
+    return (arr || []).map(f => {
+      const rot = round1(norm360(parseFloat(f.rotation ?? f.rotAbs ?? f.rot ?? 0)));
+      return { ...f, rotation: rot, rotAbs: rot };
+    });
+  }
 
   const genUid = () => 'f_' + Math.random().toString(36).slice(2, 10);
 
@@ -168,6 +180,31 @@
   const normDeg = a => { let d = a % 360; if (d < 0) d += 360; return d; };
   const isQuarterTurnSwap = deg => (Math.round(normDeg(deg) / 90) % 4) % 2 === 1;
 
+  function updateAlignBarVisibility() {
+    const bar = document.getElementById('pc_align_bar');
+    if (!bar) return;
+    // 'selection' est ton Set global des éléments sélectionnés
+    const count = (typeof selection?.size === 'number') ? selection.size : 0;
+    bar.hidden = !(count >= 2);
+  }
+
+  // Intercepte add/delete/clear sur le Set 'selection' pour MAJ auto
+  function bindSelectionBarHooks() {
+    if (!window.selection || typeof selection.add !== 'function') return;
+    const origAdd = selection.add.bind(selection);
+    const origDel = selection.delete.bind(selection);
+    const origClr = selection.clear ? selection.clear.bind(selection) : null;
+
+    selection.add = (v) => { const r = origAdd(v); updateAlignBarVisibility(); return r; };
+    selection.delete = (v) => { const r = origDel(v); updateAlignBarVisibility(); return r; };
+    if (origClr) {
+      selection.clear = () => { const r = origClr(); updateAlignBarVisibility(); return r; };
+    }
+
+    // Premier affichage
+    updateAlignBarVisibility();
+  }
+
   // empreinte élève (en unités), aimantée aux ticks
   function studentFootprintUnits() {
     const w = Math.max(TICK, Math.round(cmToUnits(STUDENT_W_CM) * UI_SUBDIV) / UI_SUBDIV);
@@ -179,6 +216,7 @@
 
   // helpers sélection
   const selection = new Set();
+  window.selection = selection;
   function selectionSnapshot() {
     return Array.from(selection).map(n => {
       if (n.classList.contains('pc_card')) return { kind: 'card', id: n.dataset.eleveId };
@@ -211,10 +249,18 @@
         selection.add(node);
       }
     } else {
-      if (!already) { selection.clear(); selection.add(node); }
+      // Toujours mono-sélection sur clic simple
+      selection.clear();
+      selection.add(node);
     }
-
+    // Mémorise le dernier meuble cliqué pour Ctrl+C
+    if (node.classList.contains('pc_furn')) {
+      window._lastClickedFurn = node;
+      // Empêche une sélection mixte (cartes + meubles)
+      limitSelectionToKind(node);
+    }
     refreshSelectionStyling();
+
 
     // Positions de départ pour le drag groupé
     selection.forEach(n => {
@@ -232,6 +278,20 @@
       if (keepFurn && !n.classList.contains('pc_furn')) selection.delete(n);
     });
   }
+
+
+  function clearSelection() {
+    selection.clear();
+    refreshSelectionStyling?.();
+  }
+  function selectNode(node, add = false) {
+    if (!add) selection.clear();
+    selection.add(node);
+    refreshSelectionStyling?.();
+  }
+  // dispo global au cas où du code les appelle
+  window.clearSelection = clearSelection;
+  window.selectNode = selectNode;
 
   // couleurs
   function hexToRgb(hex) {
@@ -568,6 +628,7 @@
   }, 500);
 
   // autosave meubles (resync uniquement si création, jamais pendant un drag)
+  // autosave meubles (resync uniquement si création, jamais pendant un drag)
   const autosaveFurniture = (() => {
     let timer = null;
     return () => {
@@ -575,6 +636,7 @@
       clearTimeout(timer);
       timer = setTimeout(async () => {
         try {
+          // 1) ne renvoyer qu’une fois les créations (uid) dans une même fenêtre de debounce
           const payload = state.furniture
             .filter(f => (f.id > 0) || (f.id <= 0 && !sentNewFurniture.has(f.uid)))
             .map(f => ({
@@ -587,29 +649,35 @@
               y: Math.round(f.y * PLAN_SUBDIV),
               w: Math.round(f.w * PLAN_SUBDIV),
               h: Math.round(f.h * PLAN_SUBDIV),
-              rotation: norm360(Math.round((f.rotAbs ?? f.rotation ?? 0))),
+              rotation: round1(norm360(f.rotAbs ?? f.rotation ?? 0)),
+
               z: f.z || 0,
               radius: !!f.radius
             }));
 
           if (!payload.length) return;
 
+          // 2) marquer les créations contenues dans ce lot
           const createdUIDs = payload.filter(p => !p.id && p.client_uid).map(p => p.client_uid);
           createdUIDs.forEach(uid => sentNewFurniture.add(uid));
 
+          // 3) PUT
           await api.saveFurniture(state.active_plan.id, payload);
 
+          // 4) si on vient de créer, résync rapide (sauf pendant un drag)
           if (createdUIDs.length && !isDraggingNow) {
             pendingSelSnap = selectionSnapshot();
             resyncSoon(0);
           }
         } catch (err) {
           console.error('[autosaveFurniture] PUT failed', err);
+          // on laisse une chance de renvoyer à la prochaine fenêtre
           sentNewFurniture.clear();
         }
       }, 500);
     };
   })();
+
 
   // autosave murs (déplacés au clavier)
   const autosaveWalls = debounce(async () => {
@@ -634,7 +702,8 @@
       y: Math.round(f.y * PLAN_SUBDIV),
       w: Math.round(f.w * PLAN_SUBDIV),
       h: Math.round(f.h * PLAN_SUBDIV),
-      rotation: norm360(Math.round((f.rotAbs ?? f.rotation ?? 0))),
+      rotation: round1(norm360(f.rotAbs ?? f.rotation ?? 0)),
+
       z: f.z || 0,
       radius: !!f.radius
     }];
@@ -701,6 +770,38 @@
       updateResizeHandleArrowsFor(el);
     });
   }
+
+  function refreshDomScaleFromState() {
+    // Meubles
+    for (const f of state.furniture) {
+      const el = $stage.querySelector(`.pc_furn[data-id="${f.id}"]`);
+      if (!el) continue;
+      el.style.left = `${toPx(f.x)}px`;
+      el.style.top = `${toPx(f.y)}px`;
+      el.style.width = `${toPx(f.w)}px`;
+      el.style.height = `${toPx(f.h)}px`;
+      // la rotation est déjà stockée dans data-attrs :
+      const rot = parseFloat(el.dataset.rotAbs || el.dataset.rot || '0') || 0;
+      el.style.transform = `rotate(${rot}deg)`;
+      applyCornerRadiusPx(el, f);
+    }
+
+    // Cartes élèves (si tu veux les rescaler aussi)
+    for (const p of state.positions) {
+      const card = $stage.querySelector(`.pc_card[data-eleve-id="${p.eleve_id}"]`);
+      if (!card) continue;
+      const Wpx = toPx(STUDENT_W_CM / CM_PER_UNIT);
+      const Hpx = toPx(STUDENT_H_CM / CM_PER_UNIT);
+      card.style.left = `${toPx(p.x)}px`;
+      card.style.top = `${toPx(p.y)}px`;
+      card.style.width = `${Wpx}px`;
+      card.style.height = `${Hpx}px`;
+      const rot = (p.rotAbs ?? p.rot ?? 0);
+      card.style.transform = `rotate(${rot}deg)`;
+    }
+  }
+
+
 
   function ensureHatchPattern() {
     if (!$svg) return;
@@ -1065,7 +1166,7 @@
     btn.title = 'Pivoter (90°) — Alt+molette: rotation fine';
     btn.textContent = '↻';
     btn.addEventListener('click', (e) => { e.stopPropagation(); setFurnitureRotation(el, 90); });
-    el.addEventListener('wheel', (e) => { if (!e.altKey) return; e.preventDefault(); setFurnitureRotation(el, (e.deltaY > 0 ? -5 : 5)); }, { passive: false });
+    el.addEventListener('wheel', (e) => { if (!e.altKey) return; e.preventDefault(); setFurnitureRotation(el, (e.deltaY > 0 ? -0.1 : 0.1)); }, { passive: false });
     el.appendChild(btn);
   }
   function addFurnCornerToggle(el) {
@@ -1091,15 +1192,26 @@
     btn.style.display = editMode ? 'block' : 'none';
   }
   function setFurnitureRotation(el, delta) {
-    const abs = (parseFloat(el.dataset.rotAbs || el.dataset.rot || '0') || 0) + delta;
+    const cur = parseFloat(el.dataset.rotAbs || el.dataset.rot || '0') || 0;
+    const abs = round1(cur + delta);           // ← garde 0,1°
+    const norm = round1(norm360(abs));         // ← 0..360 à 0,1°
+
     el.dataset.rotAbs = String(abs);
+    el.dataset.rot = String(norm);
     el.style.transform = `rotate(${abs}deg)`;
+
     const id = el.dataset.id ? parseInt(el.dataset.id, 10) : null;
     const f = (id != null) ? state.furniture.find(x => x.id === id) : null;
-    if (f) { f.rotAbs = abs; f.rotation = norm360(abs); autosaveFurniture(); }
-    updateResizeHandleArrowsFor(el); // ← flèches à jour après rotation
+    if (f) {
+      f.rotAbs = abs;       // valeur exacte affichée
+      f.rotation = norm;    // version normalisée
+      autosaveFurniture();
+    }
+
+    updateResizeHandleArrowsFor(el);
     updateFurnitureMeasures(el);
   }
+
   function addFurnitureColorBtn(el) {
     const id = el.dataset.id ? parseInt(el.dataset.id, 10) : null;
     const f = (id != null) ? state.furniture.find(x => x.id === id) : null;
@@ -1148,6 +1260,184 @@
     if ($edit) $edit.textContent = 'Édition meubles : ' + (editMode ? 'ON' : 'OFF');
     $stage.querySelectorAll('.pc_furn').forEach(updateResizeHandleArrowsFor);
   }
+
+  // ---------- Copier / Coller (meubles) ----------
+  let _clipboardFurn = [];                 // tampon local
+  const PASTE_OFFSET_PX = (window.SEATING_CONF?.grid ?? 32); // 1 grille de décalage
+  const PASTE_OFFSET_UNITS = (typeof unitPx === 'number' && unitPx > 0)
+    ? (PASTE_OFFSET_PX / unitPx)
+    : (PASTE_OFFSET_PX / 10 / (typeof CM_PER_UNIT === 'number' && CM_PER_UNIT > 0 ? CM_PER_UNIT : 1)); // fallback
+
+  function pxToUnits(v) {
+    if (typeof unitPx === 'number' && unitPx > 0) return v / unitPx;
+    // fallback 10 px = 1 cm
+    const cm = v / 10;
+    return (typeof CM_PER_UNIT === 'number' && CM_PER_UNIT > 0) ? (cm / CM_PER_UNIT) : cm;
+  }
+  function unitsToPx(v) {
+    if (typeof unitPx === 'number' && unitPx > 0) return v * unitPx;
+    // fallback 10 px = 1 cm
+    const cm = (typeof CM_PER_UNIT === 'number' && CM_PER_UNIT > 0) ? (v * CM_PER_UNIT) : v;
+    return cm * 10;
+  }
+
+  // Extrait un modèle "meuble" (en unités) depuis l'élément DOM .pc_furn
+  function furnitureModelFromEl(el) {
+    const id = el.dataset.id || el.getAttribute('data-id') || (el.id || '').replace(/^f_/, '');
+    const type = el.dataset.type || el.getAttribute('data-type') || 'furniture';
+
+    const L = parseFloat(el.style.left || '0');
+    const T = parseFloat(el.style.top || '0');
+    const W = parseFloat(el.style.width || '0');
+    const H = parseFloat(el.style.height || '0');
+
+    const rot = parseFloat(el.dataset.rotAbs || el.dataset.rot || '0') || 0;
+
+    // En unités plan
+    return {
+      id,
+      type,
+      x: pxToUnits(L),
+      y: pxToUnits(T),
+      w: pxToUnits(W),
+      h: pxToUnits(H),
+      rot
+    };
+  }
+
+  // Ajoute un meuble au state et déclenche le rendu
+
+  function addFurnitureFromModelReturnId(m) {
+    state.furniture || (state.furniture = []);
+
+    const uid = (typeof genUid === 'function') ? genUid() :
+      ('u_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+    const id = (typeof tempIdSeq === 'number') ? (tempIdSeq--) : (-Math.floor(Math.random() * 1e6));
+
+    const copy = {
+      ...m,
+      id,
+      uid,               // très important pour la réconciliation post-save
+      rotation: (m.rot ?? m.rotation ?? 0),
+      rotAbs: (m.rot ?? m.rotation ?? 0),
+      z: 0,
+      radius: !!m.radius
+    };
+
+    state.furniture.push(copy);
+
+    // Rendu immédiat
+    if (typeof renderFurniture === 'function') { renderFurniture(); }
+    else if (typeof render === 'function') { render(); }
+
+    // Sauvegarde incrémentale (laisse l’API créer l’id serveur et nous renvoyer client_uid)
+    try { autosaveFurniture?.(); } catch (e) { console.warn('autosaveFurniture failed', e); }
+
+    return id;
+  }
+
+
+
+  // Copie tous les meubles sélectionnés
+  function copySelectedFurniture() {
+    const src = window.selection || selection;
+    let furnNodes = Array.from(src || []).filter(n => n.classList?.contains('pc_furn'));
+    if (!furnNodes.length) return;
+
+    // S’il y a plusieurs meubles sélectionnés mais qu’on a un dernier cliqué,
+    // on ne copie QUE celui-là (évite de recopier l’ancien meuble).
+    if (furnNodes.length > 1 && window._lastClickedFurn && furnNodes.includes(window._lastClickedFurn)) {
+      furnNodes = [window._lastClickedFurn];
+    }
+
+
+    _clipboardFurn = furnNodes.map(furnitureModelFromEl);
+  }
+
+
+
+  // Colle (duplique) les meubles copiés, avec un petit décalage
+  function pasteClipboardFurniture() {
+    if (!_clipboardFurn.length) return;
+
+    const newIds = [];
+    for (const m of _clipboardFurn) {
+      const dm = { ...m, x: m.x + PASTE_OFFSET_UNITS, y: m.y + PASTE_OFFSET_UNITS };
+
+      // on intercepte l'id généré par addFurnitureFromModel
+      const newId = addFurnitureFromModelReturnId(dm);
+      if (newId) newIds.push(newId);
+    }
+
+    // Sélection propre : uniquement les copies
+    if (newIds.length) {
+      clearSelection();
+      newIds.forEach(id => {
+        const el = document.querySelector(`.pc_furn[data-id="${id}"]`);
+        if (el) selectNode(el, true);
+      });
+    }
+
+  }
+
+  // ====== Copie/Coller meubles : priorité à la scène ======
+  (function setupCopyPasteScope() {
+    const stage = document.getElementById('pc_stage');
+    stage?.querySelectorAll('.pc_furn').forEach(n => n.remove());
+    if (!stage) return;
+
+    // 1) Savoir si on est "armé" (souris sur la scène ou on a cliqué dedans)
+    let HOTKEYS_ARMED = false;
+
+    const isEditable = (t) => {
+      if (!t) return false;
+      if (t.isContentEditable) return true;
+      const tn = (t.tagName || '').toUpperCase();
+      return tn === 'INPUT' || tn === 'TEXTAREA' || tn === 'SELECT';
+    };
+
+    stage.addEventListener('pointerenter', () => { HOTKEYS_ARMED = true; });
+    stage.addEventListener('pointerleave', () => { HOTKEYS_ARMED = false; });
+
+    // Quand on clique dans la scène : on "prend la main" et on blur les inputs
+    stage.addEventListener('pointerdown', () => {
+      HOTKEYS_ARMED = true;
+      const ae = document.activeElement;
+      if (isEditable(ae)) ae.blur();
+    });
+
+    // 2) Intercepter globalement Ctrl+C / Ctrl+V si la scène est armée
+    window.addEventListener('keydown', (e) => {
+      const isMod = e.ctrlKey || e.metaKey;
+      if (!isMod) return;
+
+      const code = e.code; // 'KeyC', 'KeyV' (robuste AZERTY/QWERTY)
+
+      // On n’active copier/coller meubles QUE si la scène est armée
+      if (!HOTKEYS_ARMED) return;
+
+      // S'il y a un input focus mais on est armé, on prend la priorité
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation?.();
+
+      if (code === 'KeyC') {
+        // Copier uniquement les meubles sélectionnés
+        if (window.selection && Array.from(selection).some(n => n.classList?.contains('pc_furn'))) {
+          copySelectedFurniture();
+        }
+        return;
+      }
+      if (code === 'KeyV') {
+        pasteClipboardFurniture();
+        return;
+      }
+    }, { capture: true }); // capture = on passe avant les champs/handlers
+  })();
+
+
+
+
 
   function makeStudentGhost(eleve) {
     const ghost = document.createElement('div');
@@ -1214,13 +1504,14 @@
 
       if (f.rotation != null) el.dataset.rot = String(f.rotation);
       if (f.rotAbs != null) el.dataset.rotAbs = String(f.rotAbs);
+      el.style.transformOrigin = 'center center';
+      el.style.transform = `rotate(${el.dataset.rotAbs || el.dataset.rot || 0}deg)`;
 
       el.style.left = `${toPx(f.x)}px`;
       el.style.top = `${toPx(f.y)}px`;
       el.style.width = `${toPx(f.w)}px`;
       el.style.height = `${toPx(f.h)}px`;
-      el.style.transformOrigin = 'center center';
-      el.style.transform = `rotate(${el.dataset.rotAbs || el.dataset.rot || 0}deg)`;
+
       applyCornerRadiusPx(el, f);
 
       const color = f.color || FURN_COLORS[t] || null; if (color) applyFurnitureColor(el, t, color);
@@ -1890,7 +2181,7 @@
     if (ev.target.classList.contains('rz')) return;
     ev.preventDefault();
     const el = ev.currentTarget;
-    isDraggingNow = true;
+    isDraggingNow = true; autosaveFurniture.cancel?.();
 
     dragData = {
       kind: 'furn',
@@ -1923,11 +2214,15 @@
     }
   }
 
+  // Fin de drag d'un meuble
+  // Fin de drag d'un meuble — version cohérente avec startDragFurniture/dragData
+  // Fin de drag d'un meuble — commit DOM -> state + autosave + resync
   function endDragFurniture(ev) {
     const el = ev.currentTarget;
-    el.releasePointerCapture(ev.pointerId);
+    try { el.releasePointerCapture(ev.pointerId); } catch { }
     el.removeEventListener('pointermove', onDragFurnitureMove);
 
+    // Pas de vrai déplacement : juste gérer le toggle Shift éventuel
     if (!dragData || !dragData.moved) {
       if (pendingShiftDeselect && pendingShiftDeselect === el) {
         if (selection.has(el)) selection.delete(el);
@@ -1940,11 +2235,61 @@
       return;
     }
 
+    // ----- lire position finale (px)
+    const Lpx = parseFloat(el.style.left || '0') || 0;
+    const Tpx = parseFloat(el.style.top || '0') || 0;
+    const Wpx = parseFloat(el.style.width || '0') || 0;
+    const Hpx = parseFloat(el.style.height || '0') || 0;
+
+    // ----- px -> unités
+    const wU = (typeof pxToUnits === 'function') ? pxToUnits(Wpx) : (Wpx / unitPx);
+    const hU = (typeof pxToUnits === 'function') ? pxToUnits(Hpx) : (Hpx / unitPx);
+    let gx = (typeof pxToUnits === 'function') ? pxToUnits(Lpx) : (Lpx / unitPx);
+    let gy = (typeof pxToUnits === 'function') ? pxToUnits(Tpx) : (Tpx / unitPx);
+
+    // snap grille
+    if (typeof snapUnits === 'function') { gx = snapUnits(gx); gy = snapUnits(gy); }
+
+    // rester dans la scène
+    if (typeof clampToStage === 'function') {
+      const c = clampToStage(gx, gy, wU, hU);
+      gx = c.gx; gy = c.gy;
+    }
+
+    // aimantation/anti-collision
+    if (typeof snapCollapse === 'function' && typeof rectsInPlan === 'function') {
+      const meId = el.dataset.id ? parseInt(el.dataset.id, 10) : null;
+      const snapped = snapCollapse({ x: gx, y: gy, w: wU, h: hU }, rectsInPlan({ furnitureId: meId }));
+      gx = snapped.x; gy = snapped.y;
+    }
+
+    // répercuter au DOM (px)
+    el.style.left = (gx * unitPx) + 'px';
+    el.style.top = (gy * unitPx) + 'px';
+
+    // ----- mettre à jour le state
+    const id = el.dataset.id ? parseInt(el.dataset.id, 10) : null;
+    if (id != null && Array.isArray(state?.furniture)) {
+      const f = state.furniture.find(x => x.id === id);
+      if (f) {
+        f.x = gx; f.y = gy;
+        if (typeof markFurnDirty === 'function') { try { markFurnDirty(f); } catch { } }
+      }
+    }
+
+    // ----- sauvegarde unique + resync contrôlé
+    try { autosaveFurniture?.(); } catch (e) { console.warn(e); }
+    try { resyncSoon?.(0); } catch (e) { console.warn(e); }
+
+    // cleanup
     pendingShiftDeselect = null;
-    nudgeSelection(0, 0); // commit px→unités (autosave)
     dragData = null;
     isDraggingNow = false;
   }
+
+
+
+
   // Helpers pour le resize ancré (repère local du meuble)
   function _anchorLocalForOppositeHandle(dir, W, H) {
     // dir = poignée saisie ; l’ancre = coin opposé
@@ -2078,81 +2423,28 @@
   }
 
   /* ============================================================================
-     AutoWalls — Traçage automatique des murs (poignée de départ draggable)
-     - Poignée SVG draggable (cercle rouge + croix) pour le point de départ
-     - Clic dans le plan = téléporte la poignée (si elle existe), sinon la crée
-     - Drag avec accroche à la grille (SEATING_CONF.grid). Maintenir Alt = pas de snap
-     - Segments illimités : Mur N (cm) + Angle N (°)
-     - Orientation initiale & sens horaire/antihoraire (facile à rajouter si besoin)
-     - Génération d’un polyline dans le calque SVG
+     AutoWalls — Traçage automatique des murs (flèche orientable)
+     - Flèche SVG draggable (position) + rotative (wheel) = orientation Mur 1
+     - Clic dans le plan = crée/déplace la flèche
+     - Drag&drop d’un jeton #aw_handle_token si présent (optionnel)
+     - Saisie Mur N (cm) + Angle N (°), illimité — Angle N appliqué APRÈS le segment N
+     - Calcul en UNITÉS (CM_PER_UNIT) puis insertion dans state.walls + render + save
      ============================================================================ */
-
+  /* ============================================================================
+    AutoWalls — Traçage automatique des murs (flèche orientable)
+    ============================================================================ */
   const AutoWalls = (() => {
-    // ---- État interne ---------------------------------------------------------
-    let startHandle = null;           // <g id="aw_start_handle">
-    let startPos = null;              // {x,y} -- SOURCE DE VÉRITÉ
+    // ===== ÉTAT =====
+    let gPos = null;                 // <g id="aw_start_handle"> (translate)
+    let startPos = null;             // {x,y} px (coords SVG)
+    let startDirDeg = 0;             // orientation (0° = →)
     let dragging = false;
+    let dragOffset = { x: 0, y: 0 };
 
-    let dragOffset = { x: 0, y: 0 }; // offset curseur -> centre poignée
     const DEG2RAD = Math.PI / 180;
-
-    // ---- Utilitaires ----------------------------------------------------------
-    // Utilitaire
-    const cmToUnits = (cm) => cm / CM_PER_UNIT; // ou la fonction existante si tu l'as déjà
-
-    function buildPointsUnits() {
-      const handlePx = getHandlePos();
-      if (!handlePx) { alert('Choisis un point de départ.'); return null; }
-
-      // convertit la poignée px -> unités
-      const startU = { x: handlePx.x / unitPx, y: handlePx.y / unitPx };
-
-      const segs = readSegments(); // {length_cm, turn_deg}
-      if (!segs.length) { alert('Ajoute au moins un segment.'); return null; }
-
-      const close = document.getElementById('aw_close')?.checked ?? true;
-
-      const pts = [startU];
-      let dirDeg = 0; // 0° droite, 90° bas (Y+)
-      segs.forEach(s => {
-        const L = cmToUnits(s.length_cm);
-        const last = pts[pts.length - 1];
-        const nx = last.x + Math.cos(dirDeg * DEG2RAD) * L;
-        const ny = last.y + Math.sin(dirDeg * DEG2RAD) * L;
-        pts.push({ x: nx, y: ny });
-        dirDeg = (dirDeg + s.turn_deg) % 360;
-      });
-
-      if (close) {
-        const a = pts[0], b = pts[pts.length - 1];
-        if (a.x !== b.x || a.y !== b.y) pts.push({ x: a.x, y: a.y });
-      }
-      return pts;
-    }
-
-    async function validate() {
-      const pts = buildPointsUnits();
-      if (!pts?.length) return;
-
-      const id = genUid();
-      state.walls.push({ id, points: pts });
-      dedupeWallsInState();
-      renderWalls();           // dessine via la classe .wall existante
-      updateWallMeasures();    // (si tu l’appelles ailleurs aussi)
-
-      // Sauvegarde comme le wall tool
-      try {
-        const planId = currentPlanIdSafe();
-        const payloadWalls = encodeWallsForStorage(state.walls);
-        await api.saveWalls?.(planId, payloadWalls);
-        try { localStorage.setItem(`pc_walls_${planId}`, JSON.stringify(payloadWalls)); } catch { }
-      } catch (e) {
-        console.warn('saveWalls API KO', e);
-      }
-    }
-
     const gridSize = (window.SEATING_CONF && +window.SEATING_CONF.grid) ? +window.SEATING_CONF.grid : 0;
 
+    // ===== SVG / SCÈNE =====
     function getSvgLayer() {
       return document.querySelector('#pc_svg, #pc_walls_layer, #pc_stage_svg, svg');
     }
@@ -2162,190 +2454,76 @@
       if (!r) {
         r = document.createElementNS(ns, 'rect');
         r.classList.add('pc-click-surface');
-        r.setAttribute('x', 0); r.setAttribute('y', 0);
-        r.setAttribute('width', '100%'); r.setAttribute('height', '100%');
-        r.setAttribute('fill', 'transparent'); r.setAttribute('pointer-events', 'all');
+        r.setAttribute('x', 0);
+        r.setAttribute('y', 0);
+        r.setAttribute('width', '100%');
+        r.setAttribute('height', '100%');
+        r.setAttribute('fill', 'transparent');
+        r.setAttribute('pointer-events', 'all');
         svg.insertBefore(r, svg.firstChild);
       }
     }
     function screenToSvg(svg, clientX, clientY, fallbackEvt) {
-      const pt = svg.createSVGPoint(); pt.x = clientX; pt.y = clientY;
-      const ctm = svg.getScreenCTM?.(); return ctm ? pt.matrixTransform(ctm.inverse())
+      const pt = svg.createSVGPoint();
+      pt.x = clientX; pt.y = clientY;
+      const ctm = svg.getScreenCTM?.();
+      return ctm ? pt.matrixTransform(ctm.inverse())
         : { x: fallbackEvt?.offsetX || 0, y: fallbackEvt?.offsetY || 0 };
     }
-    function bindTokenDragDrop() {
-      const token = document.getElementById('aw_handle_token');
-      const svg = getSvgLayer(); ensureHandleRef(); if (!token || !svg) return;
-      ensureClickSurface(svg);
-
-      // autoriser le drop
-      svg.addEventListener('dragover', (e) => { e.preventDefault(); });
-      svg.addEventListener('drop', (e) => {
-        e.preventDefault();
-        const p = screenToSvg(svg, e.clientX, e.clientY, e);
-        let x = p.x, y = p.y;
-        const grid = (window.SEATING_CONF && +window.SEATING_CONF.grid) ? +window.SEATING_CONF.grid : 0;
-        if (grid) { x = Math.round(x / grid) * grid; y = Math.round(y / grid) * grid; }
-        if (!startHandle) createStartHandle(svg, x, y);
-        else moveHandle(startHandle, x, y);
-      });
-
-      // dragstart sur le jeton (optionnel : dataTransfer pour Firefox)
-      token.addEventListener('dragstart', (e) => {
-        try { e.dataTransfer.setData('text/plain', 'aw-handle'); } catch { }
-      });
-
-      // clic sur le jeton = créer/centrer la poignée au milieu de la scène
-      token.addEventListener('click', () => {
-        const rect = (document.getElementById('pc_stage') || svg).getBoundingClientRect();
-        const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
-        const p = screenToSvg(svg, cx, cy);
-        if (!startHandle) createStartHandle(svg, p.x, p.y);
-        else moveHandle(startHandle, p.x, p.y);
-      });
+    function snap(v) {
+      if (!gridSize) return v;
+      return Math.round(v / gridSize) * gridSize;
     }
-
-
-    function snap(val) {
-      if (!gridSize || gridSize <= 0) return val;
-      return Math.round(val / gridSize) * gridSize;
-    }
-
     function setDisplay(x, y) {
-      const disp = document.getElementById('aw_start_display');
-      if (disp) disp.textContent = `Départ : (${Math.round(x)}, ${Math.round(y)})`;
+      const el = document.getElementById('aw_start_display');
+      if (!el) return;
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        const a = ((startDirDeg % 360) + 360) % 360;
+        el.textContent = `Départ : (${Math.round(x)}, ${Math.round(y)}) – ${Math.round(a)}°`;
+      } else {
+        el.textContent = 'Aucun point choisi';
+      }
     }
 
-    // ---- Poignée de départ ----------------------------------------------------
-    function createStartHandle(svg, x, y) {
-      const ns = 'http://www.w3.org/2000/svg';
-      const g = document.createElementNS(ns, 'g');
-      g.setAttribute('id', 'aw_start_handle');
-      g.setAttribute('cursor', 'grab');
-      g.style.pointerEvents = 'all';
-
-      const circle = document.createElementNS(ns, 'circle');
-      circle.setAttribute('r', 8);
-      circle.setAttribute('fill', '#e11d48');
-      circle.setAttribute('stroke', '#ffffff');
-      circle.setAttribute('stroke-width', '2');
-
-      const crossV = document.createElementNS(ns, 'line');
-      crossV.setAttribute('x1', 0); crossV.setAttribute('y1', -5);
-      crossV.setAttribute('x2', 0); crossV.setAttribute('y2', 5);
-      crossV.setAttribute('stroke', '#ffffff'); crossV.setAttribute('stroke-width', '2');
-
-      const crossH = document.createElementNS(ns, 'line');
-      crossH.setAttribute('x1', -5); crossH.setAttribute('y1', 0);
-      crossH.setAttribute('x2', 5); crossH.setAttribute('y2', 0);
-      crossH.setAttribute('stroke', '#ffffff'); crossH.setAttribute('stroke-width', '2');
-
-      g.appendChild(circle);
-      g.appendChild(crossV);
-      g.appendChild(crossH);
-      svg.appendChild(g);
-
-      moveHandle(g, x, y);
-      bindHandleDrag(g, svg);
-      startHandle = g;
-      return g;
+    // ===== UNITÉS =====
+    function cmToUnits(cm) {
+      if (typeof CM_PER_UNIT === 'number' && CM_PER_UNIT > 0) return cm / CM_PER_UNIT;
+      return cm; // fallback : 1 unité = 1 cm
+    }
+    function pxToUnits(px) {
+      if (typeof unitPx === 'number' && unitPx > 0) return px / unitPx;
+      // fallback : 10 px = 1 cm
+      const cm = px / 10;
+      return cmToUnits(cm);
     }
 
-    function ensureHandleRef() {
-      if (startHandle && startHandle.isConnected) return startHandle;
-      startHandle = document.getElementById('aw_start_handle') || null;
-      return startHandle;
-    }
-
-    function moveHandle(g, x, y) {
-      g.setAttribute('transform', `translate(${x}, ${y})`);
-      startPos = { x, y };                          // <— on mémorise ici
-      const disp = document.getElementById('aw_start_display');
-      if (disp) disp.textContent = `Départ : (${Math.round(x)}, ${Math.round(y)})`;
-    }
-
-
-    function getHandlePos() {
-      if (!startHandle) return null;
-      const tr = startHandle.getAttribute('transform') || '';
-      // transform="translate(x, y)"
-      const m = /translate\(([-\d.]+)[ ,]([-\d.]+)\)/.exec(tr);
-      if (!m) return null;
-      return { x: parseFloat(m[1]), y: parseFloat(m[2]) };
-    }
-
-    // ---- Drag de la poignée ---------------------------------------------------
-    function bindHandleDrag(g, svg) {
-      const onPointerDown = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        g.setPointerCapture?.(e.pointerId);
-        g.setAttribute('cursor', 'grabbing');
-        dragging = true;
-
-        const p = screenToSvg(svg, e.clientX, e.clientY, e);
-        const cur = getHandlePos() || { x: p.x, y: p.y };
-        dragOffset.x = p.x - cur.x;
-        dragOffset.y = p.y - cur.y;
-      };
-
-      const onPointerMove = (e) => {
-        if (!dragging) return;
-        const p = screenToSvg(svg, e.clientX, e.clientY, e);
-        let nx = p.x - dragOffset.x;
-        let ny = p.y - dragOffset.y;
-
-        // Snap à la grille (maintenir Alt pour désactiver)
-        if (!e.altKey && gridSize) {
-          nx = snap(nx);
-          ny = snap(ny);
-        }
-        moveHandle(g, nx, ny);
-      };
-
-      const onPointerUp = (e) => {
-        dragging = false;
-        g.releasePointerCapture?.(e.pointerId);
-        g.setAttribute('cursor', 'grab');
-      };
-
-      g.addEventListener('pointerdown', onPointerDown);
-      window.addEventListener('pointermove', onPointerMove);
-      window.addEventListener('pointerup', onPointerUp);
-    }
-
-    // ---- UI lignes Mur/Angle --------------------------------------------------
-    function makeRow(index) {
+    // ===== LIGNES UI =====
+    function makeRow(i) {
       const row = document.createElement('div');
       row.className = 'aw-row';
       row.innerHTML = `
       <div class="aw-cell">
-        <label for="aw_len_${index}">Mur ${index} (cm)</label>
-        <input type="number" id="aw_len_${index}" class="aw-len" min="0" step="1" placeholder="ex. 300">
+        <label for="aw_len_${i}">Mur ${i} (cm)</label>
+        <input type="number" id="aw_len_${i}" class="aw-len" min="0" step="1" placeholder="ex. 300">
       </div>
       <div class="aw-cell">
-        <label for="aw_ang_${index}">Angle ${index} (°)</label>
-        <input type="number" id="aw_ang_${index}" class="aw-ang" step="1" placeholder="ex. 90">
+        <label for="aw_ang_${i}">Angle ${i} (°)</label>
+        <input type="number" id="aw_ang_${i}" class="aw-ang" step="1" placeholder="ex. 90">
       </div>
       <button type="button" class="aw-del" title="Supprimer cette ligne">×</button>
     `;
       return row;
     }
-
     function addRow(autofocus = true) {
       const box = document.getElementById('aw_rows');
-      const index = box.querySelectorAll('.aw-row').length + 1;
-      const row = makeRow(index);
+      const i = box.querySelectorAll('.aw-row').length + 1;
+      const row = makeRow(i);
       box.appendChild(row);
 
       const lenEl = row.querySelector('.aw-len');
       const angEl = row.querySelector('.aw-ang');
-
       const onChange = () => {
-        if (lenEl.value && angEl.value) {
-          const isLast = row === box.lastElementChild;
-          if (isLast) addRow(false);
-        }
+        if (lenEl.value && angEl.value && row === box.lastElementChild) addRow(false);
       };
       lenEl.addEventListener('input', onChange);
       angEl.addEventListener('input', onChange);
@@ -2353,10 +2531,8 @@
       row.querySelector('.aw-del').addEventListener('click', () => { row.remove(); renumberRows(); });
       if (autofocus) lenEl.focus();
     }
-
     function renumberRows() {
-      const rows = [...document.querySelectorAll('#aw_rows .aw-row')];
-      rows.forEach((r, i) => {
+      [...document.querySelectorAll('#aw_rows .aw-row')].forEach((r, i) => {
         const idx = i + 1;
         r.querySelector('.aw-len').id = `aw_len_${idx}`;
         r.querySelector('.aw-ang').id = `aw_ang_${idx}`;
@@ -2366,117 +2542,241 @@
         r.querySelector(`label[for="aw_ang_${idx}"]`).textContent = `Angle ${idx} (°)`;
       });
     }
-
-    function readRows() {
-      const rows = [...document.querySelectorAll('#aw_rows .aw-row')];
+    function readSegments() {
       const segs = [];
-      for (const r of rows) {
+      for (const r of document.querySelectorAll('#aw_rows .aw-row')) {
         const len = parseFloat(r.querySelector('.aw-len')?.value || '');
         const ang = parseFloat(r.querySelector('.aw-ang')?.value || '');
-        if (Number.isFinite(len) && len > 0) {
-          segs.push({ length_cm: len, turn_deg: Number.isFinite(ang) ? ang : 0 });
-        }
+        if (Number.isFinite(len) && len > 0) segs.push({ length_cm: len, turn_deg: Number.isFinite(ang) ? ang : 0 });
       }
       return segs;
     }
 
-    // ---- Construction du chemin ----------------------------------------------
-    // Convention : orientation initiale = 0° (vers la droite), angle N appliqué APRÈS le segment N
-    // Sens positif = horaire (si tu veux antihoraire : remplace turn_deg par -turn_deg)
-    function buildPoints() {
-      if (!startPos) { alert('Clique/dépose d’abord le point de départ.'); return null; }
+    // ===== FLÈCHE ORIENTABLE =====
+    function ensureArrowHead(svg) {
+      const ns = 'http://www.w3.org/2000/svg';
+      let defs = svg.querySelector('defs');
+      if (!defs) { defs = document.createElementNS(ns, 'defs'); svg.insertBefore(defs, svg.firstChild); }
+      let m = defs.querySelector('#aw_arrow_head');
+      if (!m) {
+        m = document.createElementNS(ns, 'marker');
+        m.setAttribute('id', 'aw_arrow_head');
+        m.setAttribute('markerWidth', '10');
+        m.setAttribute('markerHeight', '10');
+        m.setAttribute('refX', '10');
+        m.setAttribute('refY', '5');
+        m.setAttribute('orient', 'auto-start-reverse');
+        const path = document.createElementNS(ns, 'path');
+        path.setAttribute('d', 'M0,0 L10,5 L0,10 Z');
+        path.setAttribute('fill', '#e11d48');
+        m.appendChild(path);
+        defs.appendChild(m);
+      }
+    }
+    function createStartHandle(svg, x, y) {
+      const ns = 'http://www.w3.org/2000/svg';
+      ensureArrowHead(svg);
 
-      const segs = readRows();
+      gPos = document.createElementNS(ns, 'g');
+      gPos.setAttribute('id', 'aw_start_handle');
+      gPos.style.pointerEvents = 'all';
+      gPos.setAttribute('cursor', 'grab');
+
+      const gDir = document.createElementNS(ns, 'g');
+      gDir.classList.add('aw-dir'); // transform-origin: 0 0;
+
+      const line = document.createElementNS(ns, 'line');
+      line.setAttribute('x1', '0'); line.setAttribute('y1', '0');
+      line.setAttribute('x2', '28'); line.setAttribute('y2', '0');
+      line.setAttribute('stroke', '#e11d48'); line.setAttribute('stroke-width', '3');
+      line.setAttribute('marker-end', 'url(#aw_arrow_head)');
+
+      const dot = document.createElementNS(ns, 'circle');
+      dot.setAttribute('r', '5'); dot.setAttribute('cx', '0'); dot.setAttribute('cy', '0');
+      dot.setAttribute('fill', '#e11d48'); dot.setAttribute('stroke', '#fff'); dot.setAttribute('stroke-width', '2');
+
+      gDir.appendChild(line);
+      gDir.appendChild(dot);
+      gPos.appendChild(gDir);
+      svg.appendChild(gPos);
+
+      moveHandle(x, y);
+      setHandleDir(0);
+      bindHandleInteractions(gPos, gDir, svg);
+      return gPos;
+    }
+    function moveHandle(x, y) {
+      if (!gPos) return;
+      gPos.setAttribute('transform', `translate(${x}, ${y})`);
+      startPos = { x, y };
+      setDisplay(x, y);
+    }
+    function setHandleDir(deg) {
+      startDirDeg = deg;
+      gPos?.querySelector('.aw-dir')?.setAttribute('transform', `rotate(${deg})`);
+      if (startPos) setDisplay(startPos.x, startPos.y);
+    }
+    function bindHandleInteractions(g, gDir, svg) {
+      g.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        g.setPointerCapture?.(e.pointerId);
+        g.setAttribute('cursor', 'grabbing');
+        dragging = true;
+        const p = screenToSvg(svg, e.clientX, e.clientY, e);
+        dragOffset.x = p.x - startPos.x;
+        dragOffset.y = p.y - startPos.y;
+      });
+      window.addEventListener('pointermove', (e) => {
+        if (!dragging || !gPos) return;
+        const p = screenToSvg(svg, e.clientX, e.clientY, e);
+        let nx = p.x - dragOffset.x;
+        let ny = p.y - dragOffset.y;
+        if (gridSize && !e.altKey) { nx = snap(nx); ny = snap(ny); }
+        moveHandle(nx, ny);
+      });
+      window.addEventListener('pointerup', (e) => {
+        if (!dragging) return;
+        dragging = false;
+        g.releasePointerCapture?.(e.pointerId);
+        g.setAttribute('cursor', 'grab');
+      });
+      g.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const step = e.altKey ? 1 : 15;
+        const delta = (e.deltaY > 0 ? step : -step);
+        setHandleDir((startDirDeg + delta) % 360);
+      }, { passive: false });
+    }
+
+    // ===== CONSTRUCTION CHEMIN (UNITÉS) =====
+    function getAngleMode() {
+      // 'interior' (par défaut), 'turn' (rotation), 'absolute' (azimut)
+      const sel = document.getElementById('aw_angle_mode');
+      return sel?.value || 'interior';
+    }
+    function buildPointsUnits() {
+      if (!startPos) { alert('Clique/dépose d’abord le point de départ.'); return null; }
+      const segs = readSegments();
       if (!segs.length) { alert('Ajoute au moins un segment.'); return null; }
 
       const close = document.getElementById('aw_close')?.checked ?? true;
+      const mode = getAngleMode();
 
-      const pts = [{ x: startPos.x, y: startPos.y }];
-      let dirDeg = 0;
-      // … (le reste inchangé)
-      // 0° = → ; 90° = ↓ (SVG Y+ vers le bas) ; -90° = ↑
+      // départ en unités
+      const pts = [{ x: pxToUnits(startPos.x), y: pxToUnits(startPos.y) }];
+      let dirDeg = startDirDeg || 0; // orientation initiale = flèche
 
       segs.forEach((s) => {
-        const Lpx = cmToPx(s.length_cm);
-        const dx = Math.cos(dirDeg * DEG2RAD) * Lpx;
-        const dy = Math.sin(dirDeg * DEG2RAD) * Lpx;
+        const L = cmToUnits(s.length_cm);
         const last = pts[pts.length - 1];
-        const next = { x: last.x + dx, y: last.y + dy };
-        pts.push(next);
-        dirDeg = (dirDeg + s.turn_deg) % 360; // horaire
+        const nx = last.x + Math.cos(dirDeg * DEG2RAD) * L;
+        const ny = last.y + Math.sin(dirDeg * DEG2RAD) * L;
+        pts.push({ x: nx, y: ny });
+
+        // Appliquer l’angle pour orienter le segment suivant
+        let applied;
+        if (mode === 'interior') {
+          // angle intérieur -> rotation externe (sens positif = horaire)
+          applied = 180 - s.turn_deg;          // ex: intérieur 140° => +40°
+        } else if (mode === 'absolute') {
+          // orientation absolue visée (azimut) pour le prochain segment
+          applied = (s.turn_deg - dirDeg);
+        } else { // 'turn' (rotation pure)
+          applied = s.turn_deg;
+        }
+        dirDeg = (dirDeg + applied) % 360;
       });
 
       if (close) {
-        const first = pts[0];
-        const last = pts[pts.length - 1];
-        if (first.x !== last.x || first.y !== last.y) pts.push({ x: first.x, y: first.y });
+        const a = pts[0], b = pts[pts.length - 1];
+        if (a.x !== b.x || a.y !== b.y) pts.push({ x: a.x, y: a.y });
       }
       return pts;
     }
 
-    function addWallsPolyline(points) {
-      const parent = getSvgLayer();
-      if (!parent) return;
-      const ns = 'http://www.w3.org/2000/svg';
-      const poly = document.createElementNS(ns, 'polyline');
-      poly.setAttribute('points', points.map(p => `${p.x},${p.y}`).join(' '));
-      poly.setAttribute('class', 'pc-wall');
-      parent.appendChild(poly);
-    }
+    // ===== PERSIST/RENDER =====
+    async function validate() {
+      const pts = buildPointsUnits();
+      if (!pts?.length) return;
 
-    // ---- Actions --------------------------------------------------------------
-    function validate() {
-      const pts = buildPoints();
-      if (pts) addWallsPolyline(pts);
-    }
+      try {
+        const id = (typeof genUid === 'function') ? genUid() : `w_${Date.now().toString(36)}`;
+        (window.state || (window.state = {}));
+        state.walls || (state.walls = []);
+        state.walls.push({ id, points: pts });
 
+        if (typeof dedupeWallsInState === 'function') dedupeWallsInState();
+        if (typeof renderWalls === 'function') renderWalls();
+        if (typeof updateWallMeasures === 'function') updateWallMeasures();
+
+        const planId = (typeof currentPlanIdSafe === 'function') ? currentPlanIdSafe() : null;
+        if (planId != null && window.api?.saveWalls && typeof encodeWallsForStorage === 'function') {
+          const payloadWalls = encodeWallsForStorage(state.walls);
+          await api.saveWalls(planId, payloadWalls);
+          try { localStorage.setItem(`pc_walls_${planId}`, JSON.stringify(payloadWalls)); } catch { }
+        }
+      } catch (e) {
+        console.warn('[AutoWalls] save/render walls error:', e);
+      }
+    }
     function clearAll() {
-      document.getElementById('aw_rows').innerHTML = '';
-      addRow(); addRow(false);
-      // Supprime la poignée
-      if (startHandle && startHandle.parentNode) startHandle.parentNode.removeChild(startHandle);
-      startHandle = null;
+      const box = document.getElementById('aw_rows');
+      if (box) { box.innerHTML = ''; addRow(); addRow(false); }
+      if (gPos && gPos.parentNode) gPos.parentNode.removeChild(gPos);
+      gPos = null;
+      startPos = null;
+      startDirDeg = 0;
       setDisplay(NaN, NaN);
-      const disp = document.getElementById('aw_start_display');
-      if (disp) disp.textContent = 'Aucun point choisi';
     }
 
-    // ---- Interaction plan -----------------------------------------------------
+    // ===== INTERACTIONS SCÈNE =====
     function bindPlanClick() {
       const svg = getSvgLayer();
-      ensureHandleRef();
       if (!svg) return;
       ensureClickSurface(svg);
-
       svg.addEventListener('click', (e) => {
-        // éviter de capter le clic si on relâche un drag sur la poignée
         if (dragging) return;
-
         const p = screenToSvg(svg, e.clientX, e.clientY, e);
         let x = p.x, y = p.y;
         if (gridSize) { x = snap(x); y = snap(y); }
+        if (!gPos) createStartHandle(svg, x, y);
+        else moveHandle(x, y);
+      });
+    }
+    // Jeton optionnel #aw_handle_token
+    function bindTokenDragDrop() {
+      const token = document.getElementById('aw_handle_token');
+      const svg = getSvgLayer();
+      if (!token || !svg) return;
+      ensureClickSurface(svg);
 
-        if (!startHandle) {
-          createStartHandle(svg, x, y);
-        } else {
-          moveHandle(startHandle, x, y);
-        }
+      svg.addEventListener('dragover', (e) => { e.preventDefault(); });
+      svg.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const p = screenToSvg(svg, e.clientX, e.clientY, e);
+        let x = p.x, y = p.y;
+        if (gridSize) { x = snap(x); y = snap(y); }
+        if (!gPos) createStartHandle(svg, x, y);
+        else moveHandle(x, y);
+      });
+      token.addEventListener('dragstart', (e) => { try { e.dataTransfer.setData('text/plain', 'aw-handle'); } catch { } });
+      token.addEventListener('click', () => {
+        const rect = (document.getElementById('pc_stage') || svg).getBoundingClientRect();
+        const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+        const p = screenToSvg(svg, cx, cy);
+        if (!gPos) createStartHandle(svg, p.x, p.y);
+        else moveHandle(p.x, p.y);
       });
     }
 
-    // ---- Boot -----------------------------------------------------------------
+    // ===== INIT =====
     function init() {
-      // lignes par défaut
       addRow(); addRow(false);
-
-      // boutons
       document.getElementById('aw_add_row')?.addEventListener('click', () => addRow(true));
       document.getElementById('aw_validate')?.addEventListener('click', validate);
       document.getElementById('aw_clear')?.addEventListener('click', clearAll);
-
-      // clic/drag dans le plan
-      bindPlanClick();        // clic direct pour placer la poignée
-      bindTokenDragDrop();    // ET dépôt du jeton sur la scène
+      bindPlanClick();
+      bindTokenDragDrop();
     }
 
     return { init };
@@ -2484,9 +2784,22 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     if (document.getElementById('pc_auto_walls')) AutoWalls.init();
+    // 1) Activer la surveillance de la sélection
+    bindSelectionBarHooks();
+    updateAlignBarVisibility();
+
+    // 2) Wiring des boutons
+    document.getElementById('btn_align_left')?.addEventListener('click', () => alignSelection('left'));
+    document.getElementById('btn_align_right')?.addEventListener('click', () => alignSelection('right'));
+    document.getElementById('btn_align_top')?.addEventListener('click', () => alignSelection('top'));
+    document.getElementById('btn_align_bottom')?.addEventListener('click', () => alignSelection('bottom'));
+    document.getElementById('btn_dist_h')?.addEventListener('click', () => distributeSelection('h'));
+    document.getElementById('btn_dist_v')?.addEventListener('click', () => distributeSelection('v'));
   });
 
-  //////////////////////////////////////////////////////////////
+
+
+
   //////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////
 
@@ -3002,43 +3315,95 @@
     return { leftPx: leftPx + toPx(dx), topPx: topPx + toPx(dy), wEff, hEff, dx, dy };
   }
 
+  // --- Alignements & distributions (type Word), compatibles rotation 90°/270°
+  function _rectForAlignPx(n) {
+    // Récup px depuis le DOM
+    const L = parseFloat(n.style.left || '0');
+    const T = parseFloat(n.style.top || '0');
+    const W = parseFloat(n.style.width || '0');
+    const H = parseFloat(n.style.height || '0');
+
+    const rot = parseFloat(n.dataset.rotAbs || n.dataset.rot || '0') || 0;
+    const a = ((rot % 360) + 360) % 360;
+    const swap = (a === 90 || a === 270);
+
+    // Boîte englobante visible en px (type Word)
+    const wEff = swap ? H : W;
+    const hEff = swap ? W : H;
+    const dx = swap ? (W - wEff) / 2 : 0; // correction TL -> TL_effectif
+    const dy = swap ? (H - hEff) / 2 : 0;
+
+    // On retourne aussi dx/dy pour pouvoir reposer left/top d’origine
+    return { n, L: L + dx, T: T + dy, W: wEff, H: hEff, dx, dy };
+  }
+
   function alignSelection(side) {
-    const nodes = Array.from(selection).filter(n => n.classList.contains('pc_card') || n.classList.contains('pc_furn'));
+    const nodes = Array.from(selection).filter(n =>
+      n.classList.contains('pc_card') || n.classList.contains('pc_furn')
+    );
     if (nodes.length < 2) return;
-    const rects = nodes.map(n => ({ n, L: parseFloat(n.style.left || '0'), T: parseFloat(n.style.top || '0'), W: parseFloat(n.style.width || '0'), H: parseFloat(n.style.height || '0') }));
+
+    const rects = nodes.map(_rectForAlignPx);
+
     const minL = Math.min(...rects.map(r => r.L));
     const maxR = Math.max(...rects.map(r => r.L + r.W));
     const minT = Math.min(...rects.map(r => r.T));
     const maxB = Math.max(...rects.map(r => r.T + r.H));
+
     rects.forEach(r => {
-      if (side === 'left') r.n.style.left = `${minL}px`;
-      if (side === 'right') r.n.style.left = `${(maxR - r.W)}px`;
-      if (side === 'top') r.n.style.top = `${minT}px`;
-      if (side === 'bottom') r.n.style.top = `${(maxB - r.H)}px`;
+      if (side === 'left') r.n.style.left = `${(minL - r.dx)}px`;
+      if (side === 'right') r.n.style.left = `${(maxR - r.W - r.dx)}px`;
+      if (side === 'top') r.n.style.top = `${(minT - r.dy)}px`;
+      if (side === 'bottom') r.n.style.top = `${(maxB - r.H - r.dy)}px`;
     });
+
+    // Commit dans le state (positions, furniture) via ton pipeline existant
     nudgeSelection(0, 0);
   }
-  function distributeSelection(orientation) {
-    const nodes = Array.from(selection).filter(n => n.classList.contains('pc_card') || n.classList.contains('pc_furn'));
+
+  function distributeSelection(orientation /* 'h' ou 'v' */) {
+    const nodes = Array.from(selection).filter(n =>
+      n.classList.contains('pc_card') || n.classList.contains('pc_furn')
+    );
     if (nodes.length < 3) return;
-    const rects = nodes.map(n => ({ n, L: parseFloat(n.style.left || '0'), T: parseFloat(n.style.top || '0'), W: parseFloat(n.style.width || '0'), H: parseFloat(n.style.height || '0') }));
+
+    const rects = nodes.map(_rectForAlignPx);
+
     if (orientation === 'h') {
+      // Tri gauche→droite
       rects.sort((a, b) => a.L - b.L);
-      const minL = rects[0].L, maxR = Math.max(...rects.map(r => r.L + r.W));
+      const minL = rects[0].L;
+      const maxR = Math.max(...rects.map(r => r.L + r.W));
       const totalW = rects.reduce((s, r) => s + r.W, 0);
       const gap = (maxR - minL - totalW) / (rects.length - 1);
+
       let cur = minL;
-      rects.forEach((r, i) => { if (i === 0 || i === rects.length - 1) return; cur += rects[i - 1].W + gap; r.n.style.left = `${cur}px`; });
+      rects.forEach((r, i) => {
+        if (i === 0) return;                       // garde l’extrême gauche
+        cur += rects[i - 1].W + gap;               // position cible L_effectif
+        if (i === rects.length - 1) return;        // garde l’extrême droite
+        r.n.style.left = `${(cur - r.dx)}px`;      // re-calcule left d’origine
+      });
     } else {
+      // Tri haut→bas
       rects.sort((a, b) => a.T - b.T);
-      const minT = rects[0].T, maxB = Math.max(...rects.map(r => r.T + r.H));
+      const minT = rects[0].T;
+      const maxB = Math.max(...rects.map(r => r.T + r.H));
       const totalH = rects.reduce((s, r) => s + r.H, 0);
       const gap = (maxB - minT - totalH) / (rects.length - 1);
+
       let cur = minT;
-      rects.forEach((r, i) => { if (i === 0 || i === rects.length - 1) return; cur += rects[i - 1].H + gap; r.n.style.top = `${cur}px`; });
+      rects.forEach((r, i) => {
+        if (i === 0) return;                       // haut
+        cur += rects[i - 1].H + gap;
+        if (i === rects.length - 1) return;        // bas
+        r.n.style.top = `${(cur - r.dy)}px`;
+      });
     }
+
     nudgeSelection(0, 0);
   }
+
 
   function restoreWallsForPlan() {
     if (!state.active_plan) return;
@@ -3172,7 +3537,8 @@
       const furniture = (Array.isArray(data.furniture) ? data.furniture : [])
         .filter(f => String(f.type || '').toLowerCase() !== 'wall')
         .map(f => {
-          const rot = Number(f.rotation || 0);
+          const rot = round1(norm360(parseFloat(f.rotation ?? f.rotAbs ?? 0)));
+
 
           let color = (f.color != null ? f.color : null);
           if (color == null && active_plan && f.id > 0) {
@@ -3347,6 +3713,7 @@
   // Fullscreen (réadapte l’échelle et recalcule les mesures visibles)
   setupFullscreenExact($wrap, () => {
     fitStageToWrap();
+    refreshDomScaleFromState();
   }, () => {
     renderWalls();
     updateWallMeasures();
@@ -3356,11 +3723,32 @@
   // Resize fenêtre → refit + refresh mesures
   window.addEventListener('resize', () => {
     fitStageToWrap();
+    refreshDomScaleFromState();
     renderWalls();
     updateWallMeasures();
     $stage.querySelectorAll('.pc_furn').forEach(updateFurnitureMeasures);
   });
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // Boot initial
   boot().catch(console.error);
 })();
+
+
+

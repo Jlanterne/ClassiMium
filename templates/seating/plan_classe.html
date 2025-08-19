@@ -17,6 +17,17 @@
     <button id="pc_export_pdf" type="button">Exporter PDF</button>
     <button id="pc_reset_plan" type="button" title="Shift+clic = reset complet">Réinitialiser</button>
     <button id="pc_edit_mode" class="pc_btn" type="button">Édition meubles : OFF</button>
+    <!-- À coller juste après le bouton #pc_edit_mode -->
+    <div id="pc_align_bar" class="pc-align-bar" hidden>
+      <button id="btn_align_left" type="button" title="Aligner à gauche">⟸</button>
+      <button id="btn_align_right" type="button" title="Aligner à droite">⟹</button>
+      <button id="btn_align_top" type="button" title="Aligner en haut">⟰</button>
+      <button id="btn_align_bottom" type="button" title="Aligner en bas">⟱</button>
+      <span class="sep"></span>
+      <button id="btn_dist_h" type="button" title="Répartir horizontalement">⇔</button>
+      <button id="btn_dist_v" type="button" title="Répartir verticalement">⇕</button>
+    </div>
+
   </div>
 
   <button id="pc_fullscreen" type="button">Plein écran</button>
@@ -33,18 +44,23 @@
   <!-- Colonne centrale : la scène (plan) -->
   <main class="pc_stage_wrap" aria-label="Surface du plan">
     <div id="pc_stage" class="pc_stage" data-classe-id="{{ classe_id }}" data-grid="32" aria-label="Surface du plan">
+      <!-- Calque SVG (murs, cotes, etc.) -->
       <svg id="pc_svg" class="pc_svg" aria-hidden="true"></svg>
+      <!-- Calque HTML des objets (meubles, portes, fenêtres, cartes élèves) -->
+      <div id="pc_scene"></div>
     </div>
   </main>
 
-  <!-- Colonne droite : Palette de meubles -->
+  <!-- Colonne droite : Palette de meubles + AutoWalls -->
   <aside class="pc_side" aria-label="Meubles disponibles">
     <h4 class="pc_head">Meubles</h4>
     <div id="pc_furn_palette" class="pc_furn_palette" role="list"></div>
     <button id="pc_add_furniture" class="pc_btn_add" type="button">+ Meuble / Bureau</button>
+
     <!-- ===== Traçage automatique des murs ===== -->
     <section id="pc_auto_walls" class="pc-section">
       <h3 class="pc-section-title">Traçage automatique des murs</h3>
+
       <div class="pc-auto-walls-actions">
         <div id="aw_handle_token" class="aw-token" draggable="true" title="Glisser sur le plan">
           ● Point de départ
@@ -53,6 +69,15 @@
 
       <p class="pc-help">Clique sur le plan pour choisir le <strong>point de départ</strong>.</p>
       <div id="aw_start_display" class="pc-start-display">Aucun point choisi</div>
+
+      <div class="pc-aw-field" style="margin:6px 0">
+        <label for="aw_angle_mode">Type d’angle</label>
+        <select id="aw_angle_mode">
+          <option value="interior" selected>Angle intérieur</option>
+          <option value="turn">Tournant (rotation)</option>
+          <option value="absolute">Azimut absolu</option>
+        </select>
+      </div>
 
       <div class="pc-auto-walls-rows" id="aw_rows">
         <!-- Les lignes (mur/angle) s’ajoutent automatiquement ici -->
@@ -71,10 +96,7 @@
         <button type="button" id="aw_clear">Réinitialiser</button>
       </div>
     </section>
-
   </aside>
-
-
 </div>
 
 <!-- ===== Bootstrapping JS (URLs & config) ===== -->
@@ -130,6 +152,6 @@
     .catch(e => console.error("[pc] fetch error:", e));
 </script>
 
-<!-- Ton script principal (refactor) -->
+<!-- Ton script principal -->
 <script src="{{ url_for('seating.static', filename='plan_classe.js') }}" defer></script>
 {% endblock %}

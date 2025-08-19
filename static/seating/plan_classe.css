@@ -1744,3 +1744,266 @@ body.pc_edit_on .pc_furn .rz {
 .pc-click-surface {
   pointer-events: all;
 }
+
+#aw_start_handle {
+  pointer-events: all;
+}
+
+#aw_start_handle .aw-dir {
+  transform-origin: 0 0;
+}
+
+/* pivot = bout du point de départ */
+
+/* Le stage a une vraie surface */
+.pc_stage {
+  position: relative;
+  min-height: 600px;
+  /* ajuste à ta guise */
+}
+
+/* Le SVG remplit tout et ses traits ne “grossissent” pas */
+#pc_svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.pc-wall,
+.pc-wall-seg {
+  vector-effect: non-scaling-stroke;
+}
+
+/* Calque HTML des objets : dimension logique + zoom appliqué */
+#pc_scene {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--scene-w, 2400px);
+  /* largeur logique */
+  height: var(--scene-h, 1600px);
+  /* hauteur logique */
+  transform-origin: 0 0;
+  transform: scale(var(--scene-zoom, 1));
+}
+
+/* Les objets restent en coords “scène” (left/top) */
+#pc_scene .pc_furn,
+#pc_scene .pc_door,
+#pc_scene .pc_window,
+#pc_scene .pc_card {
+  position: absolute;
+  will-change: transform, left, top;
+}
+
+.pc-align-bar {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 10px;
+  align-items: center;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 4px 6px;
+}
+
+.pc-align-bar .sep {
+  width: 1px;
+  height: 18px;
+  background: #e5e7eb;
+  margin: 0 2px;
+}
+
+.pc-align-bar button {
+  min-width: 28px;
+  height: 28px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.pc-align-bar button:hover {
+  background: #f3f4f6;
+}
+
+/* === HOTFIX SCROLL – à coller tout en bas === */
+:root {
+  --toolbar-h: 52px;
+}
+
+/* ajuste si ta barre fait une autre hauteur */
+
+/* 1) Pas de scroll global (ni X ni Y) */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 2) Le layout 3 colonnes occupe toute la fenêtre sous la toolbar */
+.pc_layout {
+  grid-template-columns: var(--side-w) minmax(0, 1fr) var(--right-w);
+  height: calc(100vh - var(--toolbar-h));
+  overflow: hidden;
+  /* le layout lui-même ne scrolle pas */
+  padding: 16px;
+  /* tu gardes ton padding */
+  gap: 16px;
+}
+
+/* 3) Important en grid: empêcher les colonnes de pousser => pas de overflow */
+.pc_layout>* {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 4) Colonnes gauche/droite : scroll interne (pas sticky) */
+.pc_side {
+  position: relative;
+  top: auto;
+  height: 100%;
+  max-height: none;
+  /* remplace l’ancien calc(...) */
+  overflow: auto;
+  /* seul endroit où on scrolle verticalement */
+}
+
+/* 5) Zone centrale (wrap) : pas de scroll, elle remplit le centre */
+.pc_stage_wrap {
+  position: relative;
+  top: auto;
+  height: 100%;
+  max-height: none;
+  min-height: 0;
+  /* évite d’imposer 60vh */
+  overflow: hidden;
+  /* pas de scroll ici */
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  /* tu gardes ton padding visuel */
+}
+
+/* 6) La scène: dimensionnée par le wrap, pas de scroll */
+.pc_stage {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 7) Sécurité: pas de débordement parasite du SVG/scene */
+#pc_svg,
+#pc_scene {
+  max-width: 100%;
+}
+
+/* 8) Toolbar sticky = hauteur fixe connue (supprime l'effet "gonflement") */
+.pc_toolbar {
+  height: var(--toolbar-h);
+  box-sizing: border-box;
+}
+
+/**********************************
+/* === HOTFIX SCROLL – à coller tout en bas === */
+:root {
+  --toolbar-h: 52px;
+}
+
+/* ajuste si ta barre fait une autre hauteur */
+
+/* 1) Pas de scroll global (ni X ni Y) */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 2) Le layout 3 colonnes occupe toute la fenêtre sous la toolbar */
+.pc_layout {
+  grid-template-columns: var(--side-w) minmax(0, 1fr) var(--right-w);
+  height: calc(100vh - var(--toolbar-h));
+  overflow: hidden;
+  /* le layout lui-même ne scrolle pas */
+  padding: 16px;
+  /* tu gardes ton padding */
+  gap: 16px;
+}
+
+/* 3) Important en grid: empêcher les colonnes de pousser => pas de overflow */
+.pc_layout>* {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 4) Colonnes gauche/droite : scroll interne (pas sticky) */
+.pc_side {
+  position: relative;
+  top: auto;
+  height: 100%;
+  max-height: none;
+  /* remplace l’ancien calc(...) */
+  overflow: auto;
+  /* seul endroit où on scrolle verticalement */
+}
+
+/* 5) Zone centrale (wrap) : pas de scroll, elle remplit le centre */
+.pc_stage_wrap {
+  position: relative;
+  top: auto;
+  height: 100%;
+  max-height: none;
+  min-height: 0;
+  /* évite d’imposer 60vh */
+  overflow: hidden;
+  /* pas de scroll ici */
+  display: grid;
+  place-items: center;
+  padding: 10px;
+  /* tu gardes ton padding visuel */
+}
+
+/* 6) La scène: dimensionnée par le wrap, pas de scroll */
+.pc_stage {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 7) Sécurité: pas de débordement parasite du SVG/scene */
+#pc_svg,
+#pc_scene {
+  max-width: 100%;
+}
+
+/* 8) Toolbar sticky = hauteur fixe connue (supprime l'effet "gonflement") */
+.pc_toolbar {
+  height: var(--toolbar-h);
+  box-sizing: border-box;
+}
+
+/* === SCÈNE PLEINE VUE — overrides minimalistes === */
+
+/* Le wrap occupe 100% de la colonne centrale, sans scroll */
+.pc_stage_wrap {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* La scène remplit le wrap (pas de min-height qui coupe en bas) */
+.pc_stage {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* #pc_scene : translation + zoom pilotés par variables CSS */
+#pc_scene {
+  transform-origin: 0 0;
+  transform:
+    translate(var(--scene-offx, 0px), var(--scene-offy, 0px)) scale(var(--scene-zoom, 1));
+}

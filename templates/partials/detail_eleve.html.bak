@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block content %}
+<a href="{{ url_for('page_classe', classe_id=classe.id) }}" class="retour-link"
+    style="display: block; text-align: left; font-size: 0.9em; margin-left: 0;">
+    ← Retour à la liste des élèves
+</a>
+
+<div class="carte-identite">
+
+    <div class="carte-header">
+        {{ eleve.prenom }} {{ eleve.nom }}
+    </div>
+
+    <div class="carte-body">
+
+        <!-- Photo à gauche -->
+        <div class="photo-col">
+            <form id="photoForm" method="POST"
+                action="{{ url_for('changer_photo', eleve_id=eleve.id, classe_id=classe.id) }}"
+                enctype="multipart/form-data" style="margin:0;">
+                <label for="photoInput" title="Cliquez pour changer la photo" style="cursor:pointer;">
+                    <img id="photoPreview"
+                        src="{% if eleve.photo_filename %}{{ url_for('static', filename='photos/' + eleve.photo_filename) }}{% elif eleve.sexe and eleve.sexe.upper() == 'FEMININ' %}{{ url_for('static', filename='image_defaut/defaut_fille.png') }}{% else %}{{ url_for('static', filename='image_defaut/defaut_garcon.png') }}{% endif %}"
+                        alt="Photo de {{ eleve.prenom }}">
+                </label>
+                <input type="file" id="photoInput" name="photo" accept="image/*" capture="environment"
+                    style="display:none;" required>
+                <button type="submit" style="display:none;" id="submitBtn">Changer la photo</button>
+            </form>
+        </div>
+
+        <!-- Infos colonnes à droite -->
+        <div class="infos-container">
+
+            <!-- Colonne 1 -->
+            <div class="infos-col">
+                <div class="bulle-info"><i class="fa-regular fa-calendar"></i> {{ eleve.date_naissance }}</div>
+                <div class="bulle-info"><i class="fa-solid fa-cake-candles"></i> {{ age if age is not none else 'Non
+                    renseigné' }} ans</div>
+                <div class="bulle-info"><i class="fa-solid fa-graduation-cap"></i> {{ eleve.niveau }}</div>
+                <div class="bulle-info"><i class="fa-solid fa-venus-mars"></i> {{ eleve.sexe or 'Non renseigné' }}</div>
+            </div>
+
+            <!-- Colonne 2 -->
+            <div class="infos-col">
+                <div class="bulle-info">
+                    <i class="fa-solid fa-house"></i>
+                    <div>
+                        {% if eleve.adresse %}
+                        {{ eleve.adresse }}
+                        {% else %}
+                        Adresse non renseignée
+                        {% endif %}
+                        <br>
+                        {% if eleve.cp or eleve.commune %}
+                        {{ eleve.cp or '' }}{% if eleve.cp and eleve.commune %} {% endif %}{{ eleve.commune or '' }}
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if eleve.commune_naissance %}
+                <div class="bulle-info">
+                    <i class="fa-solid fa-city"></i> Commune de naissance :<br> {{ eleve.commune_naissance }}
+                </div>
+                {% endif %}
+
+                <div class="bulle-info">
+                    <i class="fa-solid fa-globe"></i> Pays de naissance :<br> {{ eleve.pays_naissance or 'Non renseigné'
+                    }}
+                </div>
+            </div>
+
+            <!-- Colonne 3 prévue pour mère -->
+            <div class="infos-col">
+                <div class="bulle-info"><strong>Mère</strong></div>
+                <div class="bulle-info"><i class="fa-solid fa-user"></i> {{ eleve.nom_mere or 'Nom non renseigné' }}
+                </div>
+                <div class="bulle-info"><i class="fa-solid fa-house"></i> {{ eleve.adresse_mere or 'Adresse non
+                    renseignée' }}</div>
+                <div class="bulle-info"><i class="fa-solid fa-phone"></i> {{ eleve.telephone_mere or 'Téléphone non
+                    renseigné' }}</div>
+            </div>
+
+            <!-- Colonne 4 : infos père -->
+            <div class="infos-col">
+                <div class="bulle-info"><strong>Père</strong></div>
+                <div class="bulle-info"><i class="fa-solid fa-user"></i> {{ eleve.nom_pere or 'Nom non renseigné' }}
+                </div>
+                <div class="bulle-info"><i class="fa-solid fa-house"></i> {{ eleve.adresse_pere or 'Adresse non
+                    renseignée' }}</div>
+                <div class="bulle-info"><i class="fa-solid fa-phone"></i> {{ eleve.telephone_pere or 'Téléphone non
+                    renseigné' }}</div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<div>
+    {% include "partials/_bulle_notes.html" %}
+</div>
+
+
+</div>
+
+
+
+
+
+
+<script>
+    const photoInput = document.getElementById('photoInput');
+    const photoForm = document.getElementById('photoForm');
+    const photoPreview = document.getElementById('photoPreview');
+
+    photoInput.addEventListener('change', function () {
+        if (this.files && this.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                photoPreview.src = e.target.result;
+            }
+            reader.readAsDataURL(this.files[0]);
+            photoForm.submit();
+        }
+    });
+</script>
+{% endblock %}

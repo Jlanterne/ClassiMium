@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bandeau-titre">Saisir les résultats - {{ classe.niveau }} {{ classe.annee }}</div>
+
+<div class="formulaire-eval">
+    <h3>{{ evaluation.titre }} — {{ evaluation.date }}</h3>
+    <form method="POST">
+        <table class="table-resultats">
+            <thead>
+                <tr>
+                    <th>Objectif</th>
+                    {% for eleve in eleves %}
+                    <th>{{ eleve.prenom }} {{ eleve.nom }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for obj in objectifs %}
+                <tr>
+                    <td>{{ obj.nom }}</td>
+                    {% for eleve in eleves %}
+                    <td>
+                        <select name="obj{{ obj.id }}_eleve{{ eleve.id }}">
+                            <option value="">--</option>
+                            <option value="NA">NA</option>
+                            <option value="PA">PA</option>
+                            <option value="A">A</option>
+                        </select>
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div style="margin-top: 20px;">
+            <button type="submit" class="valider-btn">Enregistrer</button>
+            <a href="{{ url_for('page_classe', classe_id=classe.id) }}" class="annuler-btn">Retour</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

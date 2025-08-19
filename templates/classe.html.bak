@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Classe {{ classe.niveaux | join(' / ') }} {{ classe.annee }}{% endblock %}
+
+{% block content %}
+<div class="actions-classe">
+    <a href="{{ url_for('page_classe', classe_id=classe.id, mode='creation_classe') }}" class="action-button">Liste des
+        élèves</a>
+    <a href="{{ url_for('page_classe', classe_id=classe.id, mode='ajout_evaluation') }}" class="action-button">Ajouter
+        une évaluation</a>
+    <a href="{{ url_for('page_classe', classe_id=classe.id, mode='liste_evaluations') }}" class="action-button">Saisir
+        les évaluations</a>
+    <a href="{{ url_for('page_classe', classe_id=classe.id, mode='ajouter_dictee') }}" class="action-button">Ajouter une
+        dictée</a>
+    <a href="{{ url_for('page_classe', classe_id=classe.id, mode='ajouter_rapport') }}" class="action-button">Écrire un
+        rapport</a>
+</div>
+
+<!-- 👇 Contenu qui DESCEND depuis derrière les boutons.
+     Le style inline empêche tout flash avant l'anim. -->
+<div class="panel-from-actions panel-card" style="opacity:0; transform:translateY(-64px)">
+    {% if mode == 'ajouter_dictee' %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dictees.css') }}">
+    {% include 'partials/ajouter_dictee.html' %}
+    {% elif mode == 'ajout_evaluation' %}
+    {% include 'partials/ajout_evaluation.html' %}
+    {% elif mode == 'liste_evaluations' %}
+    {% include 'partials/liste_evaluations.html' %}
+    {% elif mode == 'ajouter_rapport' %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/rapports.css') }}">
+    {% include 'partials/ajouter_rapport.html' %}
+    {% elif mode == 'saisie_resultats' %}
+    {% include 'partials/saisie_resultats.html' %}
+    {% else %}
+    {% include 'partials/ajout_eleve.html' %}
+    {% endif %}
+</div>
+{% endblock %}

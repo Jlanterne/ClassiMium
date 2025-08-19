@@ -1,68 +1,29 @@
-# Python / Flask
+﻿# Python
 __pycache__/
 *.py[cod]
-*.pyd
 *.pyo
-*.egg-info/
-.venv/
+
+# Virtual envs
+.venv*/
 venv/
-instance/
-.env
-*.log
+env/
 
-# Bases locales
-*.sqlite
-*.sqlite3
-*.db
-
-# Front
-node_modules/
-dist/
+# PyInstaller
 build/
-.build/
-.cache/
+dist/
+*.spec
 
-# OS / IDE
-.DS_Store
+# OS
 Thumbs.db
-desktop.ini
-.vscode/
-.idea/
+.DS_Store
 
-# Fichiers lourds/perso
-/static/uploads/
-uploads/
-*.psd
-*.ai
-*.pdf
-*.docx
-*.docm
-*.dotm
-*.pptx
-*.zip
-*.bak
-*.tmp
+# Logs / temp
+startup_error.log
 
-imports.dot
-
-!imports_app.svg
-!imports_db.svg
-
-imports_all_tmp.py
-imports.dot
-imports_*.svg
-exports_local/
-*_DEBUG.html
-
-!imports_app.svg
-!imports_db.svg
-
-!imports_app.svg
-!imports_db.svg
-
+# Secrets / données locales
 .env
-
-# backups & scripts de fix
-templates/*.bak2
-templates/**/*.bak2
-fix_urlfor_*.py
+*.db
+uploads/
+.pgbackup/
+.pginfo/
+*.psd

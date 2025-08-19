@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Ajouter une évaluation</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+    <div class="main-container">
+        <h1>Ajouter une évaluation pour la classe {{ classe_id }}</h1>
+        <form method="post" action="{{ url_for('ajouter_evaluation', classe_id=classe_id) }}">
+            <label>Titre :</label>
+            <input type="text" name="titre" required><br>
+
+            <label>Date :</label>
+            <input type="date" name="date" required><br>
+
+            <label>Matière :</label>
+            <input list="liste_matieres" name="matiere" required>
+            <datalist id="liste_matieres">
+                {% for matiere in matieres %}
+                <option value="{{ matiere['nom'] }}">
+                    {% endfor %}
+            </datalist><br>
+
+            <label>Sous-matière :</label>
+            <input list="liste_sous_matieres" name="sous_matiere" required>
+            <datalist id="liste_sous_matieres">
+                {% for sm in sous_matieres %}
+                <option value="{{ sm['nom'] }}">
+                    {% endfor %}
+            </datalist><br>
+
+            <label>Objectif 1 :</label>
+            <input type="text" name="objectif_1" required><br>
+
+            <button type="submit">Ajouter l’évaluation</button>
+        </form>
+    </div>
+</body>
+
+</html>

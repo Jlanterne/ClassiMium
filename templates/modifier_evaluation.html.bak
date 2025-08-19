@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Modifier une évaluation - Classe {{ classe.niveaux | join(' / ') }}{% endblock %}
+
+{% block content %}
+<h2>Modifier l'évaluation</h2>
+
+<form method="POST" action="{{ url_for('modifier_evaluation', evaluation_id=evaluation.id) }}">
+
+    <div class="form-row">
+        <label for="titre">Titre :</label>
+        <input type="text" name="titre" id="titre" value="{{ evaluation.titre }}" required>
+    </div>
+
+    <div class="form-row">
+        <label for="date">Date :</label>
+        <input type="date" name="date" id="date" value="{{ evaluation.date }}" required>
+    </div>
+
+    <div class="form-row">
+        <label for="matiere">Matière :</label>
+        <input list="liste_matieres" name="matiere" id="matiere" value="{{ evaluation.matiere_nom }}" required>
+        <datalist id="liste_matieres">
+            {% for m in matieres %}
+            <option value="{{ m.nom }}">
+                {% endfor %}
+        </datalist>
+    </div>
+
+    <div class="form-row">
+        <label for="sous_matiere">Sous-matière :</label>
+        <input list="liste_sous_matieres" name="sous_matiere" id="sous_matiere"
+            value="{{ evaluation.sous_matiere_nom }}">
+        <datalist id="liste_sous_matieres">
+            {% for sm in sous_matieres %}
+            <option value="{{ sm.nom }}">
+                {% endfor %}
+        </datalist>
+    </div>
+
+    <!-- Niveaux concernés -->
+    <div class="form-row">
+        <label>Pour quel(s) niveau(x) ?</label>
+        <div class="niveaux-checkbox-inline">
+            {% for niveau in niveaux %}
+            <label>
+                <input type="checkbox" name="niveaux_concernes" value="{{ niveau }}" {% if niveau in evaluation_niveaux
+                    %}checked{% endif %}>
+                {{ niveau }}
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+
+
+    <!-- Objectifs -->
+    <div id="objectifs-container">
+        {% for obj in objectifs %}
+        <div class="form-row objectif-row">
+            <label>Objectif {{ loop.index }} :</label>
+            <input type="text" name="objectifs[]" value="{{ obj.texte }}" class="objectif-input"
+                oninput="ajouterObjectifSiBesoin(this)">
+        </div>
+        {% endfor %}
+        <div class="form-row objectif-row">
+            <label>Objectif {{ objectifs|length + 1 }} :</label>
+            <input type="text" name="objectifs[]" class="objectif-input" oninput="ajouterObjectifSiBesoin(this)">
+        </div>
+    </div>
+
+    <div class="form-row">
+        <button type="submit" class="valider-btn">✅ Enregistrer</button>
+        <a href="{{ url_for('page_classe', classe_id=classe.id) }}" class="annuler-btn">❌ Annuler</a>
+    </div>
+</form>
+
+<script>
+    function ajouterObjectifSiBesoin(input) {
+        const container = document.getElementById("objectifs-container");
+        const inputs = container.querySelectorAll("input.objectif-input");
+        const dernier = inputs[inputs.length - 1];
+        if (input === dernier && input.value.trim() !== "") {
+            const index = inputs.length + 1;
+            const div = document.createElement("div");
+            div.className = "form-row objectif-row";
+            const label = document.createElement("label");
+            label.textContent = "Objectif " + index + " :";
+            const newInput = document.createElement("input");
+            newInput.type = "text";
+            newInput.name = "objectifs[]";
+            newInput.className = "objectif-input";
+            newInput.oninput = function () { ajouterObjectifSiBesoin(this); };
+            div.appendChild(label);
+            div.appendChild(newInput);
+            container.appendChild(div);
+        }
+    }
+</script>
+{% endblock %}

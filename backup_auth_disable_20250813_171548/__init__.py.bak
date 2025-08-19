@@ -1,0 +1,142 @@
+import os
+from flask import Flask, redirect, url_for, request
+from dotenv import load_dotenv
+
+load_dotenv()  # charge .env AVANT de créer l'app
+
+
+def create_app():
+    app = Flask(
+        __name__,
+        template_folder="../templates",
+        static_folder="../static",
+    )
+    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev")
+    app.config["SQLALCHEMY_DATABASE_URI"] = (
+    os.environ.get("SQLALCHEMY_DATABASE_URI") or os.environ.get("DATABASE_URL")
+)
+
+
+
+    # --- Hooks venant de l'ancien app.py (si présents) ---
+    try:
+        from app_legacy import load_ui_settings, add_header, inject_ui
+        app.before_request(load_ui_settings)
+        app.after_request(add_header)
+        app.context_processor(inject_ui)
+    except Exception as e:
+        print("WARN hooks:", e)
+
+    # --- Blueprints ---
+    try:
+        from .routes.health import bp as health_bp
+        app.register_blueprint(health_bp)
+    except Exception as e:
+        print("WARN health:", e)
+
+    try:
+        from .routes.main import bp as main_bp
+        app.register_blueprint(main_bp)
+    except Exception as e:
+        print("WARN main:", e)
+
+    try:
+        from .seating import seating_bp  # <- import relatif
+        if "seating" not in app.blueprints:
+            app.register_blueprint(seating_bp, url_prefix="/seating")
+    except Exception as e:
+        print("WARN seating:", e)
+
+    try:
+        from .auth import auth_bp  # <- import relatif
+        app.register_blueprint(auth_bp, url_prefix="/auth")
+    except Exception as e:
+        print("WARN auth:", e)
+
+    # --- Compatibilité url_for pour anciens templates (sans "main.") ---
+    from flask import url_for as _url_for
+    from werkzeug.routing import BuildError
+
+    def _url_for_compat(endpoint, *args, **kwargs):
+        try:
+            return _url_for(endpoint, *args, **kwargs)
+        except BuildError:
+            if "." not in endpoint:
+                return _url_for(f"main.{endpoint}", *args, **kwargs)
+            raise
+
+    @app.context_processor
+    def _inject_url_for_compat():
+        return dict(url_for=_url_for_compat)
+
+    # --- Flask-Login : config + mur d'auth global (tout le site) ---
+    from flask_login import LoginManager, current_user, UserMixin
+
+    login_manager = LoginManager()
+    login_manager.login_view = "auth.login_form"
+    login_manager.login_message = None
+    login_manager.init_app(app)
+
+    def _conn():
+        """Connexion Postgres SANS URI, mot de passe lu via pgpass.conf.
+        Force messages en anglais (ASCII) + client UTF-8 pour éviter UnicodeDecodeError.
+        """
+        import os, psycopg2
+
+        host = app.config.get("PGHOST") or os.getenv("PGHOST", "localhost")
+        port = int(app.config.get("PGPORT") or os.getenv("PGPORT", "5432"))
+        db   = app.config.get("PGDATABASE") or os.getenv("PGDATABASE", "gestion_classe")
+        usr  = app.config.get("PGUSER") or os.getenv("PGUSER", "classiapp")
+
+        params = dict(
+            host=host,
+            port=port,
+            dbname=db,
+            user=usr,
+            # pas de "password": libpq lira %APPDATA%\postgresql\pgpass.conf
+            options="-c lc_messages=C -c client_encoding=UTF8",
+        )
+        return psycopg2.connect(**params)
+
+    class User(UserMixin):
+        pass
+
+    @login_manager.user_loader
+    def load_user(user_id: str):
+        try:
+            conn = _conn()
+            cur = conn.cursor()
+            cur.execute("SELECT id, username, role FROM users WHERE id=%s", (user_id,))
+            row = cur.fetchone()
+        except Exception:
+            row = None
+        finally:
+            try:
+                cur.close()
+                conn.close()
+            except Exception:
+                pass
+        if not row:
+            return None
+        u = User()
+        u.id = str(row[0])
+        u.username = row[1]
+        u.role = row[2] if len(row) > 2 else None
+        return u
+
+    EXEMPT = {"auth.login_form", "auth.login_submit", "auth.logout", "static"}
+
+    @app.before_request
+    def require_login_everywhere():
+        ep = request.endpoint or ""
+        if ep in EXEMPT or ep.startswith("auth.") or ep.endswith(".static"):
+            return
+        if not current_user.is_authenticated:
+            return redirect(url_for("auth.login_form", next=request.url))
+
+    # --- Première page = login ---
+    @app.get("/")
+    def root():
+        return redirect(url_for("auth.login_form"))
+
+    return app

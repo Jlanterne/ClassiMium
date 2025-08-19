@@ -1,0 +1,167 @@
+digraph G {
+    graph [rankdir=TB, clusterrank="local"];
+    subgraph cluster_G {
+
+        graph [style="filled,rounded",fillcolor="#80808018", label=""];
+        ajouter_colonnes [label="ajouter_colonnes", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="0"];
+        app [label="app", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="1"];
+        app__db [label="app.db", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="2"];
+        app__routes [label="app.routes", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="3"];
+        app__routes__main [label="app.routes.main", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="4"];
+        config [label="config", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="5"];
+        create_eleves_table [label="create_eleves_table", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="6"];
+        creer_tables [label="creer_tables", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="7"];
+        db [label="db", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="8"];
+        db__connexion [label="db.connexion", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="9"];
+        init_db [label="init_db", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="10"];
+        reset_db [label="reset_db", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="11"];
+        run [label="run", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="12"];
+        test_db [label="test_db", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="13"];
+        test_objectifs [label="test_objectifs", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="14"];
+        subgraph cluster_app {
+
+            graph [style="filled,rounded",fillcolor="#80808018", label="app"];
+            app___has_headings [label="_has_headings", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app___plain_text_from_html [label="_plain_text_from_html", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app___slug [label="_slug", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app___ui_from_everywhere [label="_ui_from_everywhere", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app___wrap_html_for_pdf [label="_wrap_html_for_pdf", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__add_header [label="add_header", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__ajouter_classe [label="ajouter_classe", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__ajouter_dictee [label="ajouter_dictee", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__ajouter_eleve [label="ajouter_eleve", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__ajouter_evaluation [label="ajouter_evaluation", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__allowed_file [label="allowed_file", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__api_create_rapport [label="api_create_rapport", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__api_export_rapport [label="api_export_rapport", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__api_get_sous_types [label="api_get_sous_types", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__api_list_dictees [label="api_list_dictees", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__api_save_dictee [label="api_save_dictee", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__api_test_paths [label="api_test_paths", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__api_update_rapport [label="api_update_rapport", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__changer_groupe [label="changer_groupe", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__changer_photo [label="changer_photo", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__config_export [label="config_export", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__debug_evaluations [label="debug_evaluations", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__detail_eleve [label="detail_eleve", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__ensure_export_dir_for_rapport [label="ensure_export_dir_for_rapport", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__ensure_reunions_dir [label="ensure_reunions_dir", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__export_docx_best_effort [label="export_docx_best_effort", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__export_pdf_faithful [label="export_pdf_faithful", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__fetch_rapport_sous_types [label="fetch_rapport_sous_types", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__fetch_rapport_types [label="fetch_rapport_types", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__find_year_folder [label="find_year_folder", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__get_db_connection [label="get_db_connection", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__get_ui_settings_from_db [label="get_ui_settings_from_db", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__importer_eleve_csv [label="importer_eleve_csv", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__index [label="index", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__inject_ui [label="inject_ui", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__load_settings [label="load_settings", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__load_ui_settings [label="load_ui_settings", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__modifier_evaluation [label="modifier_evaluation", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__normalize_html_for_docx [label="normalize_html_for_docx", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__nouveau_rapport [label="nouveau_rapport", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__page_classe [label="page_classe", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__parse_dt [label="parse_dt", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__pick_docs_root [label="pick_docs_root", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__resolve_export_dir [label="resolve_export_dir", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__saisir_resultats [label="saisir_resultats", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__save_settings [label="save_settings", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__set_ui_settings_in_db [label="set_ui_settings_in_db", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__style_css [label="style_css", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+            app__supprimer_evaluation [label="supprimer_evaluation", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+        }
+        subgraph cluster_app__db {
+
+            graph [style="filled,rounded",fillcolor="#80808018", label="app.db"];
+            app__db__get_db_connection [label="get_db_connection", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="2"];
+        }
+        subgraph cluster_app__normalize_html_for_docx {
+
+            graph [style="filled,rounded",fillcolor="#80808018", label="app.normalize_html_for_docx"];
+            app__normalize_html_for_docx___size_to_hx [label="_size_to_hx", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+        }
+        subgraph cluster_app__routes__main {
+
+            graph [style="filled,rounded",fillcolor="#80808018", label="app.routes.main"];
+            app__routes__main__index [label="index", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="4"];
+        }
+        subgraph cluster_app__saisir_resultats {
+
+            graph [style="filled,rounded",fillcolor="#80808018", label="app.saisir_resultats"];
+            app__saisir_resultats__convertir_note [label="convertir_note", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="15"];
+        }
+        subgraph cluster_creer_tables {
+
+            graph [style="filled,rounded",fillcolor="#80808018", label="creer_tables"];
+            creer_tables__creer_tables [label="creer_tables", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="7"];
+            creer_tables__get_db_connection [label="get_db_connection", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="7"];
+        }
+        subgraph cluster_db {
+
+            graph [style="filled,rounded",fillcolor="#80808018", label="db"];
+            db__get_db_connection [label="get_db_connection", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="16"];
+        }
+        subgraph cluster_db__connexion {
+
+            graph [style="filled,rounded",fillcolor="#80808018", label="db.connexion"];
+            db__connexion__get_db_connection [label="get_db_connection", style="filled", fillcolor="#ffffffb2", fontcolor="#000000", group="9"];
+        }
+    }
+        app -> app__get_db_connection [style="solid", color="#000000"];
+        app__resolve_export_dir -> app__find_year_folder [style="solid", color="#000000"];
+        app__resolve_export_dir -> app__ensure_reunions_dir [style="solid", color="#000000"];
+        app__resolve_export_dir -> app__pick_docs_root [style="solid", color="#000000"];
+        app__ensure_export_dir_for_rapport -> app___slug [style="solid", color="#000000"];
+        app__ensure_export_dir_for_rapport -> app__find_year_folder [style="solid", color="#000000"];
+        app__ensure_export_dir_for_rapport -> app__pick_docs_root [style="solid", color="#000000"];
+        app__ensure_export_dir_for_rapport -> app__ensure_reunions_dir [style="solid", color="#000000"];
+        app__load_ui_settings -> app__get_db_connection [style="solid", color="#000000"];
+        app__load_ui_settings -> app__get_ui_settings_from_db [style="solid", color="#000000"];
+        app___ui_from_everywhere -> app__get_db_connection [style="solid", color="#000000"];
+        app__inject_ui -> app__get_db_connection [style="solid", color="#000000"];
+        app__inject_ui -> app__get_ui_settings_from_db [style="solid", color="#000000"];
+        app__normalize_html_for_docx -> app__normalize_html_for_docx___size_to_hx [style="solid", color="#000000"];
+        app__export_docx_best_effort -> app___has_headings [style="solid", color="#000000"];
+        app__export_docx_best_effort -> app___plain_text_from_html [style="solid", color="#000000"];
+        app__export_docx_best_effort -> app__normalize_html_for_docx [style="solid", color="#000000"];
+        app__export_pdf_faithful -> app___wrap_html_for_pdf [style="solid", color="#000000"];
+        app__export_pdf_faithful -> app___plain_text_from_html [style="solid", color="#000000"];
+        app__index -> app__get_db_connection [style="solid", color="#000000"];
+        app__page_classe -> app__get_db_connection [style="solid", color="#000000"];
+        app__api_save_dictee -> app__get_db_connection [style="solid", color="#000000"];
+        app__api_list_dictees -> app__get_db_connection [style="solid", color="#000000"];
+        app__ajouter_classe -> app__get_db_connection [style="solid", color="#000000"];
+        app__ajouter_eleve -> app__get_db_connection [style="solid", color="#000000"];
+        app__ajouter_evaluation -> app__get_db_connection [style="solid", color="#000000"];
+        app__modifier_evaluation -> app__get_db_connection [style="solid", color="#000000"];
+        app__supprimer_evaluation -> app__get_db_connection [style="solid", color="#000000"];
+        app__importer_eleve_csv -> app__get_db_connection [style="solid", color="#000000"];
+        app__changer_photo -> app__allowed_file [style="solid", color="#000000"];
+        app__changer_photo -> app__get_db_connection [style="solid", color="#000000"];
+        app__debug_evaluations -> app__get_db_connection [style="solid", color="#000000"];
+        app__saisir_resultats -> app__saisir_resultats__convertir_note [style="solid", color="#000000"];
+        app__saisir_resultats -> app__get_db_connection [style="solid", color="#000000"];
+        app__detail_eleve -> app__get_db_connection [style="solid", color="#000000"];
+        app__changer_groupe -> app__get_db_connection [style="solid", color="#000000"];
+        app__ajouter_dictee -> app__get_db_connection [style="solid", color="#000000"];
+        app__nouveau_rapport -> app__fetch_rapport_types [style="solid", color="#000000"];
+        app__nouveau_rapport -> app__fetch_rapport_sous_types [style="solid", color="#000000"];
+        app__nouveau_rapport -> app__get_db_connection [style="solid", color="#000000"];
+        app__api_create_rapport -> app__get_db_connection [style="solid", color="#000000"];
+        app__api_update_rapport -> app__get_db_connection [style="solid", color="#000000"];
+        app__api_get_sous_types -> app__fetch_rapport_sous_types [style="solid", color="#000000"];
+        app__api_get_sous_types -> app__get_db_connection [style="solid", color="#000000"];
+        app__api_export_rapport -> app__export_docx_best_effort [style="solid", color="#000000"];
+        app__api_export_rapport -> app__export_pdf_faithful [style="solid", color="#000000"];
+        app__api_export_rapport -> app__get_db_connection [style="solid", color="#000000"];
+        app__api_export_rapport -> app__ensure_export_dir_for_rapport [style="solid", color="#000000"];
+        app__config_export -> app__set_ui_settings_in_db [style="solid", color="#000000"];
+        app__config_export -> app__get_db_connection [style="solid", color="#000000"];
+        app__config_export -> app__get_ui_settings_from_db [style="solid", color="#000000"];
+        app__routes__main -> app [style="solid", color="#000000"];
+        app__routes__main -> app__db__get_db_connection [style="solid", color="#000000"];
+        app__routes__main__index -> app__db__get_db_connection [style="solid", color="#000000"];
+        creer_tables -> creer_tables__creer_tables [style="solid", color="#000000"];
+        creer_tables__creer_tables -> creer_tables__get_db_connection [style="solid", color="#000000"];
+    }

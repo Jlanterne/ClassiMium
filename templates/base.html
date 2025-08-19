@@ -47,6 +47,33 @@
             document.head.appendChild(s);
         }
     </script>
+    <script>
+        window.ClassiMium = {
+            isDesktop() { return !!(window.pywebview && window.pywebview.api); },
+
+            async openFile({ multiple = false, types = [['Tous', '*.*']] } = {}) {
+                if (!this.isDesktop()) return [];
+                return await window.pywebview.api.open_file_dialog(multiple, types);
+            },
+            async saveFile(defaultName = "document.txt") {
+                if (!this.isDesktop()) return "";
+                return await window.pywebview.api.save_file_dialog(defaultName);
+            },
+            async pickFolder() {
+                if (!this.isDesktop()) return "";
+                return await window.pywebview.api.pick_folder();
+            },
+            async readText(path) {
+                return await window.pywebview.api.read_text(path);
+            },
+            async writeText(path, content) {
+                return await window.pywebview.api.write_text(path, content);
+            },
+            async openWithSystem(path) {
+                return await window.pywebview.api.open_with_system(path);
+            }
+        };
+    </script>
 
     <!-- Styles utilitaires -->
     <style>

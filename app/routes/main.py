@@ -18,6 +18,53 @@ from app.utils import (
     get_ui_settings_from_db,
     set_ui_settings_in_db,
 )
+# --- Notes & helpers pour la fiche élève ---
+SCORE_MAP = {'NA': 0, 'PA': 2, 'A': 4}   # '---' est ignoré
+
+DEFAULT_COLOR_BY_MATIERE = {
+    'Français': '#87cefa', 'Mathématiques': '#f4a460', 'QLM': '#98fb98',
+    'Anglais': '#ff4500', 'EPS': '#ffff00', 'EMC': '#a9a9a9',
+    'Arts plastiques': '#a0522d', 'Musique': '#7b68ee', 'Autres': '#607D8B'
+}
+DEFAULT_COLOR = '#607D8B'
+
+def MATIERE_ORDER_COL(col="nom") -> str:
+    return (
+        f"CASE {col} "
+        "WHEN 'Français' THEN 1 "
+        "WHEN 'Mathématiques' THEN 2 "
+        "WHEN 'QLM' THEN 3 "
+        "WHEN 'Anglais' THEN 4 "
+        "WHEN 'EMC' THEN 5 "
+        "WHEN 'EPS' THEN 6 "
+        "WHEN 'Musique' THEN 7 "
+        "WHEN 'Arts plastiques' THEN 8 "
+        "WHEN 'Autres' THEN 9 "
+        "ELSE 99 END"
+    )
+
+
+def _to_date(d):
+    if isinstance(d, date): return d
+    if isinstance(d, datetime): return d.date()
+    if isinstance(d, str):
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S"):
+            try: return datetime.strptime(d, fmt).date()
+            except ValueError: pass
+    return None
+
+def _niveau_depuis_note20(note20):
+    if note20 is None: return None
+    if note20 >= 20: return "D"
+    if 16 < note20 < 20: return "A+"
+    if 13 < note20 <= 16: return "A"
+    if 12 <= note20 <= 13: return "PA+"
+    if 8 <= note20 < 12: return "PA"
+    if 6 <= note20 < 8: return "PA-"
+    return "NA"
+
+def _moyenne(l):
+    return round(sum(l)/len(l), 1) if l else None
 
 # ---- Valeurs par défaut sûres pour la page Config (évite NameError) ----
 PRIMARY_ROOT     = os.getenv("DOCS_ROOT_PRIMARY",   r"Z:\Education Nationale")
@@ -106,6 +153,9 @@ def index():
     cur.close(); conn.close()
     return render_template("index.html", classes=classes, toutes_les_classes=classes)
 
+
+from datetime import date, datetime
+
 # ---------- Page classe ----------
 @bp.route("/classe/<int:classe_id>")
 def page_classe(classe_id):
@@ -122,6 +172,7 @@ def page_classe(classe_id):
     filtre_niveau = request.args.get("filtre_niveau")
     filtre_matiere = request.args.get("filtre_matiere")
     filtre_sous_matiere = request.args.get("filtre_sous_matiere")
+
     niveaux_filtres = []
     groupes_dict = {}
 
@@ -132,14 +183,14 @@ def page_classe(classe_id):
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Niveaux de la classe (tri canonique)
+    # ----- Niveaux de la classe (tri canonique) -----
     cur.execute(
         "SELECT niveau FROM classes_niveaux WHERE classe_id = %s ORDER BY " + NIVEAU_ORDER_COL('niveau'),
         (classe_id,)
     )
     niveaux_classe = [row["niveau"] for row in cur.fetchall()]
 
-    # Toutes les classes (menu gauche) + niveaux triés
+    # ----- Toutes les classes (menu gauche) + niveaux triés -----
     cur.execute("SELECT * FROM classes ORDER BY annee DESC")
     toutes_les_classes = cur.fetchall()
     for cl in toutes_les_classes:
@@ -149,7 +200,7 @@ def page_classe(classe_id):
         )
         cl["niveaux"] = [row["niveau"] for row in cur.fetchall()]
 
-    # Classe courante
+    # ----- Classe courante -----
     cur.execute("SELECT * FROM classes WHERE id = %s", (classe_id,))
     classe = cur.fetchone()
     if not classe:
@@ -158,25 +209,28 @@ def page_classe(classe_id):
         return redirect(url_for("main.index"))
     classe["niveaux"] = niveaux_classe
 
-    eleves = []
-    evaluations = []
-    matieres = []
-    sous_matieres = []
-    avancements = {}
-    evaluation = objectifs = resultats = None
-    eleves_par_niveau = None  # pour le mode 'ajouter_dictee'
-
-    # Élèves
-    cur.execute("SELECT * FROM eleves WHERE classe_id = %s", (classe_id,))
+    # ---------- Données communes ----------
+    # Élèves (triés par PRÉNOM puis NOM pour l'affichage)
+    cur.execute("""
+        SELECT id, nom, prenom, niveau, date_naissance
+        FROM eleves
+        WHERE classe_id = %s
+        ORDER BY prenom ASC, nom ASC
+    """, (classe_id,))
     eleves = cur.fetchall()
 
-    # Matières et sous-matières
+    # Matières & sous-matières (listes complètes)
     cur.execute("SELECT * FROM matieres ORDER BY nom")
     matieres = cur.fetchall()
     cur.execute("SELECT * FROM sous_matieres ORDER BY nom")
     sous_matieres = cur.fetchall()
 
-    # Mode : liste des évaluations (+ filtres)
+    evaluations = []
+    avancements = {}
+    evaluation = objectifs = resultats = None
+    eleves_par_niveau = None  # pour le mode 'ajouter_dictee'
+
+    # ---------- Mode : liste des évaluations (+ filtres) ----------
     if mode == "liste_evaluations":
         requete = """
             SELECT e.id, e.titre, e.date, m.nom AS matiere, sm.nom AS sous_matiere
@@ -261,7 +315,7 @@ def page_classe(classe_id):
             progression = int((nb_complets / len(eleves)) * 100) if eleves else 0
             avancements[ev["id"]] = progression
 
-    # Mode : saisie des résultats
+    # ---------- Mode : saisie des résultats ----------
     if mode == "saisie_resultats" and evaluation_id:
         cur.execute("SELECT * FROM evaluations WHERE id = %s", (evaluation_id,))
         evaluation = cur.fetchone()
@@ -276,7 +330,7 @@ def page_classe(classe_id):
         for ligne in lignes:
             resultats[ligne["eleve_id"]][ligne["objectif_id"]] = ligne["niveau"]
 
-    # Mode : ajouter rapport (précharge types / sous-types / élèves)
+    # ---------- Mode : ajouter rapport ----------
     types = []; sous_types = []; eleves_classe = []
     if mode == "ajouter_rapport":
         cur.execute("SELECT id, code, libelle FROM rapport_types ORDER BY libelle;")
@@ -306,7 +360,7 @@ def page_classe(classe_id):
         """, (classe_id,))
         eleves_classe = cur.fetchall()
 
-    # Mode : ajouter dictée
+    # ---------- Mode : ajouter dictée ----------
     if mode == "ajouter_dictee":
         from collections import defaultdict
         eleves_par_niveau = {}
@@ -371,29 +425,101 @@ def page_classe(classe_id):
                         break
                 groupes_dict[eleve_id][date_dictee.isoformat()] = groupe
 
+    # ---------- Colonnes MATIERES pour le tableau (mode=eleves) ----------
+    # 👉 DEMANDE : voir **toutes** les matières, pas seulement celles avec évaluations.
+    try:
+        order_sql = MATIERE_ORDER_COL('nom')
+    except Exception:
+        order_sql = (
+            "CASE nom "
+            "WHEN 'Français' THEN 1 "
+            "WHEN 'Mathématiques' THEN 2 "
+            "WHEN 'QLM' THEN 3 "
+            "WHEN 'Anglais' THEN 4 "
+            "WHEN 'EMC' THEN 5 "
+            "WHEN 'EPS' THEN 6 "
+            "WHEN 'Musique' THEN 7 "
+            "WHEN 'Arts plastiques' THEN 8 "
+            "WHEN 'Autres' THEN 9 "
+            "ELSE 99 END"
+        )
+    cur.execute("SELECT id, nom FROM matieres ORDER BY " + order_sql + ", nom")
+    matieres_actives = cur.fetchall()
+
+    # ---------- Moyennes /20 par élève × matière ----------
+    # Mapping: 'NA'->0, 'PA'->10, 'A'->20 ; autres valeurs ignorées.
+    cur.execute("""
+        SELECT
+            r.eleve_id,
+            m.id   AS matiere_id,
+            ROUND(AVG(
+                CASE r.niveau
+                    WHEN 'NA' THEN 0
+                    WHEN 'PA' THEN 10
+                    WHEN 'A'  THEN 20
+                    ELSE NULL
+                END
+            )::numeric, 1) AS moyenne20
+        FROM resultats r
+        JOIN objectifs  o  ON o.id = r.objectif_id
+        JOIN evaluations ev ON ev.id = o.evaluation_id
+        JOIN matieres   m  ON m.id = ev.matiere_id
+        WHERE ev.classe_id = %s
+        GROUP BY r.eleve_id, m.id
+    """, (classe_id,))
+    rows_moy = cur.fetchall()
+
+    # -> dict { eleve_id: { matiere_id: {"note": float, "pct": float} } }
+    moyennes_par_matiere = {}
+    for row in rows_moy:
+        eid = row["eleve_id"]; mid = row["matiere_id"]
+        note20 = row["moyenne20"]
+        info = None
+        if note20 is not None:
+            pct = float(note20) * 5.0  # 0–100 (utile pour tes rubans NA/PA-/.../D si besoin)
+            info = {"note": float(note20), "pct": pct}
+        else:
+            info = {"note": None, "pct": None}
+        moyennes_par_matiere.setdefault(eid, {})[mid] = info
+
     cur.close(); conn.close()
+
+    # Pour les anniversaires (🎂 dans le template)
+    today_mmdd = date.today().strftime("%m-%d")
 
     return render_template(
         "classe.html",
+        # Commun
         classe=classe,
-        eleves=eleves,
         toutes_les_classes=toutes_les_classes,
+        annee_scolaire=annee_scolaire,
+        mode=mode,
+
+        # Élèves + croisé matières
+        eleves=eleves,
         matieres=matieres,
         sous_matieres=sous_matieres,
+        matieres_actives=matieres_actives,             # ✅ colonnes = toutes les matières
+        moyennes_par_matiere=moyennes_par_matiere,     # ✅ cellules (note /20 + pct)
+
+        # Modes annexes
         evaluations=evaluations,
+        avancements=avancements,
         evaluation=evaluation,
         objectifs=objectifs,
         resultats=resultats,
-        avancements=avancements,
-        annee_scolaire=annee_scolaire,
         niveaux_filtres=niveaux_filtres,
         eleves_par_niveau=eleves_par_niveau,
         groupes_dict=groupes_dict,
-        types=types,
-        sous_types=sous_types,
-        eleves_classe=eleves_classe,
-        mode=request.args.get("mode"),
+        types=locals().get("types", []),
+        sous_types=locals().get("sous_types", []),
+        eleves_classe=locals().get("eleves_classe", []),
+
+        # Utilitaires template
+        today_mmdd=today_mmdd,
     )
+
+
 
 # ---------- API dictées ----------
 @bp.post("/api/dictees")
@@ -1063,44 +1189,77 @@ def changer_photo(classe_id, eleve_id):
 
     return redirect(url_for('main.detail_eleve', eleve_id=eleve_id, classe_id=classe_id))
 
-@bp.route("/debug/evaluations")
-def debug_evaluations():
-    """Petit listing brut des évaluations (debug)."""
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    cur.execute("SELECT * FROM evaluations ORDER BY id DESC")
-    rows = cur.fetchall()
-    cur.close(); conn.close()
-    return "<pre>" + "\n".join([f"{r['id']} | Classe {r['classe_id']} | {r['titre']} ({r['date']})" for r in rows]) + "</pre>"
-
 @bp.route('/classe/<int:classe_id>/eleve/<int:eleve_id>')
 def detail_eleve(classe_id, eleve_id):
-    """Petite fiche élève (avec calcul d’âge)."""
+    """
+    Fiche élève :
+      - Bandeau (classe.niveaux + classe.annee)
+      - Identité + âge
+      - Bulles de notes (toutes matières/sous-matières, même vides)
+      - Bloc spécial "Dictées" (toutes, bilans, simples + série temporelle)
+      - Moyenne élève + moyenne simple de la classe
+    """
+    # --- Helpers ---
+    SCORE_MAP = {'NA': 0, 'PA': 2, 'A': 4}  # '---'/None ignorés
+
+    DEFAULT_COLOR_BY_MATIERE = {
+        'Français': '#87cefa', 'Mathématiques': '#f4a460', 'QLM': '#98fb98',
+        'Anglais': '#ff4500', 'EMC': '#a9a9a9', 'EPS': '#ffff00',
+        'Musique': '#7b68ee', 'Arts plastiques': '#a0522d', 'Autres': '#607D8B'
+    }
+    DEFAULT_COLOR = '#607D8B'
+
+    def _to_date(d):
+        from datetime import datetime as _dt, date as _date
+        if isinstance(d, _date): return d
+        if isinstance(d, _dt):   return d.date()
+        if isinstance(d, str):
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S"):
+                try: return _dt.strptime(d, fmt).date()
+                except ValueError: pass
+        return None
+
+    def _moyenne(vals):
+        return round(sum(vals)/len(vals), 1) if vals else None
+
+    def _niveau_depuis_note20(note20):
+        if note20 is None: return None
+        if note20 >= 20: return "D"
+        if 16 < note20 < 20: return "A+"
+        if 13 < note20 <= 16: return "A"
+        if 12 <= note20 <= 13: return "PA+"
+        if 8 <= note20 < 12: return "PA"
+        if 6 <= note20 < 8: return "PA-"
+        return "NA"
+
+    # --- DB ---
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
-    # Élève
-    cur.execute("SELECT * FROM eleves WHERE id = %s", (eleve_id,))
+    # 1) Élève (et appartenance à la classe)
+    cur.execute("SELECT * FROM eleves WHERE id=%s AND classe_id=%s", (eleve_id, classe_id))
     eleve = cur.fetchone()
+    if not eleve:
+        cur.close(); conn.close()
+        abort(404)
 
-    # Âge
+    # 2) Âge
     age = None
-    if eleve and eleve.get('date_naissance'):
-        birthdate = eleve['date_naissance']
-        if isinstance(birthdate, str):
-            try:
-                birthdate = datetime.strptime(birthdate, "%Y-%m-%d").date()
-            except ValueError:
-                birthdate = None
-        if isinstance(birthdate, date):
-            today = date.today()
-            age = today.year - birthdate.year - ((today.month, today.day) < (birthdate.month, birthdate.day))
+    bd = _to_date(eleve.get('date_naissance'))
+    if bd:
+        today = date.today()
+        age = today.year - bd.year - ((today.month, today.day) < (bd.month, bd.day))
 
-    # Classe (pour titre/menu)
+    # 3) Classe + niveaux triés (bandeau)
     cur.execute("SELECT * FROM classes WHERE id = %s", (classe_id,))
-    classe = cur.fetchone()
+    classe = cur.fetchone() or abort(404)
+    cur.execute(
+        "SELECT niveau FROM classes_niveaux WHERE classe_id = %s ORDER BY " + NIVEAU_ORDER_COL('niveau'),
+        (classe_id,)
+    )
+    classe["niveaux"] = [r["niveau"] for r in cur.fetchall()]
 
-    # Menu latéral (classes + niveaux triés)
+    # 4) Sidebar — toutes les classes + niveaux
     cur.execute("SELECT * FROM classes ORDER BY annee DESC")
     toutes_les_classes = cur.fetchall()
     for cl in toutes_les_classes:
@@ -1110,7 +1269,254 @@ def detail_eleve(classe_id, eleve_id):
         )
         cl["niveaux"] = [row["niveau"] for row in cur.fetchall()]
 
+    # 5) Matières & sous-matières (TOUJOURS affichées, ordre personnalisé)
+    if 'MATIERE_ORDER_COL' in globals():
+        order_sql = MATIERE_ORDER_COL('nom')
+    else:
+        order_sql = (
+            "CASE nom "
+            "WHEN 'Français' THEN 1 "
+            "WHEN 'Mathématiques' THEN 2 "
+            "WHEN 'QLM' THEN 3 "
+            "WHEN 'Anglais' THEN 4 "
+            "WHEN 'EMC' THEN 5 "
+            "WHEN 'EPS' THEN 6 "
+            "WHEN 'Musique' THEN 7 "
+            "WHEN 'Arts plastiques' THEN 8 "
+            "WHEN 'Autres' THEN 9 "
+            "ELSE 99 END"
+        )
+
+    cur.execute(
+        "SELECT id, nom, COALESCE(couleur, '') AS couleur "
+        "FROM matieres ORDER BY " + order_sql + ", nom"
+    )
+    mat_rows = cur.fetchall()
+
+    cur.execute("SELECT id, nom, matiere_id FROM sous_matieres ORDER BY nom")
+    sm_rows = cur.fetchall()
+
+    sm_by_mat = {}
+    for m in mat_rows:
+        sm_by_mat[m["id"]] = [sm for sm in sm_rows if sm["matiere_id"] == m["id"]]
+
+    # 6) Résultats de l'élève (NA/PA/A -> points -> /20 par évaluation)
+    cur.execute("""
+        SELECT
+            r.evaluation_id,
+            UPPER(COALESCE(r.niveau,'')) AS niveau_obj,
+            ev.date   AS ev_date,
+            ev.matiere_id,
+            ev.sous_matiere_id,
+            o.texte   AS objectif_nom
+        FROM resultats r
+        JOIN evaluations ev ON ev.id = r.evaluation_id
+        JOIN objectifs  o   ON o.id  = r.objectif_id
+        WHERE r.eleve_id = %s
+        ORDER BY ev.date DESC, ev.id DESC, o.id
+    """, (eleve_id,))
+    rows = cur.fetchall()
+
+    from collections import defaultdict
+    eval_points = defaultdict(list)  # evaluation_id -> [0/2/4]
+    eval_meta   = {}                 # evaluation_id -> {date, matiere_id, sous_matiere_id}
+    obj_by_eval = defaultdict(list)  # evaluation_id -> [(objectif_nom, 'NA'|'PA'|'A')]
+
+    for r in rows:
+        nv = r["niveau_obj"]
+        if nv in SCORE_MAP:  # ignore '---' et vides
+            eval_points[r["evaluation_id"]].append(SCORE_MAP[nv])
+            obj_by_eval[r["evaluation_id"]].append((r["objectif_nom"], nv))
+        if r["evaluation_id"] not in eval_meta:
+            eval_meta[r["evaluation_id"]] = {
+                "date": _to_date(r["ev_date"]),
+                "matiere_id": r["matiere_id"],
+                "sous_matiere_id": r["sous_matiere_id"],
+            }
+
+    # Note /20 par évaluation
+    eval_note20 = {}  # evaluation_id -> (note20, date, matiere_id, sous_matiere_id)
+    for eid, pts in eval_points.items():
+        if not pts: continue
+        note20 = round((sum(pts)/len(pts))/4*20, 1)
+        meta = eval_meta[eid]
+        eval_note20[eid] = (note20, meta["date"], meta["matiere_id"], meta["sous_matiere_id"])
+
+    # Agrégat par (matiere_id, sous_matiere_id or 0)
+    sms_notes = defaultdict(list)   # key=(mid, smid_or_0) -> [note20]
+    sms_latest_eval = {}            # key -> (eval_id, date)
+    for eid, (n20, d, mid, smid) in eval_note20.items():
+        key = (mid, smid if smid is not None else 0)
+        sms_notes[key].append(n20)
+        prev = sms_latest_eval.get(key)
+        if (prev is None) or (d and (prev[1] is None or d > prev[1])):
+            sms_latest_eval[key] = (eid, d)
+
+    # 7) D I C T E E S — moyennes + série (niveau élève dans cette classe)
+    cur.execute("""
+        SELECT
+            d.id, d.date, d.type,
+            d.nb_mots_simple, d.nb_mots_g1, d.nb_mots_g2, d.nb_mots_g3,
+            dr.erreurs, dr.nb_mots AS nb_mots_res, dr.groupe
+        FROM dictees d
+        JOIN classes_niveaux cn ON cn.id = d.niveau_id
+        LEFT JOIN dictee_resultats dr ON dr.dictee_id = d.id AND dr.eleve_id = %s
+        WHERE d.classe_id = %s AND cn.niveau = %s
+        ORDER BY d.date ASC, d.id ASC
+    """, (eleve_id, classe_id, eleve.get('niveau')))
+    dictees_rows = cur.fetchall()
+
+    dictees_points_all = []  # [{date: date, note: float, type: 'simple'|'bilan'}]
+    notes_all, notes_bilan, notes_simple = [], [], []
+
+    for r in dictees_rows:
+        nb = r.get("nb_mots_res")
+        if not nb or nb <= 0:
+            if (r.get("type") == "simple"):
+                nb = r.get("nb_mots_simple")
+            else:
+                grp = (r.get("groupe") or "G3").upper()
+                nb = (
+                    r.get("nb_mots_g1") if grp == "G1" else
+                    r.get("nb_mots_g2") if grp == "G2" else
+                    r.get("nb_mots_g3")
+                )
+        err = r.get("erreurs")
+        if nb and nb > 0 and err is not None:
+            try:
+                err_i = int(err)
+            except (TypeError, ValueError):
+                continue
+            note = round((nb - err_i) / nb * 20, 1)
+            t = (r.get("type") or "simple").lower()
+            dictees_points_all.append({"date": _to_date(r.get("date")), "note": note, "type": t})
+            notes_all.append(note)
+            (notes_bilan if t == "bilan" else notes_simple).append(note)
+
+    dictees_points_all.sort(key=lambda x: (x["date"] or date.min))
+
+    dictees_avg_all    = _moyenne(notes_all)
+    dictees_avg_bilan  = _moyenne(notes_bilan)
+    dictees_avg_simple = _moyenne(notes_simple)
+
+    dictees_series = [
+        {"date": (p["date"].strftime("%Y-%m-%d") if p["date"] else ""), "note": p["note"]}
+    for p in dictees_points_all]
+    dictees_stats = {"all": dictees_avg_all, "bilan": dictees_avg_bilan, "simple": dictees_avg_simple}
+
+    # 8) Marquer les matières "pertinentes" pour le niveau (info CSS, pas de filtre)
+    cur.execute("""
+        SELECT DISTINCT e.matiere_id
+        FROM evaluations e
+        JOIN evaluations_niveaux en ON en.evaluation_id = e.id
+        WHERE e.classe_id = %s AND en.niveau = %s
+    """, (classe_id, eleve.get('niveau')))
+    matiere_ids_for_level = {row["matiere_id"] for row in cur.fetchall() if row["matiere_id"] is not None}
+
+    # 9) View-model pour le template
+    matieres_vm = []
+    all_student_notes = []
+
+    for m in mat_rows:
+        mid = m["id"]
+        color = (m.get("couleur") or "").strip() or DEFAULT_COLOR_BY_MATIERE.get(m["nom"], DEFAULT_COLOR)
+
+        sous_vm = []
+        sous_notes_for_mat = []
+
+        # Sous-matières déclarées : toujours affichées
+        for sm in sm_by_mat.get(mid, []):
+            key = (mid, sm["id"])
+            notes = sms_notes.get(key, [])
+            note_finale = _moyenne(notes)
+            niv_final = _niveau_depuis_note20(note_finale)
+            if note_finale is not None:
+                sous_notes_for_mat.append(note_finale)
+                all_student_notes.append(note_finale)
+
+            obj_list = []
+            if key in sms_latest_eval:
+                last_eid, _ = sms_latest_eval[key]
+                for (obj_nom, nv) in obj_by_eval.get(last_eid, []):
+                    obj_list.append({"texte": obj_nom, "niveau": nv})
+
+            sous_vm.append({
+                "nom": sm["nom"],
+                "niveau": niv_final,
+                "note_finale": note_finale,
+                "niveau_final": niv_final,
+                "objectifs": obj_list
+            })
+
+        # Bucket "Général" si pas de sous-matière OU notes sans sous_matiere_id
+        key_general = (mid, 0)
+        need_general = (not sm_by_mat.get(mid)) or (key_general in sms_notes) or (key_general in sms_latest_eval)
+        if need_general:
+            notes = sms_notes.get(key_general, [])
+            note_finale = _moyenne(notes)
+            niv_final = _niveau_depuis_note20(note_finale)
+            if note_finale is not None:
+                sous_notes_for_mat.append(note_finale)
+                all_student_notes.append(note_finale)
+
+            obj_list = []
+            if key_general in sms_latest_eval:
+                last_eid, _ = sms_latest_eval[key_general]
+                for (obj_nom, nv) in obj_by_eval.get(last_eid, []):
+                    obj_list.append({"texte": obj_nom, "niveau": nv})
+
+            sous_vm.insert(0, {
+                "nom": "Général",
+                "niveau": niv_final,
+                "note_finale": note_finale,
+                "niveau_final": niv_final,
+                "objectifs": obj_list
+            })
+
+        # 🔹 Sous-matière spéciale "Dictées" sous Français (moyenne = toutes dictées)
+        if m["nom"] == "Français":
+            niv_final_dictees = _niveau_depuis_note20(dictees_avg_all)
+            sous_vm.append({
+                "nom": "Dictées",
+                "niveau": niv_final_dictees,
+                "note_finale": dictees_avg_all,
+                "niveau_final": niv_final_dictees,
+                "objectifs": [],
+                "is_dictees": True
+            })
+            if dictees_avg_all is not None:
+                sous_notes_for_mat.append(dictees_avg_all)
+                all_student_notes.append(dictees_avg_all)
+
+        # Moyenne matière (sur les sous-matières ayant une note)
+        mat_moy = _moyenne(sous_notes_for_mat)
+        mat_niv = _niveau_depuis_note20(mat_moy)
+
+        matieres_vm.append({
+            "nom": m["nom"],
+            "couleur": color,
+            "moyenne": mat_moy,    # None -> "—"
+            "niveau": mat_niv,     # None -> "—"
+            "sous_matieres": sous_vm,
+            "pertinente": (mid in matiere_ids_for_level)
+        })
+
+    # 10) Moyenne élève + moyenne classe
+    moyenne_generale = _moyenne(all_student_notes)
+    niveau_general = _niveau_depuis_note20(moyenne_generale)
+
+    cur.execute("""
+        SELECT UPPER(COALESCE(r.niveau,'')) AS nv
+        FROM resultats r
+        JOIN eleves e ON e.id = r.eleve_id
+        WHERE e.classe_id = %s
+    """, (classe_id,))
+    pts = [SCORE_MAP.get(row["nv"]) for row in cur.fetchall() if SCORE_MAP.get(row["nv"]) is not None]
+    moyenne_classe = round((sum(pts)/len(pts)/4)*20, 1) if pts else None
+
     cur.close(); conn.close()
+
+    # 11) Render
     return render_template(
         "partials/detail_eleve.html",
         eleve=eleve,
@@ -1118,7 +1524,18 @@ def detail_eleve(classe_id, eleve_id):
         toutes_les_classes=toutes_les_classes,
         mode="detail_eleve",
         age=age,
+        matieres=matieres_vm,
+        moyenne_generale=moyenne_generale,
+        niveau_general=niveau_general,
+        moyenne_classe=moyenne_classe,
+        dictees_series=dictees_series,   # → panneau droit (graph)
+        dictees_stats=dictees_stats,     # → panneau droit (3 moyennes)
     )
+
+
+
+
+
 
 # ---------- Ajout dictée (préparation) ----------
 @bp.route("/classe/<int:classe_id>/ajouter_dictee", methods=["GET", "POST"])

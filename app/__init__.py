@@ -237,7 +237,7 @@ def create_app():
         # Pages publiques
         open_prefixes = ("/static/",)
         open_exact = {
-            "/",
+            
             "/login",
             "/logout",
             "/favicon.ico",
@@ -274,6 +274,9 @@ def create_app():
     # ----- Accueil -> index -----
     @app.get("/")
     def root():
+        if not (session.get("auth") or (hasattr(current_user, "is_authenticated") and current_user.is_authenticated)):
+          return redirect(url_for("auth.login", next=request.url))
         return redirect(url_for("main.index"))
+
 
     return app

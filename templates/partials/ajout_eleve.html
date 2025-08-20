@@ -1,57 +1,360 @@
-<div class="ajout-eleve-container">
-    <h3>Ajouter un élève</h3>
-    <form method="POST" enctype="multipart/form-data" action="{{ url_for('main.importer_eleve_csv', classe_id=classe.id) }}">
-        <input type="file" name="csv_file" accept=".csv">
-        <button type="submit">📂 Importer élèves (CSV)</button>
-    </form>
-    <form action="{{ url_for('main.ajouter_eleve', classe_id=classe.id) }}" method="post" class="ajout-eleve-form">
-        <input type="text" name="nom" placeholder="Nom" required>
-        <input type="text" name="prenom" placeholder="Prénom" required>
-        <input type="date" name="date_naissance" required>
-        <input type="text" name="niveau" placeholder="Niveau" required>
-        <button type="submit">Ajouter</button>
-    </form>
+{% set ordre_niveaux = ["CP", "CE1", "CE2", "CM1", "CM2"] %}
+{% set today = today_mmdd if today_mmdd is defined else '' %}
 
-    {% if eleves %}
-    <div class="table-container">
-        <h3>Élèves de la classe</h3>
-        <table id="eleves-table" class="display">
-            <thead>
-                <tr>
-                    <th>Nom</th>
-                    <th>Prénom</th>
-                    <th>Date de naissance</th>
-                    <th>Niveau</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for eleve in eleves %}
-                <tr style="cursor: pointer;"
-                    onclick="window.location.href='{{ url_for('main.detail_eleve', eleve_id=eleve.id, classe_id=classe.id) }}';">
-                    <td>{{ eleve.nom }}</td>
-                    <td>{{ eleve.prenom }}</td>
-                    <td>{{ eleve.date_naissance }}</td>
-                    <td>{{ eleve.niveau }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    {% else %}
-    <p>Aucun élève enregistré pour cette classe.</p>
-    {% endif %}
+{# ----------------------- Helpers ----------------------- #}
+{% macro canon(niv) -%}
+{%- set raw = (niv|string)|trim -%}
+{%- set key = raw|upper|replace(' ', '') -%}
+{%- if key in ["CP","CE1","CE2","CM1","CM2"] -%}{{ key }}
+{%- else -%}{{ raw }}
+{%- endif -%}
+{%- endmacro %}
 
+{% macro format_prenom(prenom) -%}
+{%- if prenom -%}
+{%- set parts = prenom.split('-') -%}
+{{ parts | map('capitalize') | join('-') }}
+{%- endif -%}
+{%- endmacro %}
 
-</div>
+{# Pastille % (palette NA -> D) — robustes aux Decimal #}
+{% macro pastille_pct(pct) -%}
+{%- if pct is none -%}
+<span class="pastille pastille-empty">—</span>
+{%- else -%}
+{%- set p = pct|float -%}
+{%- if p < 30 -%} <span class="pastille pastille-na">{{ ('%.0f' % p) }}%</span>
+    {%- elif p <= 45 -%} <span class="pastille pastille-pa-">{{ ('%.0f' % p) }}%</span>
+        {%- elif p <= 55 -%} <span class="pastille pastille-pa">{{ ('%.0f' % p) }}%</span>
+            {%- elif p <= 65 -%} <span class="pastille pastille-pa+">{{ ('%.0f' % p) }}%</span>
+                {%- elif p <= 75 -%} <span class="pastille pastille-a-">{{ ('%.0f' % p) }}%</span>
+                    {%- elif p < 100 -%} <span class="pastille pastille-a+">{{ ('%.0f' % p) }}%</span>
+                        {%- else -%}
+                        <span class="pastille pastille-d">100%</span>
+                        {%- endif -%}
+                        {%- endif -%}
+                        {%- endmacro %}
 
-<script>
-    $(document).ready(function () {
-        $('#eleves-table').DataTable({
-            paging: false,
-            info: false,
-            searching: false,
-            order: [[0, 'asc'], [3, 'asc']]
-        });
-    });
+                        <div class="ajout-eleve-container">
+                            <h3>Ajouter un élève</h3>
 
-</script>
+                            <form method="POST" enctype="multipart/form-data"
+                                action="{{ url_for('main.importer_eleve_csv', classe_id=classe.id) }}">
+                                <input type="file" name="csv_file" accept=".csv">
+                                <button type="submit">📂 Importer élèves (CSV)</button>
+                            </form>
+
+                            <form action="{{ url_for('main.ajouter_eleve', classe_id=classe.id) }}" method="post"
+                                class="ajout-eleve-form">
+                                <input type="text" name="nom" placeholder="Nom" required>
+                                <input type="text" name="prenom" placeholder="Prénom" required>
+                                <input type="date" name="date_naissance" required>
+                                <input type="text" name="niveau" placeholder="Niveau" required>
+                                <button type="submit">Ajouter</button>
+                            </form>
+
+                            {% if eleves and eleves|length > 0 %}
+                            {% set groupes = (eleves|groupby('niveau'))|list %}
+
+                            {# --- 1) Niveaux canoniques dans l'ordre --- #}
+                            {% for niv in ordre_niveaux %}
+                            {% for grp in groupes if canon(grp.grouper) == niv %}
+                            {% set liste = grp.list|sort(attribute='nom')|sort(attribute='prenom') %}
+                            <div class="table-container niveau-section">
+                                <table class="display eleves-table fixed-columns">
+                                    <thead>
+                                        <tr>
+                                            <th class="th-eleve">
+                                                <span class="lvl-chip">Élèves – {{ niv }}</span>
+                                            </th>
+                                            <th class="th-date">Naissance</th>
+                                            {% for mat in matieres_actives %}
+                                            <th class="th-matiere">{{ mat.nom }}</th>
+                                            {% endfor %}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for eleve in liste %}
+                                        {% set bday = eleve.date_naissance.strftime("%m-%d") if eleve.date_naissance
+                                        else '' %}
+                                        {% set moys = moyennes_par_matiere.get(eleve.id, {}) if moyennes_par_matiere is
+                                        defined else {} %}
+                                        <tr class="eleve-row"
+                                            data-url="{{ url_for('main.detail_eleve', eleve_id=eleve.id, classe_id=classe.id) }}">
+                                            <td class="cell-eleve">
+                                                <span class="prenom">{{ format_prenom(eleve.prenom) }}</span>
+                                                <span class="nom">{{ eleve.nom|upper }}</span>
+                                            </td>
+                                            <td class="cell-date">
+                                                {{ eleve.date_naissance }}
+                                                {% if today and bday == today %}
+                                                <span class="cake" title="Anniversaire aujourd'hui">🎂</span>
+                                                {% endif %}
+                                            </td>
+                                            {% for mat in matieres_actives %}
+                                            {# Supporte 2 structures :
+                                            - moys[mat.id] -> nombre (/20)
+                                            - moys[mat.id] -> objet { note: nombre(/20) } #}
+                                            {% set _raw = moys.get(mat.id) %}
+                                            {% if _raw is mapping %}
+                                            {% set note20 = _raw.get('note') %}
+                                            {% else %}
+                                            {% set note20 = _raw %}
+                                            {% endif %}
+                                            {% set pct = (note20|float * 5) if (note20 is not none) else none %}
+                                            <td class="cell-note">
+                                                {{ pastille_pct(pct) }}
+                                            </td>
+                                            {% endfor %}
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {% endfor %}
+                            {% endfor %}
+
+                            {# --- 2) Autres niveaux (hors CP-CE1-CE2-CM1-CM2) --- #}
+                            {% for grp in groupes if canon(grp.grouper) not in ordre_niveaux %}
+                            {% set titre = (canon(grp.grouper)|string|trim) or 'Non renseigné' %}
+                            {% set liste = grp.list|sort(attribute='nom')|sort(attribute='prenom') %}
+                            <div class="table-container niveau-section">
+                                <table class="display eleves-table fixed-columns">
+                                    <thead>
+                                        <tr>
+                                            <th class="th-eleve">
+                                                <span class="lvl-chip">Élèves – {{ titre }}</span>
+                                            </th>
+                                            <th class="th-date">Naissance</th>
+                                            {% for mat in matieres_actives %}
+                                            <th class="th-matiere">{{ mat.nom }}</th>
+                                            {% endfor %}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for eleve in liste %}
+                                        {% set bday = eleve.date_naissance.strftime("%m-%d") if eleve.date_naissance
+                                        else '' %}
+                                        {% set moys = moyennes_par_matiere.get(eleve.id, {}) if moyennes_par_matiere is
+                                        defined else {} %}
+                                        <tr class="eleve-row"
+                                            data-url="{{ url_for('main.detail_eleve', eleve_id=eleve.id, classe_id=classe.id) }}">
+                                            <td class="cell-eleve">
+                                                <span class="prenom">{{ format_prenom(eleve.prenom) }}</span>
+                                                <span class="nom">{{ eleve.nom|upper }}</span>
+                                            </td>
+                                            <td class="cell-date">
+                                                {{ eleve.date_naissance }}
+                                                {% if today and bday == today %}
+                                                <span class="cake" title="Anniversaire aujourd'hui">🎂</span>
+                                                {% endif %}
+                                            </td>
+                                            {% for mat in matieres_actives %}
+                                            {% set _raw = moys.get(mat.id) %}
+                                            {% if _raw is mapping %}
+                                            {% set note20 = _raw.get('note') %}
+                                            {% else %}
+                                            {% set note20 = _raw %}
+                                            {% endif %}
+                                            {% set pct = (note20|float * 5) if (note20 is not none) else none %}
+                                            <td class="cell-note">
+                                                {{ pastille_pct(pct) }}
+                                            </td>
+                                            {% endfor %}
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {% endfor %}
+
+                            {% else %}
+                            <p>Aucun élève enregistré pour cette classe.</p>
+                            {% endif %}
+                        </div>
+
+                        {# ================= CSS ================= #}
+                        <style>
+                            :root {
+                                --brand: #4078A0;
+                                /* en-têtes */
+                                --chip-bg: #EDF3FA;
+                                /* pastille Élèves – niveau */
+                                --prenom: #00688B;
+                                /* prénom */
+                                --border: #e5e7eb;
+                            }
+
+                            /* Ajout élève */
+                            .ajout-eleve-container {
+                                max-width: 100%;
+                            }
+
+                            .ajout-eleve-form,
+                            .ajout-eleve-container form {
+                                margin-top: .5rem;
+                            }
+
+                            /* Sections niveaux */
+                            .niveau-section {
+                                margin-top: 1rem;
+                            }
+
+                            /* Table élèves */
+                            .eleves-table {
+                                table-layout: fixed;
+                                width: max-content;
+                                /* laisse de la place à droite pour d'autres infos */
+                                min-width: 720px;
+                                border: 1px solid var(--border);
+                                border-radius: 8px;
+                                overflow: hidden;
+                                background: #fff;
+                            }
+
+                            .eleves-table thead th {
+                                background: var(--brand);
+                                color: #fff;
+                                padding: .55rem .6rem;
+                                font-weight: 700;
+                                letter-spacing: .2px;
+                                white-space: nowrap;
+                            }
+
+                            .th-eleve {
+                                width: 260px;
+                            }
+
+                            .th-date {
+                                width: 130px;
+                            }
+
+                            .th-matiere {
+                                width: 120px;
+                                text-align: center;
+                            }
+
+                            /* Pastille niveau (titre) */
+                            .lvl-chip {
+                                display: inline-block;
+                                background: var(--chip-bg);
+                                color: var(--brand);
+                                font-weight: 800;
+                                padding: .18rem .6rem;
+                                border-radius: 999px;
+                                text-transform: uppercase;
+                                font-size: .9rem;
+                            }
+
+                            /* Cellules */
+                            .cell-eleve,
+                            .cell-date,
+                            .cell-note {
+                                padding: .5rem .6rem;
+                            }
+
+                            .cell-eleve .prenom {
+                                color: var(--prenom);
+                                margin-right: .3rem;
+                            }
+
+                            .cell-eleve .nom {
+                                font-weight: 700;
+                                color: #000;
+                            }
+
+                            .cell-date {
+                                white-space: nowrap;
+                            }
+
+                            .cake {
+                                margin-left: .25rem;
+                            }
+
+                            /* Pastilles pourcentages */
+                            .pastille {
+                                display: inline-block;
+                                padding: 4px 8px;
+                                border-radius: 4px;
+                                white-space: nowrap;
+                                font-size: .85rem;
+                                font-weight: 600;
+                                color: black;
+                                min-width: 48px;
+                                text-align: center;
+                            }
+
+                            .pastille-empty {
+                                opacity: .45;
+                            }
+
+                            .pastille-na {
+                                background-color: #ff000075;
+                                color: black;
+                            }
+
+                            /* [0–30]   */
+                            .pastille-pa- {
+                                background-color: #ff7d1aa6;
+                                color: black;
+                            }
+
+                            /* ]30–45]  */
+                            .pastille-pa {
+                                background-color: #ffe223;
+                                color: black;
+                            }
+
+                            /* ]45–55]  */
+                            .pastille-pa+ {
+                                background-color: #d4f5b0;
+                                color: black;
+                            }
+
+                            /* ]55–65]  */
+                            .pastille-a- {
+                                background-color: #a7e9b7;
+                                color: black;
+                            }
+
+                            /* ]65–75]  */
+                            .pastille-a {
+                                background-color: #5cc995;
+                                color: black;
+                            }
+
+                            /* ]75–85]  */
+                            .pastille-a+ {
+                                background-color: #3dbcb9;
+                                color: black;
+                            }
+
+                            /* ]85–100[ */
+                            .pastille-d {
+                                background-color: #00d3f8;
+                                color: black;
+                            }
+
+                            /* 100      */
+
+                            /* Hover lignes */
+                            .eleve-row {
+                                cursor: pointer;
+                            }
+
+                            .eleve-row:hover {
+                                background: #fafafa;
+                            }
+                        </style>
+
+                        {# ================= JS ================= #}
+                        <script>
+                            document.addEventListener('DOMContentLoaded', function () {
+                                document.querySelectorAll('.eleve-row').forEach(function (row) {
+                                    row.addEventListener('click', function () {
+                                        var url = row.getAttribute('data-url');
+                                        if (url) window.location.href = url;
+                                    });
+                                });
+                            });
+                        </script>

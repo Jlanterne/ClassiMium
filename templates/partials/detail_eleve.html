@@ -1,27 +1,38 @@
 {% extends "base.html" %}
 
+{# ---------- mini helpers ---------- #}
+{% macro badge_from20(n) -%}
+{%- if n is not none -%}
+{%- if n >= 18 -%}A+{%- elif n >= 16 -%}A{%- elif n >= 12 -%}PA+{%- elif n >= 10 -%}PA{%- else -%}NA{%- endif -%}
+{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
+{% macro fmt20(n) -%}
+{%- if n is not none -%}{{ '%.1f'|format(n|float) }} / 20{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
+{% macro fmtpct2(p) -%}
+{%- if p is not none -%}{{ '%.2f'|format(p|float) }} %{%- else -%}—{%- endif -%}
+{%- endmacro %}
+
 {% block content %}
+
 <a href="{{ url_for('main.page_classe', classe_id=classe.id) }}" class="retour-link"
-    style="display: block; text-align: left; font-size: 0.9em; margin-left: 0;">
-    ← Retour à la liste des élèves
-</a>
+    style="display:block;text-align:left;font-size:0.9em;margin-left:0;">← Retour à la liste des élèves</a>
 
+<!-- ================== FICHE ÉLÈVE ================== -->
 <div class="carte-identite">
-
-    <div class="carte-header">
-        {{ eleve.prenom }} {{ eleve.nom }}
-    </div>
+    <div class="carte-header">{{ eleve.prenom }} {{ eleve.nom }}</div>
 
     <div class="carte-body">
-
-        <!-- Photo à gauche -->
+        <!-- Photo -->
         <div class="photo-col">
             <form id="photoForm" method="POST"
                 action="{{ url_for('main.changer_photo', eleve_id=eleve.id, classe_id=classe.id) }}"
                 enctype="multipart/form-data" style="margin:0;">
                 <label for="photoInput" title="Cliquez pour changer la photo" style="cursor:pointer;">
                     <img id="photoPreview"
-                        src="{% if eleve.photo_filename %}{{ url_for('static', filename='photos/' + eleve.photo_filename) }}{% elif eleve.sexe and eleve.sexe.upper() == 'FEMININ' %}{{ url_for('static', filename='image_defaut/defaut_fille.png') }}{% else %}{{ url_for('static', filename='image_defaut/defaut_garcon.png') }}{% endif %}"
+                        src="{% if eleve.photo_filename %}{{ url_for('static', filename='photos/' + eleve.photo_filename) }}{% elif eleve.sexe and eleve.sexe|upper == 'FEMININ' %}{{ url_for('static', filename='image_defaut/defaut_fille.png') }}{% else %}{{ url_for('static', filename='image_defaut/defaut_garcon.png') }}{% endif %}"
                         alt="Photo de {{ eleve.prenom }}">
                 </label>
                 <input type="file" id="photoInput" name="photo" accept="image/*" capture="environment"
@@ -30,29 +41,24 @@
             </form>
         </div>
 
-        <!-- Infos colonnes à droite -->
+        <!-- Infos -->
         <div class="infos-container">
-
-            <!-- Colonne 1 -->
             <div class="infos-col">
-                <div class="bulle-info"><i class="fa-regular fa-calendar"></i> {{ eleve.date_naissance }}</div>
-                <div class="bulle-info"><i class="fa-solid fa-cake-candles"></i> {{ age if age is not none else 'Non
-                    renseigné' }} ans</div>
-                <div class="bulle-info"><i class="fa-solid fa-graduation-cap"></i> {{ eleve.niveau }}</div>
+                <div class="bulle-info"><i class="fa-regular fa-calendar"></i> {{ eleve.date_naissance or 'Non
+                    renseignée' }}</div>
+                <div class="bulle-info"><i class="fa-solid fa-cake-candles"></i>
+                    {{ age if age is not none else 'Non renseigné' }}{% if age is not none %} ans{% endif %}
+                </div>
+                <div class="bulle-info"><i class="fa-solid fa-graduation-cap"></i> {{ eleve.niveau or 'Non renseigné' }}
+                </div>
                 <div class="bulle-info"><i class="fa-solid fa-venus-mars"></i> {{ eleve.sexe or 'Non renseigné' }}</div>
             </div>
 
-            <!-- Colonne 2 -->
             <div class="infos-col">
                 <div class="bulle-info">
                     <i class="fa-solid fa-house"></i>
                     <div>
-                        {% if eleve.adresse %}
-                        {{ eleve.adresse }}
-                        {% else %}
-                        Adresse non renseignée
-                        {% endif %}
-                        <br>
+                        {{ eleve.adresse or 'Adresse non renseignée' }}<br>
                         {% if eleve.cp or eleve.commune %}
                         {{ eleve.cp or '' }}{% if eleve.cp and eleve.commune %} {% endif %}{{ eleve.commune or '' }}
                         {% endif %}
@@ -60,18 +66,14 @@
                 </div>
 
                 {% if eleve.commune_naissance %}
-                <div class="bulle-info">
-                    <i class="fa-solid fa-city"></i> Commune de naissance :<br> {{ eleve.commune_naissance }}
-                </div>
+                <div class="bulle-info"><i class="fa-solid fa-city"></i> Commune de naissance :<br>{{
+                    eleve.commune_naissance }}</div>
                 {% endif %}
 
-                <div class="bulle-info">
-                    <i class="fa-solid fa-globe"></i> Pays de naissance :<br> {{ eleve.pays_naissance or 'Non renseigné'
-                    }}
-                </div>
+                <div class="bulle-info"><i class="fa-solid fa-globe"></i> Pays de naissance :<br>{{ eleve.pays_naissance
+                    or 'Non renseigné' }}</div>
             </div>
 
-            <!-- Colonne 3 prévue pour mère -->
             <div class="infos-col">
                 <div class="bulle-info"><strong>Mère</strong></div>
                 <div class="bulle-info"><i class="fa-solid fa-user"></i> {{ eleve.nom_mere or 'Nom non renseigné' }}
@@ -82,7 +84,6 @@
                     renseigné' }}</div>
             </div>
 
-            <!-- Colonne 4 : infos père -->
             <div class="infos-col">
                 <div class="bulle-info"><strong>Père</strong></div>
                 <div class="bulle-info"><i class="fa-solid fa-user"></i> {{ eleve.nom_pere or 'Nom non renseigné' }}
@@ -92,37 +93,406 @@
                 <div class="bulle-info"><i class="fa-solid fa-phone"></i> {{ eleve.telephone_pere or 'Téléphone non
                     renseigné' }}</div>
             </div>
-
         </div>
     </div>
 </div>
 
-<div>
-    {% include "partials/_bulle_notes.html" %}
+<!-- ================== BULLES NOTES ================== -->
+<div class="container-global-bulles">
+    <div class="matiere-container">
+        {% for matiere in matieres %}
+        <div class="bloc-matiere" style="--matiere-color: {{ matiere.couleur }};" data-matiere="{{ matiere.nom }}" {% if
+            matiere.nom=='Mathématiques' %}id="anchor-maths" {% endif %}>
+
+            <div class="titre-matiere" onclick="toggleMatiere(this)">
+                {{ matiere.nom }}
+                <span class="moyenne-droite">
+                    <span class="note-sur-20">
+                        {{ matiere.moyenne if matiere.moyenne is not none else '—' }}{% if matiere.moyenne is not none
+                        %} / 20{% endif %}
+                    </span>
+                    <span class="pastille-niveau{% if matiere.niveau %} {{ matiere.niveau }}{% endif %}">{{
+                        matiere.niveau or '—' }}</span>
+                </span>
+            </div>
+
+            <div class="moyenne-repliee">
+                <span class="pastille-niveau{% if matiere.niveau %} {{ matiere.niveau }}{% endif %}">{{ matiere.niveau
+                    or '—' }}</span>
+            </div>
+
+            <div class="contenu-matiere">
+                <div class="liste-sous-matieres">
+                    {% for sm in matiere.sous_matieres %}
+                    <div class="sous-matiere-wrap">
+                        {% set is_dictees = sm.is_dictees %}
+                        <div class="sous-matiere{% if is_dictees %} is-dictees{% endif %}" {% if is_dictees
+                            %}onclick="onClickDictees(this)" {% else
+                            %}onclick="toggleSousMatiere(this); closeDicteesPanel();" {% endif %}>
+                            {{ sm.nom }}
+                            <span class="pastille-niveau{% if sm.niveau %} {{ sm.niveau }}{% endif %}">{{ sm.niveau or
+                                '—' }}</span>
+                        </div>
+
+                        {% if is_dictees %}
+                        {# --- Normalisation des moyennes --- #}
+                        {% set raw_all = dictees_stats.all if dictees_stats is defined else None %}
+                        {% if raw_all is not none %}
+                        {% if raw_all <= 1 %}{% set all20=raw_all * 20 %} {% elif raw_all <=20 %}{% set all20=raw_all %}
+                            {% else %}{% set all20=raw_all * 0.2 %}{% endif %} {% else %}{% set all20=None %}{% endif %}
+                            {% set raw_b=dictees_stats.bilan if dictees_stats is defined else None %} {% if raw_b is not
+                            none %} {% if raw_b <=1 %}{% set bPct=raw_b * 100 %}{% elif raw_b <=20 %}{% set
+                            bPct=(raw_b/20.0) * 100 %}{% else %}{% set bPct=raw_b %}{% endif %} {% set b20=bPct/100.0 *
+                            20.0 %} {% else %}{% set bPct=None %}{% set b20=None %}{% endif %} {% set
+                            raw_s=dictees_stats.simple if dictees_stats is defined else None %} {% if raw_s is not none
+                            %} {% if raw_s <=1 %}{% set sPct=raw_s * 100 %}{% elif raw_s <=20 %}{% set sPct=(raw_s/20.0)
+                            * 100 %}{% else %}{% set sPct=raw_s %}{% endif %} {% set s20=sPct/100.0 * 20.0 %} {% else
+                            %}{% set sPct=None %}{% set s20=None %}{% endif %} <div class="detail-sous-matiere">
+                            <div class="evaluation">
+                                <div class="ligne-eval">
+                                    <div class="titre-eval">{{ sm.nom }}</div>
+                                    <div class="note-global">
+                                        {{ fmt20(all20) }}
+                                        {% set niv_all = badge_from20(all20) %}
+                                        <span class="pastille-niveau{% if niv_all!='—' %} {{ niv_all }}{% endif %}">{{
+                                            niv_all }}</span>
+                                    </div>
+                                </div>
+                                <div class="objectifs-liste">
+                                    <div class="objectif-ligne">
+                                        <div class="objectif-texte">Moyenne bilans</div>
+                                        <div class="note-objectif">
+                                            <span class="note-valeur">{{ fmtpct2(bPct) }}</span>
+                                            {% set niv_b = badge_from20(b20) %}
+                                            <span class="pastille-niveau{% if niv_b!='—' %} {{ niv_b }}{% endif %}">{{
+                                                niv_b }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="objectif-ligne">
+                                        <div class="objectif-texte">Moyenne simples</div>
+                                        <div class="note-objectif">
+                                            <span class="note-valeur">{{ fmtpct2(sPct) }}</span>
+                                            {% set niv_s = badge_from20(s20) %}
+                                            <span class="pastille-niveau{% if niv_s!='—' %} {{ niv_s }}{% endif %}">{{
+                                                niv_s }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                    </div>
+
+                    {# Données du graphique (une seule série, côté serveur) #}
+                    <script type="application/json" class="dictees-json">{{ dictees_series|tojson }}</script>
+
+                    {% else %}
+                    <div class="detail-sous-matiere">
+                        <div class="evaluation">
+                            <div class="ligne-eval">
+                                <div class="titre-eval">{{ sm.nom }}</div>
+                                <div class="note-global">
+                                    {{ sm.note_finale if sm.note_finale is not none else '—' }}{% if sm.note_finale is
+                                    not none %} / 20{% endif %}
+                                    <span
+                                        class="pastille-niveau{% if sm.niveau_final %} {{ sm.niveau_final }}{% endif %}">{{
+                                        sm.niveau_final or '—' }}</span>
+                                </div>
+                            </div>
+                            <div class="objectifs-liste">
+                                {% if sm.objectifs and sm.objectifs|length %}
+                                {% for obj in sm.objectifs %}
+                                <div class="objectif-ligne">
+                                    <div class="objectif-texte">{{ obj.texte }}</div>
+                                    <div class="note-objectif">
+                                        <span class="pastille-niveau{% if obj.niveau %} {{ obj.niveau }}{% endif %}">{{
+                                            obj.niveau or '—' }}</span>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                                {% else %}
+                                <div class="objectif-ligne">
+                                    <div class="objectif-texte">Aucun objectif saisi pour l’instant</div>
+                                    <div class="note-objectif"><span class="pastille-niveau">—</span></div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
 </div>
 
-
+<div class="bloc-moyennes-aligne">
+    <div class="moyenne-eleve">
+        <div class="titre">Moyenne générale</div>
+        <div class="note">{{ moyenne_generale if moyenne_generale is not none else '—' }}{% if moyenne_generale is not
+            none %} / 20{% endif %}</div>
+        <div class="pastille-niveau pastille-grande{% if niveau_general %} {{ niveau_general }}{% endif %}">{{
+            niveau_general or '—' }}</div>
+    </div>
+    <div class="moyenne-classe">
+        <div class="titre">Moyenne de la classe</div>
+        <div class="note">{{ moyenne_classe if moyenne_classe is not none else '—' }}{% if moyenne_classe is not none %}
+            / 20{% endif %}</div>
+    </div>
+</div>
 </div>
 
+<!-- ========= PANNEAU GLOBAL GRAPHIQUE (fixe) ========= -->
+<div id="dicteesPanel" class="dictees-global-panel" aria-hidden="true">
+    <div class="panel-title">Évolution des dictées</div>
+    <canvas id="dicteesCanvas"></canvas>
+    <div class="panel-empty">Aucune dictée saisie pour cet élève.</div>
+</div>
 
+<style>
+    /* Empêche le clipping des flyouts classiques */
+    .bloc-matiere,
+    .contenu-matiere,
+    .liste-sous-matieres,
+    .sous-matiere-wrap {
+        overflow: visible;
+    }
 
+    /* Panneau fixe (collé visuellement sous “Mathématiques”) */
+    .dictees-global-panel {
+        position: fixed;
+        width: 860px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        box-shadow: 0 10px 26px rgba(0, 0, 0, .10);
+        padding: 12px;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(6px);
+        transition: opacity .18s ease, transform .18s ease;
+        z-index: 100000;
+    }
 
+    .dictees-global-panel.open {
+        opacity: 1;
+        transform: none;
+        pointer-events: auto;
+    }
 
+    #dicteesCanvas {
+        display: block;
+        width: 100%;
+        height: 420px;
+    }
 
+    .panel-title {
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+
+    .panel-empty {
+        color: #6b7280;
+        margin-top: 8px;
+        display: none;
+    }
+</style>
+
+<!-- ================== SCRIPTS ================== -->
 <script>
-    const photoInput = document.getElementById('photoInput');
-    const photoForm = document.getElementById('photoForm');
-    const photoPreview = document.getElementById('photoPreview');
-
-    photoInput.addEventListener('change', function () {
-        if (this.files && this.files[0]) {
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                photoPreview.src = e.target.result;
+    // Preview + auto-submit
+    (function () {
+        const input = document.getElementById('photoInput');
+        if (!input) return;
+        const preview = document.getElementById('photoPreview');
+        const form = document.getElementById('photoForm');
+        input.addEventListener('change', function () {
+            if (this.files && this.files[0]) {
+                const r = new FileReader();
+                r.onload = e => preview.src = e.target.result;
+                r.readAsDataURL(this.files[0]);
+                form.submit();
             }
-            reader.readAsDataURL(this.files[0]);
-            photoForm.submit();
+        });
+    })();
+
+    // Ouverture/fermeture matières
+    function toggleMatiere(el) {
+        const bloc = el.closest('.bloc-matiere');
+        const blocs = document.querySelectorAll('.bloc-matiere');
+        const already = bloc.classList.contains('active');
+        blocs.forEach(b => b.classList.remove('active', 'moved'));
+        if (!already) {
+            bloc.classList.add('active');
+            let found = false; blocs.forEach(b => { if (found && b !== bloc) b.classList.add('moved'); if (b === bloc) found = true; });
         }
-    });
+    }
+    function toggleSousMatiere(el) {
+        const d = el.closest('.sous-matiere-wrap').querySelector('.detail-sous-matiere');
+        document.querySelectorAll('.detail-sous-matiere').forEach(x => { if (x !== d) x.classList.remove('visible'); });
+        if (d) d.classList.toggle('visible');
+    }
+
+    // ===== Dictées : panneau fixe + graphique (canvas 2D maison) =====
+    let dicteesColor = '#4b9ce8';
+
+    function closeDicteesPanel() {
+        const p = document.getElementById('dicteesPanel');
+        if (p) p.classList.remove('open');
+    }
+
+    function onClickDictees(el) {
+        // ouvre la zone "moyennes" sous la sous-matière
+        const detail = el.closest('.sous-matiere-wrap').querySelector('.detail-sous-matiere');
+        document.querySelectorAll('.detail-sous-matiere').forEach(d => { if (d !== detail) d.classList.remove('visible'); });
+        if (detail) detail.classList.add('visible');
+
+        // couleur depuis la matière
+        try {
+            const bloc = el.closest('.bloc-matiere');
+            const c = getComputedStyle(bloc).getPropertyValue('--matiere-color').trim();
+            if (c) dicteesColor = c;
+        } catch { }
+
+        // série JSON depuis la balise locale
+        let series = [];
+        try { series = JSON.parse(el.closest('.sous-matiere-wrap').querySelector('.dictees-json')?.textContent || '[]'); }
+        catch (e) { series = []; }
+
+        openDicteesPanel(series, el);
+    }
+
+    function openDicteesPanel(series, triggerEl) {
+        const panel = document.getElementById('dicteesPanel');
+        const canvas = document.getElementById('dicteesCanvas');
+        const empty = panel.querySelector('.panel-empty');
+
+        // ancre "Mathématiques" si dispo, sinon la ligne "Dictées"
+        const anchorEl =
+            document.getElementById('anchor-maths')?.querySelector('.titre-matiere') ||
+            triggerEl;
+
+        const r = anchorEl.getBoundingClientRect();
+        const pageX = window.scrollX || document.documentElement.scrollLeft || 0;
+        const pageY = window.scrollY || document.documentElement.scrollTop || 0;
+
+        const panelW = panel.offsetWidth || 860;
+        const leftTarget = r.left + pageX;
+        const maxLeft = pageX + window.innerWidth - panelW - 12;
+        const left = Math.max(12 + pageX, Math.min(leftTarget, maxLeft));
+        const top = r.bottom + pageY + 50;
+
+        panel.style.left = left + 'px';
+        panel.style.top = top + 'px';
+
+        const hasData = Array.isArray(series) && series.some(p => (p.note20 ?? p.note ?? p.score20) != null);
+        empty.style.display = hasData ? 'none' : 'block';
+
+        canvas.width = 860;
+        canvas.height = 420;
+
+        if (hasData) drawDicteeChart(canvas, series, triggerEl);
+
+        panel.classList.add('open');
+    }
+
+    // Graphique : 0–20, barres sous bilans, labels mois
+    function drawDicteeChart(canvas, series, triggerEl) {
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width, H = canvas.height;
+        ctx.clearRect(0, 0, W, H);
+
+        const P = { l: 42, r: 16, t: 16, b: 36 };
+        const plotW = W - P.l - P.r, plotH = H - P.t - P.b;
+
+        const dates = series.map(p => new Date(p.date));
+        const values = series.map(p => (p.note20 ?? p.note ?? p.score20));
+        const isBilan = series.map(p => (p.type === 'bilan' || p.is_bilan === true));
+
+        const xAt = (i) => (P.l + (values.length <= 1 ? plotW / 2 : i * (plotW / (values.length - 1))));
+        const yAt = (v) => (P.t + (20 - v) * (plotH / 20));
+
+        // fond
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+
+        // grille
+        ctx.strokeStyle = 'rgba(0,0,0,.08)'; ctx.lineWidth = 1; ctx.beginPath();
+        for (let y = 0; y <= 20; y += 2) { const yy = yAt(y); ctx.moveTo(P.l, yy); ctx.lineTo(W - P.r, yy); } ctx.stroke();
+
+        // axes + ticks Y
+        ctx.strokeStyle = 'rgba(0,0,0,.3)'; ctx.lineWidth = 1; ctx.beginPath();
+        ctx.moveTo(P.l, P.t); ctx.lineTo(P.l, H - P.b); ctx.moveTo(P.l, H - P.b); ctx.lineTo(W - P.r, H - P.b); ctx.stroke();
+        ctx.fillStyle = '#374151'; ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+        ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+        for (let y = 0; y <= 20; y += 2) { const yy = yAt(y); ctx.fillText(String(y), P.l - 6, yy); }
+
+        // indices de changement de mois
+        const monthIdx = []; let lm = -1, ly = -1;
+        dates.forEach((d, i) => { const m = d.getMonth(), y = d.getFullYear(); if (m !== lm || y !== ly) { monthIdx.push(i); lm = m; ly = y; } });
+
+        // labels mois
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = 'rgba(0,0,0,.45)';
+        const MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+        for (const i of monthIdx) {
+            const x = xAt(i);
+            ctx.fillRect(x, H - P.b, 1, 6);
+            const d = dates[i];
+            ctx.fillText(`${MONTHS[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}`, x, H - P.b + 8);
+        }
+
+        // barres bilans
+        ctx.fillStyle = 'rgba(0,0,0,.12)';
+        const barW = Math.max(2, plotW / Math.max(30, values.length * 1.2));
+        isBilan.forEach((b, i) => { if (!b) return; const x = xAt(i) - barW / 2; ctx.fillRect(x, yAt(20), barW, yAt(0) - yAt(20)); });
+
+        // couleur depuis la matière
+        let color = dicteesColor;
+        try {
+            const bloc = triggerEl.closest('.bloc-matiere');
+            const c = getComputedStyle(bloc).getPropertyValue('--matiere-color').trim();
+            if (c) color = c;
+        } catch { }
+
+        // ligne + points
+        ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+        values.forEach((v, i) => { if (v == null) return; const x = xAt(i), y = yAt(v); if (i === 0 || values[i - 1] == null) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+        ctx.stroke();
+        ctx.fillStyle = color;
+        values.forEach((v, i) => { if (v == null) return; const x = xAt(i), y = yAt(v); ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fill(); });
+    }
+
+    // fermer si clic ailleurs / ESC
+    document.addEventListener('click', (e) => {
+        const onDictee = e.target.closest('.is-dictees');
+        const onPanel = e.target.closest('#dicteesPanel');
+        if (!onDictee && !onPanel) closeDicteesPanel();
+    }, true);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDicteesPanel(); });
 </script>
+<script>
+    function toggleMatiere(el) {
+        const bloc = el.closest('.bloc-matiere');
+        const blocs = document.querySelectorAll('.bloc-matiere');
+        const already = bloc.classList.contains('active');
+
+        // ferme le panneau dictées à chaque changement de matière
+        closeDicteesPanel();
+
+        // replie toutes les sous-matières (dont Dictées) du bloc cliqué
+        bloc.querySelectorAll('.detail-sous-matiere').forEach(d => d.classList.remove('visible'));
+
+        // logique d’ouverture habituelle
+        blocs.forEach(b => b.classList.remove('active', 'moved'));
+        if (!already) {
+            bloc.classList.add('active');
+            let found = false;
+            blocs.forEach(b => {
+                if (found && b !== bloc) b.classList.add('moved');
+                if (b === bloc) found = true;
+            });
+        }
+    }
+</script>
+
+
 {% endblock %}
